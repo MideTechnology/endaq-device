@@ -584,6 +584,10 @@ class CommandInterface:
             logger.debug('Copying {} to {}'.format(filename, dest))
             shutil.copyfile(filename, dest)
 
+        # For *NIX systems: sync filesystem to make sure changes 'take'
+        if 'sync' in dir(os):
+            os.sync()
+
         return os.path.isfile(dest)
 
 
