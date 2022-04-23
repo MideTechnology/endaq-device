@@ -31,7 +31,7 @@ things, and have very different use-cases.
 <!--
 The docs for this package can be found [here](https://docs.endaq.com/en/latest/).
 -->
-The documentation is built using [Sphinx](https://www.sphinx-doc.org) v4.2.0. The documentation build conflicts with
+The documentation is built using [Sphinx](https://www.sphinx-doc.org). The documentation build conflicts with
 endaq-python, so it is easiest to build it in a virtual environment (using `python -m venv venv` followed by 
 `venv\Scripts\activate`). 
 
