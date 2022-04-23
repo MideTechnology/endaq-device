@@ -31,10 +31,15 @@ things, and have very different use-cases.
 <!--
 The docs for this package can be found [here](https://docs.endaq.com/en/latest/).
 -->
-To locally build the [Sphinx](https://www.sphinx-doc.org) documentation from a clone of the repo:
+The documentation is built using [Sphinx](https://www.sphinx-doc.org) v4.2.0. The documentation build conflicts with
+endaq-python, so it is easiest to build it in a virtual environment (using `python -m venv venv` followed by 
+`venv\Scripts\activate`). 
+
+To build the documentation, clone the repo and use the following steps:
 1. `cd <repo root dir>`
 2. `pip install -e .[docs]`
-3. `sphinx-build -W -b html docs docs/_build`
+3. `pip install -r .\docs\requirements.txt`   
+4. `sphinx-build -W -b html docs docs/_build`
 
 ## License
 
