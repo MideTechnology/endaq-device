@@ -39,7 +39,9 @@ setuptools.setup(
             'pyserial>=3.5',
             'pywin32>=228; sys_platform == "win32"'
             ],
-        docs_requires=docs_requirements,
+        extras_require={
+            'docs': docs_requirements,
+            },
         # tests_require=[
         #     'pytest',
         #     'mock'
