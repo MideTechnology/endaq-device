@@ -3,8 +3,8 @@ import setuptools
 with open('README.md', 'r') as fh:
     long_description = fh.read()
 
-# with open('docs/requirements.txt', 'r') as fh:
-#     docs_requirements = fh.readlines()
+with open('docs/requirements.txt', 'r') as fh:
+    docs_requirements = fh.readlines()
 
 setuptools.setup(
         name='endaq-device',
@@ -45,9 +45,9 @@ setuptools.setup(
             'pyserial>=3.5',
             'pywin32>=228; sys_platform == "win32"'
             ],
-        # extras_require={
-        #     'docs': docs_requirements,
-        #     },
+        extras_require={
+            'docs': docs_requirements,
+            },
         # tests_require=[
         #     'pytest',
         #     'mock'
