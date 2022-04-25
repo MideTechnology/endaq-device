@@ -32,13 +32,13 @@ things, and have very different use-cases.
 The docs for this package can be found [here](https://docs.endaq.com/en/latest/).
 -->
 The documentation is built using [Sphinx](https://www.sphinx-doc.org). The documentation build conflicts with
-endaq-python, so it is easiest to build it in a virtual environment (using `python -m venv venv` followed by 
-`venv\Scripts\activate`). 
+endaq-python, so it is easiest to build it in a virtual environment (e.g., using `python -m venv <env dir>` followed by 
+`<venv dir>\Scripts\activate` under Windows, `source <venv dir>/bin/actuvate` under Linux/macOS). 
 
 To build the documentation, clone the repo and use the following steps:
 1. `cd <repo root dir>`
 2. `pip install -e .[docs]`
-3. `pip install -r .\docs\requirements.txt`   
+3. `pip install -r ./docs/requirements.txt`   
 4. `sphinx-build -W -b html docs docs/_build`
 
 ## License
