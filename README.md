@@ -28,12 +28,10 @@ things, and have very different use-cases.
 
 ## Documentation
 *Note: the documentation is currently a work in progress.*
-<!--
-The docs for this package can be found [here](https://docs.endaq.com/en/latest/).
--->
 
-The documentation is built using [Sphinx](https://www.sphinx-doc.org). To build the documentation,
-clone the repo and use the following steps:
+The docs for this package can be found [here](https://mide-technology-endaq-device.readthedocs-hosted.com/en/latest/).
+
+To locally build the [Sphinx](https://www.sphinx-doc.org) documentation from a clone of the repo:
 1. `cd <repo root dir>`
 2. `pip install -e .[docs]`
 3. `pip install -r ./docs/requirements.txt`   

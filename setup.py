@@ -3,6 +3,9 @@ import setuptools
 with open('README.md', 'r') as fh:
     long_description = fh.read()
 
+with open('docs/requirements.txt', 'r') as fh:
+    docs_requirements = fh.readlines()
+
 setuptools.setup(
         name='endaq-device',
         version='1.0.0a1',
@@ -22,8 +25,14 @@ setuptools.setup(
                      'Programming Language :: Python :: 3.9',
                      ],
         keywords='endaq configure recorder hardware',
-        packages=['endaq.device'],
-        package_dirs={'endaq.device': './endaq/device'},
+        packages=[
+            'endaq.device',
+            'endaq.device.defaults',
+            'endaq.device.schemata',
+            ],
+        package_dir={
+            'endaq.device': './endaq/device',
+            },
         package_data={
             '': ['schemata/*.xml', 'defaults/*.ui'],
         },
@@ -36,6 +45,9 @@ setuptools.setup(
             'pyserial>=3.5',
             'pywin32>=228; sys_platform == "win32"'
             ],
+        extras_require={
+            'docs': docs_requirements,
+            },
         # tests_require=[
         #     'pytest',
         #     'mock'
