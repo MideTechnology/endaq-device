@@ -111,7 +111,7 @@ class ConfigItem:
         """
         Constructor.
 
-        :param interface: The 'parent' `ConfigInterface`.
+        :param interface: The 'parent' :class:`ConfigInterface`.
         :param element: The raw CONFIG.UI \*Field EBML element.
         :param data: The `element` contents, dumped as a dictionary.
         :param value: The value (in native units) as read from a config file.
@@ -335,18 +335,6 @@ class ConfigItem:
 class ConfigInterface:
     """
     Base class for mechanisms to access/modify device configuration.
-
-    :ivar config: Device configuration data. May be set manually to override
-        defaults. Manual setting must be done after instantiation and before
-        accessing config elements via `item` or `name`.
-    :ivar configUi: Device configuration UI information. May be set manually
-        to override defaults. Manual setting must be done after instantiation
-        and before accessing config elements via `item` or `name`.
-    :ivar unknownConfig: A dictionary of configuration item types and values,
-        keyed by Config ID. Items read from the configuration file that do
-        not match items in the ConfigUI data go into the dictionary. These
-        will (by default) be written back to the config file verbatim.
-        Arbitrary items may be added manually (primarily for debugging).
     """
 
     def __init__(self, device):
@@ -355,18 +343,28 @@ class ConfigInterface:
 
             :param device: The Recorder to configure.
         """
-        self.schema = loadSchema('mide_config_ui.xml')
-        self.device = device
-        self.configUi: Optional[MasterElement] = None
-        self.config: Optional[MasterElement] = None
         self._items = {}
         self._names = {}
+        self.schema = loadSchema('mide_config_ui.xml')
+        self.device = device
 
-        # Config values from the loaded configuration data that don't have
-        # a corresponding field in the ConfigUI data. Keyed by ConfigID,
-        # values are tuples of (*Value element name, value). This can be
-        # modified directly to add new/custom configuration values.
+        self.configUi: Optional[MasterElement] = None
+        """ Device configuration UI information. May be set manually
+            to override defaults. Manual setting must be done after instantiation
+            and before accessing config elements via `item` or `name`. """
+
+        self.config: Optional[MasterElement] = None
+        """ Device configuration data. May be set manually to override
+            defaults. Manual setting must be done after instantiation and before
+            accessing config elements via `item` or `name`. """
+
         self.unknownConfig: Dict[int, Tuple[str, Any]] = {}
+        """ Items read from the configuration file that do not match items in
+            the ConfigUI data. It contains tuples of (EBML `*Value` element
+            name, value), keyed by Config ID. These will (by default) be
+            written back to the config file verbatim. This can be modified
+            directly to add new/custom configuration values (primarily for
+            debugging)."""
 
         # For future use
         self.postConfigMsg = None
@@ -408,7 +406,7 @@ class ConfigInterface:
 
     @classmethod
     def hasInterface(cls, device) -> bool:
-        """ Determine if a device supports this `ConfigInterface` type.
+        """ Determine if a device supports this :class:`ConfigInterface` type.
 
             :param device: The Recorder to check.
             :return: `True` if the device supports the interface.
@@ -474,7 +472,7 @@ class ConfigInterface:
         """ Generate a dictionary of configuration data.
 
             :param unknown: If `True`, include configuration items in the
-                `ConfigInterface`'s `unknownConfig`; items read from the
+                :class:`ConfigInterface`'s :attr:`unknownConfig`; items read from the
                 configuration file but have IDs that do not correspond to
                 fields in the device's ConfigUI data.
             :return: A dictionary of configuration values, ready for encoding
@@ -512,7 +510,7 @@ class ConfigInterface:
 
             :param config: Optional, explicit configuration EBML data to
                 process. If none is provided, the data retrieved by
-                `getConfig()` will be used.
+                :meth:`getConfig()` will be used.
         """
         if config is None:
             config = self.config or self.getConfig()
@@ -547,7 +545,7 @@ class ConfigInterface:
             therefore recommended.
 
             :param item: The config ID or label of a configuration item.
-            :return: The indicated `ConfigItem`.
+            :return: The indicated :class:`ConfigItem`.
         """
         try:
             if item in self.items:
@@ -852,7 +850,7 @@ class ConfigInterface:
 
     def getSampleRate(self,
                       channel: Channel) -> float:
-        """ Get the sample rate of a `Channel`.
+        """ Get the sample rate of a :class:`~.idelib.dataset.Channel`.
 
             :param channel: The `Channel` or `SubChannel` to get.
             :return: The sampling rate, in hertz.
@@ -882,7 +880,7 @@ class VirtualConfigInterface(ConfigInterface):
     @classmethod
     def hasInterface(cls, device) -> bool:
         """
-        Determine if a device supports this `ConfigInterface` type.
+        Determine if a device supports this :class:`ConfigInterface` type.
 
         :param device: The Recorder to check.
         :return: `True` if the device supports the interface.
@@ -945,7 +943,7 @@ class FileConfigInterface(ConfigInterface):
     @classmethod
     def hasInterface(cls, device) -> bool:
         """
-        Determine if a device supports this `ConfigInterface` type.
+        Determine if a device supports this :class:`ConfigInterface` type.
 
         :param device: The Recorder to check.
         :return: `True` if the device supports the interface.
@@ -992,7 +990,7 @@ class FileConfigInterface(ConfigInterface):
 #
 # ===========================================================================
 
-#: A list of all `ConfigInterface` types, used when finding a device's
+#: A list of all :class:`ConfigInterface` types, used when finding a device's
 #   interface. `VirtualConfigInterface` should go last. New interface types
 #   defined elsewhere should append/insert themselves into this list (before
 #   their superclass, if their `hasInterface()` is more specific).

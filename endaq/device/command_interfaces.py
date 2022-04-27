@@ -41,11 +41,6 @@ class CommandInterface:
     """
     Base class for command interfaces, the mechanism that sends the command
     to the device.
-
-    :ivar timeout: The default response timeout.
-    :ivar status: The last reported device status. Not available on all
-        interface types. A tuple containing the status code and a
-        status message string (optional).
     """
 
     # DeviceStatusCode responses. Note: not reported over all interfaces.
@@ -90,18 +85,23 @@ class CommandInterface:
         """
         Constructor.
 
-        :param device: The Recorder to which to interface.
+        :param device: The :class:`~.endaq.device.Recorder` to which to interface.
         :param timeout: Default time to wait (in seconds) for commands
             to process.
         """
         self.schema = loadSchema('command-response.xml')
-
-        self.device = device
-        self.timeout = timeout
         self.index = 0
 
-        # Last reported device status. Not available on all interfaces.
+        self.device = device
+        """ The 'parent' :class:`~.endaq.device.Recorder`. """
+
+        self.timeout = timeout
+        """ The default response timeout. """
+
         self.status = None, None
+        """ The last reported device status. A tuple containing the status
+            code and a status message string (optional). Not available on
+            all interface types. """
 
         # Some interfaces (i.e. serial) have a maximum packet size.
         self.maxCommandSize = self.DEFAULT_MAX_COMMAND_SIZE
@@ -112,8 +112,8 @@ class CommandInterface:
         """
         Determine if a device supports this `CommandInterface` type.
 
-        :param device:
-        :return:
+        :param device: The :class:`~.endaq.device.Recorder` to check
+        :return: `True` if it is compatible.
         """
         raise NotImplementedError
 
@@ -187,13 +187,13 @@ class CommandInterface:
 
     def writeCommand(self, packet: Union[bytearray, bytes]) -> int:
         """
-        Send an encoded EBMLCommand element. This is a low-level write; the
+        Send an encoded `EBMLCommand` element. This is a low-level write; the
         data should include any transport-specific packaging. It generally
         should not be used directly.
 
         Must be implemented in every subclass.
 
-        :param packet: An encoded EBMLCommand element.
+        :param packet: An encoded `EBMLCommand` element.
         :return: The number of bytes written.
         """
         raise NotImplementedError
@@ -242,7 +242,7 @@ class CommandInterface:
                  t: Optional[int] = None,
                  pause: bool = True) -> Tuple[Epoch, Epoch]:
         """
-        Called by `Recorder.setTime()`.
+        Called by :meth:`Recorder.setTime()`.
 
         Set a recorder's date/time. A variety of standard time types are
         accepted. Note that the minimum unit of time is the whole second.
@@ -364,15 +364,13 @@ class CommandInterface:
             :param cmd: The raw EBML representing the command.
             :param response: If `True`, wait for and return a response.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
             :param interval: Time (in seconds) between checks for a
                 response.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a response
                 will be cancelled. The callback function should take no
                 arguments.
-
-            @raise DeviceTimeout
         """
         raise NotImplementedError
 
@@ -507,7 +505,7 @@ class CommandInterface:
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
             :param timeoutMsg: A command-specific message to use when raising
-                a `DeviceTimeout` exception.
+                a :class:`~.endaq.device.DeviceTimeout` exception.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a response
                 will be cancelled. The callback function should take no
@@ -673,7 +671,6 @@ class CommandInterface:
                 cycle. If the callback returns `True`, the wait for a response
                 will be cancelled. The callback function should take no
                 arguments.
-            :return:
         """
         cmd = {'EBMLCommand': {'SetKeys': keys}}
         response = self.sendCommand(cmd, timeout=timeout, callback=callback)
@@ -716,7 +713,7 @@ class CommandInterface:
             :param wifi_data: The information about the Wi-Fi networks to be
                 set on the device.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will be
@@ -745,7 +742,7 @@ class CommandInterface:
             to devices with Wi-Fi hardware.
 
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will be
@@ -795,7 +792,7 @@ class CommandInterface:
                 without getting a response
 
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will
@@ -845,7 +842,6 @@ class CommandInterface:
                 cycle. If the callback returns `True`, the wait for a response
                 will be cancelled. The callback function should take no
                 arguments.
-            :return:
         """
         # FUTURE: This (and other file-based update) will need refactoring
         #  if/when we have another means of uploading (serial, wireless,
@@ -914,7 +910,7 @@ class SerialCommandInterface(CommandInterface):
         """
         Constructor.
 
-        :param device: The Recorder to which to interface.
+        :param device: The :class:`~.endaq.device.Recorder` to which to interface.
         :param timeout: The default response timeout.
         :param make_crc: If `True`, generate CRCs for outgoing packets.
         :param ignore_crc: If `True`, ignore the CRC on response packets.
@@ -941,7 +937,7 @@ class SerialCommandInterface(CommandInterface):
     def hasInterface(cls, device) -> bool:
         """ Determine if a device supports this `CommandInterface` type.
 
-            :param device: The recorder to check.
+            :param device: The :class:`~.endaq.device.Recorder` to check.
             :return: `True` if the device supports the interface.
         """
         if device.isVirtual:
@@ -955,7 +951,7 @@ class SerialCommandInterface(CommandInterface):
         """ Find the path/name/number of a serial port corresponding to a
             given serial number.
 
-            :param device: The recorder to check.
+            :param device: The :class:`~.endaq.device.Recorder` to check.
             :return: The corresponding serial port path/name/number, or
                 `None` if no matching port is found.
         """
@@ -982,7 +978,7 @@ class SerialCommandInterface(CommandInterface):
 
         :param reset: If `True`, reset the serial connection if already open.
             Use if the path/number to the device's serial port has changed.
-        :return: A `serial.Serial` instance, or `None` if no port matching
+        :return: A :class:`serial.Serial` instance, or `None` if no port matching
             the device can be found.
 
         Additional keyword arguments will be used when opening the port. Note:
@@ -1078,7 +1074,7 @@ class SerialCommandInterface(CommandInterface):
             :return: The response, as nested dictionaries.
         """
         # Testing note: because response headers differ from commands, this
-        # method cannot directly decode a packet created by `encode()`.
+        # method cannot directly decode a packet created by :meth:`encode()`.
 
         # Messages are Corbus packets:
         # HDLC escaped, short header, payload, crc16
@@ -1099,7 +1095,7 @@ class SerialCommandInterface(CommandInterface):
                      packet: Union[bytearray, bytes]) -> int:
         """ Transmit a fully formed packet (addressed, HDLC encoded, etc.)
             via serial. This is a low-level write to the medium and does not
-            do the additional housekeeping that `sendCommand()` does;
+            do the additional housekeeping that :meth:`sendCommand()` does;
             typically, it should not be used directly.
 
             :param packet: The encoded, packetized, binary `EBMLCommand`
@@ -1177,7 +1173,7 @@ class SerialCommandInterface(CommandInterface):
                 commands that potentially cause a reset faster than the
                 acknowledgement can be read.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
             :param interval: Time (in seconds) between checks for a
                 response.
             :param index: If `True` (default), include an incrementing
@@ -1253,7 +1249,7 @@ class SerialCommandInterface(CommandInterface):
                 pause: bool = True,
                 timeout: Union[int, float] = 1) -> Tuple[Epoch, Epoch]:
         """
-        Called by `Recorder.getTime()` and `Recorder.getClockDrift()`.
+        Called by :meth:`Recorder.getTime()` and :meth:`Recorder.getClockDrift()`.
 
         Read the date/time from the device.
 
@@ -1290,7 +1286,7 @@ class SerialCommandInterface(CommandInterface):
                  t: Optional[int] = None,
                  pause: bool = True) -> Tuple[Epoch, Epoch]:
         """
-        Called by `Recorder.setTime()`.
+        Called by :meth:`Recorder.setTime()`.
 
         Set a recorder's date/time. A variety of standard time types are
         accepted. Note that the minimum unit of time is the whole second.
@@ -1336,7 +1332,7 @@ class SerialCommandInterface(CommandInterface):
 
             :param data: Optional data, which will be returned verbatim.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
             :param interval: Time (in seconds) between checks for a
                 response.
             :param callback: A function to call each response-checking
@@ -1505,15 +1501,15 @@ class FileCommandInterface(CommandInterface):
 
     @classmethod
     def hasInterface(cls, device) -> bool:
-        """ Determine if a device supports this `CommandInterface` type.
+        """ Determine if a device supports this :class:`CommandInterface` type.
 
-            :param device: The recorder to check.
+            :param device: The :class:`~.endaq.device.Recorder` to check.
             :return: `True` if the device supports the interface.
         """
         if device.isVirtual or not device.path:
             return False
 
-        # Old SlamStick devices may not support COMMAND. Use `canRecord`,
+        # Old SlamStick devices may not support COMMAND. Use :attr:`~.endaq.device.Recorder.canRecord`,
         # which checks the firmware version. Hack.
         if 'SlamStick' in type(device).__name__ and not device.canRecord:
             return False
@@ -1561,7 +1557,7 @@ class FileCommandInterface(CommandInterface):
     def _getTime(self,
                 pause=False) -> Tuple[Epoch, Epoch]:
         """
-        Called by `Recorder.getTime()` and `Recorder.getClockDrift()`.
+        Called by :meth:`Recorder.getTime()` and :meth:`Recorder.getClockDrift()`.
 
         Read the date/time from the device.
 
@@ -1587,7 +1583,7 @@ class FileCommandInterface(CommandInterface):
                  t: Optional[int] = None,
                  pause: bool = True) -> Tuple[Epoch, Epoch]:
         """
-        Called by `Recorder.setTime()`.
+        Called by :meth:`Recorder.setTime()`.
 
         Set a recorder's date/time. A variety of standard time types are
         accepted. Note that the minimum unit of time is the whole second.
@@ -1635,7 +1631,7 @@ class FileCommandInterface(CommandInterface):
             :param cmd: The raw EBML representing the command.
             :param response: If `True`, wait for and return a response.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
             :param interval: Time (in seconds) between checks for a
                 response.
             :param callback: A function to call each response-checking
@@ -1710,7 +1706,7 @@ class FileCommandInterface(CommandInterface):
                 cycle. If the callback returns `True`, the wait for a response
                 will be cancelled. The callback function should take no
                 arguments.
-            :return:
+            :returns: `True` if the command was successful.
         """
         cmd = "SecureUpdateAll" if secure else "LegacyAll"
         return self._runSimpleCommand({cmd: {}},
