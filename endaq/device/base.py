@@ -86,7 +86,11 @@ class Recorder:
     manufacturer = None
     homepage = None
 
+    #: Default device lifespan. Not enforced; only used to provide a warning in enDAQ Lab.
     LIFESPAN = timedelta(2 * 365)
+
+    #: Default calibration lifespan, if the device does not specify a calibration expiration
+    # date. Not enforced; only used to provide a warning in enDAQ Lab.
     CAL_LIFESPAN = timedelta(365)
 
     _NAME_PATTERN = re.compile(r'')

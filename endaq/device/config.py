@@ -79,7 +79,7 @@ class ConfigItem:
     @classmethod
     def _generateLabel(cls, configId: int) -> Union[str, None]:
         """ Helper method to create a 'label' string from a ConfigID (using
-            the standard conventions) if the *Field element does not contain
+            the standard conventions) if the \*Field element does not contain
             one. Mainly works for standard channel/subchannel-specific fields.
         """
         if configId in cls.DEFAULT_LABELS:
@@ -112,7 +112,7 @@ class ConfigItem:
         Constructor.
 
         :param interface: The 'parent' `ConfigInterface`.
-        :param element: The raw CONFIG.UI *Field EBML element.
+        :param element: The raw CONFIG.UI \*Field EBML element.
         :param data: The `element` contents, dumped as a dictionary.
         :param value: The value (in native units) as read from a config file.
         """
@@ -188,7 +188,7 @@ class ConfigItem:
     def parseOptions(self, options: list) -> dict:
         """ Parse a list of `<EnumOption>` elements into a list of value
             choices. Note: also sets `vtype` if not already set by the
-            default *Value element.
+            default \*Value element.
         """
         parsedoptions = {}
         for n, option in enumerate(options):
