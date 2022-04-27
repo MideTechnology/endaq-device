@@ -18,7 +18,7 @@ interface.
 
 Configuration
 -------------
-.. autoclass:: endaq.device.config.ConfigItem
+.. autoclass:: endaq.device.config.ConfigInterface
   :members:
 
 Control
