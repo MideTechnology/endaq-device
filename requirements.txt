@@ -1,4 +1,4 @@
-ebmlite>=3.1.0
+ebmlite>=3.3.0
 idelib>=3.1
 numpy>=1.19.4
 psutil>=5.5.0; sys_platform == "linux" or sys_platform=="darwin"
