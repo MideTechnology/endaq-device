@@ -29,7 +29,7 @@ __all__ = ('ConfigError', 'ConfigVersionError', 'DeviceTimeout',
 #===============================================================================
 
 # Add this package's schema to `ebmlite` schema search path.
-SCHEMA_PATH = os.path.realpath(os.path.dirname(schemata.__file__))
+SCHEMA_PATH = "{endaq.device}/schemata"
 if SCHEMA_PATH not in ebmlite.core.SCHEMA_PATH:
     ebmlite.core.SCHEMA_PATH.insert(0, SCHEMA_PATH)
 
