@@ -1691,6 +1691,37 @@ class FileCommandInterface(CommandInterface):
     # Firmware/Userpage/Bootloader updating
     # =======================================================================
 
+    def _runSimpleCommand(self,
+                          cmd: dict,
+                          statusCode: int = CommandInterface.STATUS_RESET_PENDING,
+                          timeoutMsg: Optional[str] = None,
+                          wait: bool = True,
+                          timeout: float = 5,
+                          callback: Optional[Callable] = None) -> bool:
+        """ Send a command that will cause the device to reset/dismount. No
+            response is expected/required.
+
+            :param cmd: The command to execute.
+            :param statusCode: The ``<DeviceStatusCode>`` expected in the
+                acknowledgement (if the interface supports one).
+            :param wait: If `True`, wait for the recorer to respond and/or
+                dismount.
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a response
+                will be cancelled. The callback function should take no
+                arguments.
+            :returns: `True` if the command was successful.
+        """
+        msg = self.encode(cmd)[:2]
+        self.writeCommand(msg)
+
+        return self.awaitReboot(timeout=timeout if wait else 0,
+                                timeoutMsg=timeoutMsg,
+                                callback=callback)
+
+
     def _updateAll(self,
                    secure: bool = True,
                    wait: bool = True,
