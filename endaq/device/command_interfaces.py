@@ -140,7 +140,7 @@ class CommandInterface:
         return True
 
 
-    def encode(self, data: dict) -> Union[bytearray, bytes]:
+    def _encode(self, data: dict) -> Union[bytearray, bytes]:
         """
         Prepare a packet of command data for transmission, doing any
         preparation required by the interface's medium.
@@ -158,7 +158,7 @@ class CommandInterface:
         return ebml
 
 
-    def decode(self, packet: Union[bytearray, bytes]) -> dict:
+    def _decode(self, packet: Union[bytearray, bytes]) -> dict:
         """
         Translate a response packet (EBML) into a dictionary.
 
@@ -185,7 +185,7 @@ class CommandInterface:
     # The actual command sending and response receiving.
     # =======================================================================
 
-    def writeCommand(self, packet: Union[bytearray, bytes]) -> int:
+    def _writeCommand(self, packet: Union[bytearray, bytes]) -> int:
         """
         Send an encoded EBMLCommand element. This is a low-level write; the
         data should include any transport-specific packaging. It generally
@@ -197,7 +197,7 @@ class CommandInterface:
         raise NotImplementedError
 
 
-    def readResponse(self,
+    def _readResponse(self,
                      timeout: Optional[Union[int, float]] = None,
                      callback: Optional[Callable] = None) -> Union[None, dict]:
         """
@@ -348,7 +348,7 @@ class CommandInterface:
                     raise
 
 
-    def sendCommand(self,
+    def _sendCommand(self,
                     cmd: dict,
                     response: bool = True,
                     timeout: float = 10,
@@ -358,7 +358,8 @@ class CommandInterface:
         """ Send a raw command to the device and (optionally) retrieve the
             response.
 
-            :param cmd: The raw EBML representing the command.
+            :param cmd: A dictionary representing a command, with keys matching
+                the names of EBML elements.
             :param response: If `True`, wait for and return a response.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a `DeviceTimeout` exception.
@@ -399,7 +400,7 @@ class CommandInterface:
                 arguments.
             :returns: `True` if the command was successful.
         """
-        self.sendCommand(cmd, response=False, timeout=timeout, callback=callback)
+        self._sendCommand(cmd, response=False, timeout=timeout, callback=callback)
 
         # Since no response is expected, a failure to read a response caused
         # by the device resetting will just set self.status to (None, None).
@@ -673,7 +674,7 @@ class CommandInterface:
             :return:
         """
         cmd = {'EBMLCommand': {'SetKeys': keys}}
-        response = self.sendCommand(cmd, timeout=timeout, callback=callback)
+        response = self._sendCommand(cmd, timeout=timeout, callback=callback)
 
 
     # =======================================================================
@@ -728,7 +729,7 @@ class CommandInterface:
 
         cmd = {'EBMLCommand': {'SetWiFi': {"AP": wifi_data}}}
 
-        self.sendCommand(cmd,
+        self._sendCommand(cmd,
                          response=False,
                          timeout=timeout,
                          interval=interval,
@@ -758,7 +759,7 @@ class CommandInterface:
         if not self.device.hasWifi:
             raise UnsupportedFeature('{!r} has no Wi-Fi adapter'.format(self.device))
 
-        response = self.sendCommand(
+        response = self._sendCommand(
             {'EBMLCommand': {'QueryWiFi': {}}},
             response=True,
             timeout=timeout,
@@ -803,7 +804,7 @@ class CommandInterface:
 
         cmd = {'EBMLCommand': {'WiFiScan': None}}
 
-        response = self.sendCommand(cmd, True, timeout, interval, callback)
+        response = self._sendCommand(cmd, True, timeout, interval, callback)
 
         if response is None:
             return None
@@ -861,7 +862,7 @@ class CommandInterface:
         self._copyUpdateFile(firmware, destination)
 
         cmd = {'EBMLCommand': {'ESPFW': payload}}
-        response = self.sendCommand(cmd, timeout=timeout, callback=callback)
+        response = self._sendCommand(cmd, timeout=timeout, callback=callback)
 
 
 # Populate the STATUS_CODES dictionary, mapping code numbers back to names
@@ -1046,7 +1047,7 @@ class SerialCommandInterface(CommandInterface):
         return True
 
 
-    def encode(self, data: dict) -> bytearray:
+    def _encode(self, data: dict) -> bytearray:
         """
             Generate a serial packet containing EBMLCommand data. Separated from
             sending for use with time-critical functions to minimize latency.
@@ -1054,7 +1055,7 @@ class SerialCommandInterface(CommandInterface):
             :param data: The unencoded command `dict`.
             :return: A `bytearray` containing the packetized EBMLCommand data.
         """
-        ebml = super().encode(data)
+        ebml = super()._encode(data)
 
         # Header: address 0 (broadcast), EBML data, immediate write.
         packet = bytearray([0x80, 0x26, 0x00, 0x0A])
@@ -1063,7 +1064,7 @@ class SerialCommandInterface(CommandInterface):
         return packet
 
 
-    def decode(self,
+    def _decode(self,
                packet: Union[bytearray, bytes]) -> dict:
         """
             Translate a response packet into a dictionary. Removes additional
@@ -1082,7 +1083,7 @@ class SerialCommandInterface(CommandInterface):
         if packet.startswith(b'\x81\x00'):
             resultcode = packet[2]
             if resultcode == 0:
-                return super().decode(packet[3:-2])
+                return super()._decode(packet[3:-2])
             else:
                 errname = {0x01: "Corbus command failed",
                            0x07: "bad Corbus command"}.get(resultcode, "unknown error")
@@ -1091,7 +1092,7 @@ class SerialCommandInterface(CommandInterface):
             raise CommandError('Response was corrupted or incomplete; did not have expected Corbus header')
 
 
-    def writeCommand(self,
+    def _writeCommand(self,
                      packet: Union[bytearray, bytes]) -> int:
         """ Transmit a fully formed packet (addressed, HDLC encoded, etc.)
             via serial. This is a low-level write to the medium and does not
@@ -1111,7 +1112,7 @@ class SerialCommandInterface(CommandInterface):
         return port.write(packet)
 
 
-    def readResponse(self,
+    def _readResponse(self,
                      timeout: Optional[float] = None,
                      callback: Optional[Callable] = None) -> Union[None, dict]:
         """
@@ -1140,7 +1141,7 @@ class SerialCommandInterface(CommandInterface):
                 if HDLC_BREAK_CHAR in buf:
                     packet, _, buf = buf.partition(HDLC_BREAK_CHAR)
                     if packet.startswith(b'\x81\x00'):
-                        response = self.decode(packet)
+                        response = self._decode(packet)
                         self._response = time(), response
                         if 'EBMLResponse' not in response:
                             logger.warning('Response did not contain an EBMLResponse element')
@@ -1156,7 +1157,7 @@ class SerialCommandInterface(CommandInterface):
         raise TimeoutError("Timeout waiting for response to serial command")
 
 
-    def sendCommand(self,
+    def _sendCommand(self,
                     cmd: dict,
                     response: bool = True,
                     timeout: float = 10,
@@ -1196,11 +1197,11 @@ class SerialCommandInterface(CommandInterface):
                     self.index += 1
                     cmd['EBMLCommand']['CommandIdx'] = self.index
 
-                packet = self.encode(cmd)
-                self.writeCommand(packet)
+                packet = self._encode(cmd)
+                self._writeCommand(packet)
 
                 try:
-                    resp = self.readResponse(timeout, callback=callback)
+                    resp = self._readResponse(timeout, callback=callback)
                 except (IOError, serial.SerialException) as err:
                     # Commands that reset can cause the device to close the
                     # port faster than the response can be read. Fail
@@ -1272,7 +1273,7 @@ class SerialCommandInterface(CommandInterface):
                 while int(t) == int(sysTime):
                     sysTime = time()
 
-            response = self.sendCommand(command)
+            response = self._sendCommand(command)
             try:
                 dt = response['ClockTime']
                 devTime = self.device._TIME_PARSER.unpack_from(dt)[0]
@@ -1317,7 +1318,7 @@ class SerialCommandInterface(CommandInterface):
             while t0 < t:
                 t0 = time()
 
-        self.sendCommand({'EBMLCommand': {'SetClock': payload}})
+        self._sendCommand({'EBMLCommand': {'SetClock': payload}})
 
         return t0, t
 
@@ -1343,7 +1344,7 @@ class SerialCommandInterface(CommandInterface):
                 data sent.
         """
         cmd = {'EBMLCommand': {'SendPing': b'' if data is None else data}}
-        response = self.sendCommand(cmd, timeout=timeout, interval=interval,
+        response = self._sendCommand(cmd, timeout=timeout, interval=interval,
                                     callback=callback)
 
         if 'PingReply' not in response:
@@ -1379,7 +1380,7 @@ class SerialCommandInterface(CommandInterface):
                 (bool).
         """
         cmd = {'EBMLCommand': {'GetBattery': {}}}
-        response = self.sendCommand(cmd, timeout=timeout,
+        response = self._sendCommand(cmd, timeout=timeout,
                                     callback=callback).get('BatteryState')
 
         hasBattery = bool(response & 0x8000)
@@ -1482,7 +1483,7 @@ class FileCommandInterface(CommandInterface):
     A mechanism for sending commands to a recorder via the `COMMAND` file.
     """
 
-    def writeCommand(self,
+    def _writeCommand(self,
                      packet: Union[bytearray, bytes]) -> int:
         """
         Send an encoded EBMLCommand element. This is a low-level write; the
@@ -1519,7 +1520,7 @@ class FileCommandInterface(CommandInterface):
         return True
 
 
-    def readResponse(self,
+    def _readResponse(self,
                      timeout: Optional[Union[int, float]] = None,
                      callback: Optional[Callable] = None) -> dict:
         """
@@ -1540,7 +1541,7 @@ class FileCommandInterface(CommandInterface):
 
             try:
                 raw = os_specific.readUncachedFile(responseFile)
-                data = self.decode(raw)
+                data = self._decode(raw)
 
                 if 'EBMLResponse' not in data:
                     logger.warning('Response did not contain an EBMLResponse element')
@@ -1549,7 +1550,7 @@ class FileCommandInterface(CommandInterface):
 
             except (AttributeError, IndexError, KeyError, TypeError) as err:
                 # TODO: Better exception handling in readResponse()
-                warnings.warn("Ignoring exception in {}.readResponse(): {!r}".format(type(self).__name__, err))
+                warnings.warn("Ignoring exception in {}._readResponse(): {!r}".format(type(self).__name__, err))
 
         return None
 
@@ -1618,7 +1619,7 @@ class FileCommandInterface(CommandInterface):
         return t0, t
 
 
-    def sendCommand(self,
+    def _sendCommand(self,
                     cmd: dict,
                     response: bool = True,
                     timeout: float = 10,
@@ -1645,7 +1646,7 @@ class FileCommandInterface(CommandInterface):
             self.index += 1
             cmd['EBMLCommand']['CommandIdx'] = self.index
 
-        ebml = self.encode(cmd)
+        ebml = self._encode(cmd)
 
         now = time()
         deadline = now + timeout
@@ -1654,7 +1655,7 @@ class FileCommandInterface(CommandInterface):
         # The file interface does this first.
         with self.device._busy:
             while response:  # a `while True` infinite loop
-                data = self.readResponse()
+                data = self._readResponse()
                 if data:
                     idx = data.get('ResponseIdx')
                     queueDepth = data.get('CMDQueueDepth', 1)
@@ -1665,7 +1666,7 @@ class FileCommandInterface(CommandInterface):
                 else:
                     sleep(interval)
 
-            self.writeCommand(ebml)
+            self._writeCommand(ebml)
 
             if not response:
                 return
@@ -1674,7 +1675,7 @@ class FileCommandInterface(CommandInterface):
                 if callback is not None and callback() is True:
                     return
 
-                data = self.readResponse()
+                data = self._readResponse()
 
                 if data and data.get("ResponseIdx") != idx:
                     return data
@@ -1711,8 +1712,8 @@ class FileCommandInterface(CommandInterface):
                 arguments.
             :returns: `True` if the command was successful.
         """
-        msg = self.encode(cmd)[:2]
-        self.writeCommand(msg)
+        msg = self._encode(cmd)[:2]
+        self._writeCommand(msg)
 
         return self.awaitReboot(timeout=timeout if wait else 0,
                                 timeoutMsg=timeoutMsg,
