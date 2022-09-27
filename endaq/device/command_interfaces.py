@@ -132,7 +132,7 @@ class CommandInterface:
     def close(self) -> bool:
         """
         Close the interface. Only applicable to subclasses with a persistent
-        connection. Fails silently.
+        connection (e.g., `SerialCommandInterface`). Fails silently.
 
         :return: `True` if the connection was reset (or the interface type
             has no persistent connection).
@@ -191,8 +191,6 @@ class CommandInterface:
         data should include any transport-specific packaging. It generally
         should not be used directly.
 
-        Must be implemented in every subclass.
-
         :param packet: An encoded EBMLCommand element.
         :return: The number of bytes written.
         """
@@ -205,8 +203,6 @@ class CommandInterface:
         """
         Wait for and retrieve the response to a serial command. Does not do any
         processing other than (attempting to) decode the EBML payload.
-
-        Must be implemented in every subclass.
 
         :param timeout: Time to wait for a valid response.
         :param callback: A function to call each response-checking
@@ -267,7 +263,8 @@ class CommandInterface:
 
     def getTime(self,
                 epoch: bool = True) -> Union[Tuple[datetime, datetime], Tuple[Epoch, Epoch]]:
-        """ Read the date/time from the device.
+        """ Read the date/time from the device. Also returns the current system
+            time for comparison.
 
             :param epoch: If `True`, return the date/time as integer seconds
                 since the epoch ('Unix time'). If `False`, return a Python
@@ -300,7 +297,8 @@ class CommandInterface:
                 to a second to run. Not applicable if a specific time is
                 provided (i.e. `t` is not `None`).
             :param retries: The number of attempts to make, should the first
-                fail. Random filesystem things can potentially cause hiccups.
+                fail. Although rare, random filesystem things can potentially
+                cause hiccups.
         :return: The system time (float) and time that was set (integer).
             Both are *NIX epoch time (seconds since 1970-01-01T00:00:00).
         """
@@ -359,7 +357,6 @@ class CommandInterface:
                     callback: Optional[Callable] = None) -> Union[None, dict]:
         """ Send a raw command to the device and (optionally) retrieve the
             response.
-            Must be implemented in every subclass.
 
             :param cmd: The raw EBML representing the command.
             :param response: If `True`, wait for and return a response.
