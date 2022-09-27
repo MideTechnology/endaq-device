@@ -33,6 +33,12 @@ SCHEMA_PATH = "{endaq.device}/schemata"
 if SCHEMA_PATH not in ebmlite.core.SCHEMA_PATH:
     ebmlite.core.SCHEMA_PATH.insert(0, SCHEMA_PATH)
 
+# Ensure the `idelib` schemata are in the schema path (for idelib <= 3.2.4)
+# (remove after next release and requirements updated)
+if "{idelib}/schemata" not in ebmlite.core.SCHEMA_PATH:
+    ebmlite.core.SCHEMA_PATH.insert(1, "{idelib}/schemata")
+
+
 # Known classes or recorder. Checks are performed in the specified order, so
 # put the ones with more general `isRecorder()` methods (i.e. superclasses)
 # after the more specific ones. `SlamStickC` is first, since it is now sold
