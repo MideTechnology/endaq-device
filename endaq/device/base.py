@@ -6,7 +6,6 @@ eliminate circular dependencies.
 __author__ = "dstokes"
 __copyright__ = "Copyright 2022 Mide Technology Corporation"
 
-import calendar
 from collections import defaultdict
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -17,8 +16,8 @@ import re
 import struct
 import sys
 from threading import RLock
-from time import sleep, struct_time
-from typing import Any, AnyStr, Callable, Optional, Tuple, Union
+from time import struct_time
+from typing import Any, AnyStr, BinaryIO, Callable, Optional, Tuple, Union
 import warnings
 
 from idelib.dataset import Dataset, Channel
@@ -418,7 +417,7 @@ class Recorder:
 
 
     def _saveConfig(self,
-                    dest: Filename,
+                    dest: Union[Filename, BinaryIO],
                     data: Optional[dict] = None,
                     verify: bool = True) -> int:
         """ Device-specific configuration file saver. Used internally; call
@@ -902,7 +901,7 @@ class Recorder:
         """
         try:
             parser = CalibrationListParser(None)
-            stream.seek(0)
+            # stream.seek(0)
             cal = loadSchema("mide_ide.xml").load(stream)
             calPolys = parser.parse(cal[0])
             if calPolys:
@@ -913,7 +912,7 @@ class Recorder:
             pass
 
 
-    def _getManifestUserpage(self) -> Union[dict, None]:
+    def _readUserpage(self) -> Union[dict, None]:
         """ Read the device's manifest data from the EFM32 'userpage'. The
             data is a superset of the information returned by `getInfo()`.
             Factory calibration and recorder properties are also read
@@ -957,13 +956,13 @@ class Recorder:
             self._calibration = calDict.get('CalibrationList')
 
         except (AttributeError, KeyError) as err:
-            logger.debug("_getManifestUserpage() raised a possibly-allowed exception: %r" % err)
+            logger.debug("_readUserpage() raised a possibly-allowed exception: %r" % err)
             pass
 
         return self._manifest
 
 
-    def _getManifest(self) -> Union[dict, None]:
+    def _readManifest(self) -> Union[dict, None]:
         """ Read the device's manifest data from the 'MANIFEST' file. The
             data is a superset of the information returned by `getInfo()`.
 
@@ -1007,10 +1006,11 @@ class Recorder:
 
             systemPath = os.path.join(self.path, 'SYSTEM', 'DEV')
             if os.path.exists(os.path.join(systemPath, 'USERPG0')):
-                return self._getManifestUserpage()
-            if os.path.exists(os.path.join(systemPath, 'MANIFEST')):
-                return self._getManifest()
+                self._readUserpage()
+            elif os.path.exists(os.path.join(systemPath, 'MANIFEST')):
+                self._readManifest()
 
+            return self._manifest
 
 
     def getUserCalibration(self,
@@ -1018,9 +1018,15 @@ class Recorder:
         """ Get the recorder's user-defined calibration data as a dictionary
             of parameters.
         """
+        if self.isVirtual:
+            return self._userCalDict
+
         filename = self.userCalFile if filename is None else filename
         if filename is None or not os.path.exists(filename):
             return None
+        if filename != self.userCalFile:
+            self._userCalDict = None
+
         if self._userCalDict is None:
             with open(self.userCalFile, 'rb') as f:
                 d = loadSchema("mide_ide.xml").load(f).dump()
