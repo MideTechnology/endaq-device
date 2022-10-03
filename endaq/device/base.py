@@ -92,11 +92,14 @@ class Recorder:
 
 
     def __init__(self, path: Optional[Filename], strict=True, **kwargs):
-        """ Constructor.
+        """ Constructor. Typically, instantiation should be done indirectly,
+            using `endaq.device.getDevices()` or `endaq.device.fromRecording()`.
+            Explicitly instantiating a `Recorder` or `Recorder` subclass is
+            rarely (if ever) necessary.
 
             :param path: The filesystem path to the recorder, or `None` if
-                it is a 'virtual' device (e.g., constructed from data
-                in a recording).
+                it is a 'virtual' device (e.g., constructed from data in a
+                recording).
             :param strict: If `True`, only allow real device paths. If
                 `False`, allow any path that contains a recorder's
                 ``SYSTEM`` directory. Primarily for testing.
