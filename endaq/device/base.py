@@ -221,7 +221,7 @@ class Recorder:
             self._channelRanges = {}
             self._manifest = None
             self._calibration = None
-            self._calData = None
+            self._calData = None  # Note: unlike _manData, _calData is raw
             self._calPolys = None
             self._userCalPolys = None
             self._userCalDict = None
@@ -652,6 +652,8 @@ class Recorder:
     @property
     def postConfigMsg(self) -> str:
         """ The message to be displayed after configuration. """
+        if not self.isVirtual and self.config and self.config.postConfigMsg:
+            return self.config.postConfigMsg
         return self._POST_CONFIG_MSG
 
 

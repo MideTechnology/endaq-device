@@ -569,6 +569,8 @@ class CommandInterface:
                 process, i.e., it was successfully copied, or already exists
                 (if `filename` is `None` and not `clean`).
         """
+        # filename is checked 2x, before cleaning and before copying, so
+        # nothing gets removed if given a bad (non-None) filename.
         if filename:
             clean = True
             if not os.path.isfile(filename):
@@ -593,13 +595,13 @@ class CommandInterface:
                      firmware: Optional[str] = None,
                      userpage: Optional[str] = None,
                      clean: bool = False,
-                     timeout: float = 10,
+                     timeout: float = 10.0,
                      callback: Optional[Callable] = None) -> bool:
-        """ Apply a firmware package and/or device description data to the
-            device. If no filenames are supplied, it will be assumed that one
-            or both of the update files have been manually copied to the
-            recorder; a `FileNotFound` exception will be raised if neither
-            exist on the device.
+        """ Apply a firmware package and/or device description data update
+            to the device. If no filenames are supplied, it will be assumed
+            that one or both of the update files have been manually copied
+            to the recorder; a `FileNotFound` exception will be raised if
+            neither exist on the device.
 
             :param firmware: The name of the firmware file (typically
                 `".pkg"`, or `".bin"` on older devices). If provided, any
@@ -610,7 +612,7 @@ class CommandInterface:
                 userpage update files already on the device will be
                 overwritten. Warning: userpage data is specific to an
                 individual recorder. Do not install a userpage file created
-                for a different device.
+                for a different device!
             :param clean: If `True`, any existing firmware or userpage
                 update files will be removed from the device. Used if either
                 `firmware` or `userpage` is supplied (but not both).
