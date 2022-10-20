@@ -16,7 +16,7 @@ from ebmlite.core import loadSchema
 from ebmlite.core import Document, Element, MasterElement
 from idelib.dataset import Channel, SubChannel
 
-from . import defaults as ui_defaults
+from . import ui_defaults
 from .exceptions import ConfigError, UnsupportedFeature
 
 logger = logging.getLogger('endaq.device')
