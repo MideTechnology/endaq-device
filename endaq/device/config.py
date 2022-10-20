@@ -109,12 +109,16 @@ class ConfigItem:
                  data: Optional[dict] = None,
                  value: Optional[Any] = None):
         """
-        Constructor.
+        Constructor. Note: `ConfigItem` is rarely (if ever) explicitly
+        instantiated; instances are automatically created by a
+        `ConfigInterface`, using CONFIG.UI data.
 
         :param interface: The 'parent' `ConfigInterface`.
-        :param element: The raw CONFIG.UI *Field EBML element.
-        :param data: The `element` contents, dumped as a dictionary.
-        :param value: The value (in native units) as read from a config file.
+        :param element: The raw CONFIG.UI `*Field` EBML element.
+        :param data: The `element` contents, dumped as a dictionary. Avoids
+            redundant dumping.
+        :param value: The raw value (in native units) as read from a config
+            file.
         """
         if data is None:
             data = element.dump()
@@ -254,7 +258,7 @@ class ConfigItem:
             msg = "{}: {!r}".format(msg, self.label)
         if self.dtype:
             if self._value is not None:
-                changed = "" if self.configValue == self.default else "*"
+                changed = "" if self.configValue == self.default or self._value == self._originalValue else "*"
                 msg = "{} ({}={!r}){}".format(msg, self.dtype.__name__, self.value, changed)
             else:
                 msg = "{} ({})".format(msg, self.dtype.__name__)
@@ -272,13 +276,18 @@ class ConfigItem:
         """ Set the configuration item value, in engineering units. """
         if self.element.name.endswith('EnumField') and self.options and v not in self.options:
             raise ValueError("Invalid value for {}, must be one of {}".format(self, tuple(self.options)))
-        if isinstance(v, str) and len(v) > self.maxLength:
+        elif isinstance(v, str) and len(v) > self.maxLength:
             raise ValueError("Invalid value for {}, max string length is {}".format(self, self.maxLength))
-
-        if isinstance(v, (int, float)) and not self.min <= v <= self.max:
-            raise ValueError("Invalid value for {}, must be {} <= v <= {}".format(self, self.min, self.max))
-
-        self._value = v
+        elif isinstance(v, (int, float)) and not self.min <= v <= self.max:
+            if self.min == float('-inf'):
+                msg = "<= {}".format(self.max)
+            elif self.max == float('inf'):
+                msg = ">= {}".format(self.min)
+            else:
+                msg = "{} <= v <= {}".format(self, self.min, self.max)
+            raise ValueError("Invalid value for {}, must be {}".format(self, msg))
+        else:
+            self._value = v
 
 
     @property
@@ -394,8 +403,10 @@ class ConfigInterface:
 
     @property
     def names(self) -> dict:
-        """ All defined configuration items for the device, keyed by field
-            label.
+        """ All defined configuration items for the device, keyed by
+            name/label, as read from the fields in the recorder's
+            configuration UI data. Note that some items may not have names,
+            and will instead be keyed by ID.
         """
         _ = self.items
         return self._names
@@ -415,7 +426,7 @@ class ConfigInterface:
         """
         if getattr(device, "_config", None) is not None:
             return True
-        return cls._getDefaultConfigUI(device) is not None
+        return ui_defaults.getDefaultConfigUI(device) is not None
 
 
     def parseConfigUI(self,
@@ -423,7 +434,7 @@ class ConfigInterface:
         """ Recursively process CONFIG.UI data to populate the interface's
             dictionaries of configuration items.
 
-            :param configUi: A parsed CONFIG.UI EBML document or element
+            :param configUi: A parsed `CONFIG.UI` EBML document or element.
         """
         for el in configUi:
             if el.name == 'PostConfigMessage':
@@ -449,25 +460,6 @@ class ConfigInterface:
         """ Has the configuration data been modified? """
         # Deliberately check all `changed` (it resets when gotten)
         return [item for item in self.items.values() if item.changed]
-
-
-    @classmethod
-    def _getDefaultConfigUI(cls, device) -> Union[str, None]:
-        """ Attempt to find canned 'default' ConfigUI file for the device,
-            based on its part number.
-        """
-        # FUTURE: Also have default variants based on HwRev and/or FwRev?
-        filename = os.path.join(os.path.dirname(ui_defaults.__file__),
-                                device.partNumber + ".UI")
-        if os.path.isfile(filename):
-            return filename
-
-        # For ancient Slam Stick X recorders without digital accel
-        if device.partNumber.startswith('LOG-0002'):
-            filename = os.path.join(os.path.dirname(ui_defaults.__file__),
-                                    device.partNumber + "-DC.UI")
-            if os.path.isfile(filename):
-                return filename
 
 
     def _makeConfig(self, unknown: bool = True) -> dict:
@@ -740,7 +732,7 @@ class ConfigInterface:
         Is the `Channel` or `SubChannel` enabled?
 
         :param channel: The `Channel` or `SubChannel` to check.
-        :return: `True` if enabled to record.
+        :return: `True` if configured to record.
         """
         configId = self._getChannelConfigId(0x01, channel)
         enItem = self._getitem(configId)
@@ -896,10 +888,8 @@ class VirtualConfigInterface(ConfigInterface):
         if not self.configUi:
             self.configUi = getattr(self.device, '_configUi', None)
             if not self.configUi:
-                filename = self._getDefaultConfigUI(self.device)
-                if filename:
-                    self.configUi = self.schema.load(filename)
-                else:
+                self.configUi = ui_defaults.getDefaultConfigUI(self.device)
+                if not self.configUi:
                     raise IOError(errno.ENOENT, "No default ConfigUI found for {}".format(self.device))
         return self.configUi
 
@@ -960,10 +950,8 @@ class FileConfigInterface(ConfigInterface):
             if os.path.isfile(self.device.configUIFile):
                 self.configUi = self.schema.load(self.device.configUIFile)
             else:
-                filename = self._getDefaultConfigUI(self.device)
-                if filename:
-                    self.configUi = self.schema.load(filename)
-                else:
+                self.configUi = ui_defaults.getDefaultConfigUI(self.device)
+                if not self.configUi:
                     raise IOError(errno.ENOENT, "No default ConfigUI found for {}".format(self.device))
         return self.configUi
 
