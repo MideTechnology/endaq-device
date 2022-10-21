@@ -216,6 +216,7 @@ class Recorder:
             self._config = None
             self._sn = None
             self._snInt = None
+            self._chipId = None
             self._sensors = None
             self._channels = None
             self._channelRanges = {}
@@ -592,6 +593,32 @@ class Recorder:
 
 
     @property
+    def mcuType(self):
+        """ The recorder's CPU/MCU type. """
+        return self.getInfo('McuType', None)
+
+
+    @property
+    def chipId(self) -> Union[int, None]:
+        """ The recorder CPU/MCU unique chip ID. """
+        if self._chipId is None:
+            info = self.getInfo()
+
+            # IDs 64 bits or shorter can be a UniqueChipID (UnsignedInteger).
+            # Longer IDs (e.g., on STM32) are stored in a UniqueChipIDLong
+            # (BinaryElement), big-endian.
+            if 'UniqueChipIDLong' in info:
+                chid = 0
+                for b in bytearray(info['UniqueChipIDLong']):
+                    chid = (chid << 8) | b
+                self._chipId = chid
+            else:
+                self._chipId = info.get('UniqueChipID', 0)
+
+        return self._chipId
+
+
+    @property
     def hardwareVersion(self) -> str:
         """ The recorder's manufacturer-issued hardware version number. Newer
             version numbers will be split into *version*, *revision*, and
@@ -671,13 +698,14 @@ class Recorder:
         """ Can the device get new firmware/userpage from a file? """
         if not self.hasCommandInterface:
             return False
-        # All 'real' GG11-based devices can (ostensibly) do this.
+        # All 'real' GG11-based and newer devices can (ostensibly) do this.
         return self.getInfo('McuType', '').startswith(("EFM32GG11", "STM32"))
 
 
     @property
     def hasWifi(self) -> bool:
-        """ The name of the Wi-Fi hardware type, or `False` if none.
+        """ The name of the Wi-Fi hardware type, or `False` if none. The name
+            will not be blank, so expressions like `if dev.hasWifi:` will work.
         """
         if not self.hasCommandInterface:
             return False
