@@ -42,6 +42,7 @@ class EndaqW(EndaqS):
     # Part number starts with "W", a 1-2 digit number, and "-"
     _NAME_PATTERN = re.compile(r'^W(\d|\d\d)-.*')
 
+    # These are now in CommandInterface, and will eventually be removed here
     WIFI_STATUS_IDLE = 0
     WIFI_STATUS_PENDING = 1
     WIFI_STATUS_CONNECTED = 2
@@ -91,7 +92,7 @@ class EndaqW(EndaqS):
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will be
-                cancelled. The callback function should take no arguments.
+                cancelled. The callback function should require no arguments.
 
             :raise DeviceTimeout: Raised if 'timeout' seconds have gone by
                 without getting a response
@@ -128,7 +129,7 @@ class EndaqW(EndaqS):
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will be
-                cancelled. The callback function should take no arguments.
+                cancelled. The callback function should require no arguments.
             :return: None if no information was recieved, else it will return
                 the information from the ``QueryWiFiResponse`` command (this
                 return statement is not used anywhere)

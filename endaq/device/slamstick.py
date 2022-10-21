@@ -42,9 +42,11 @@ class SlamStickX(Recorder):
     def usesOldConfig(self) -> bool:
         """ Can this device use the 'old' configuration format?
         """
-        if self.getInfo('McuType', '').startswith("EFM32GG11"):
-            return False
-        return self.firmwareVersion <= 14
+        # Very old FW does not report McuType, but only runs on EFM32GG330
+        mcu = self.getInfo('McuType', 'EFM32GG330')
+        if not mcu or mcu.startswith("EFM32GG330"):
+            return self.firmwareVersion <= 14
+        return False
 
 
     def _parseConfig(self, devinfo: dict, default: Optional[dict] = None) -> dict:
