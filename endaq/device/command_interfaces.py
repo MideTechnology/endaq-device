@@ -1082,7 +1082,7 @@ class SerialCommandInterface(CommandInterface):
         # method cannot directly decode a packet created by `encode()`.
 
         # Messages are Corbus packets:
-        # HDLC escaped, short header, payload, crc16
+        # HDLC escaped short header, payload, crc16
         packet = hdlc_decode(packet, ignore_crc=self.ignore_crc)
         if packet.startswith(b'\x81\x00'):
             resultcode = packet[2]
@@ -1359,7 +1359,7 @@ class SerialCommandInterface(CommandInterface):
 
     def getBatteryStatus(self,
                          timeout: float = 1,
-                         callback: Optional[Callable] = None) -> dict:
+                         callback: Optional[Callable] = None) -> Union[dict, None]:
         """ Get the status of the recorder's battery. Not supported on all
             devices.
 
@@ -1385,7 +1385,10 @@ class SerialCommandInterface(CommandInterface):
         """
         cmd = {'EBMLCommand': {'GetBattery': {}}}
         response = self._sendCommand(cmd, timeout=timeout,
-                                    callback=callback).get('BatteryState')
+                                    callback=callback)
+        if not response:
+            return None
+        response = response.get('BatteryState')
 
         hasBattery = bool(response & 0x8000)
         reply = {'hasBattery': hasBattery}
