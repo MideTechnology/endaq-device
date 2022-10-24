@@ -1,8 +1,10 @@
 """
-Default ConfigUI for S3-E25D40 data recorders 
+Default ConfigUI for S4-E25D40 data recorders 
 """
 
-DEFAULT_CONFIG_UI = (
+from base64 import b64decode
+
+DEFAULT_CONFIG_UI = b64decode(
     b'd3dWOkAoRjBQBYdHZW5lcmFsQAXzUAWLRGV2aWNlIE5hbWVQAYMI/39RJIFAUBXYQSBjdX'
     b'N0b20gbmFtZSBmb3IgdGhlIHJlY29yZGVyLiBOb3QgdGhlIHNhbWUgYXMgdGhlIHZvbHVt'
     b'ZSBsYWJlbC4gNjQgY2hhcmFjdGVycyBtYXhpbXVtLkAF81AFjERldmljZSBOb3Rlc1ABgw'

@@ -2,7 +2,6 @@
 Default CONFIG.UI data, for devices (mostly virtual) that do not have it.
 """
 
-from base64 import b64decode
 from importlib import import_module
 import logging
 from typing import Union
@@ -30,7 +29,7 @@ def _getConfigUI(name: str) -> Union[bytes, None]:
     try:
         name = name.replace('-', '_')
         mod = import_module("." + name, __package__)
-        return b64decode(mod.DEFAULT_CONFIG_UI)
+        return mod.DEFAULT_CONFIG_UI
     except ImportError:
         return None
 

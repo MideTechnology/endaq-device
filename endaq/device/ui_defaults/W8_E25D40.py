@@ -2,7 +2,9 @@
 Default ConfigUI for W8-E25D40 data recorders 
 """
 
-DEFAULT_CONFIG_UI = (
+from base64 import b64decode
+
+DEFAULT_CONFIG_UI = b64decode(
     b'd3dZGkAoSDxQBYdHZW5lcmFsQAXzUAWLRGV2aWNlIE5hbWVQAYMI/39RJIFAUBXYQSBjdX'
     b'N0b20gbmFtZSBmb3IgdGhlIHJlY29yZGVyLiBOb3QgdGhlIHNhbWUgYXMgdGhlIHZvbHVt'
     b'ZSBsYWJlbC4gNjQgY2hhcmFjdGVycyBtYXhpbXVtLkAF81AFjERldmljZSBOb3Rlc1ABgw'

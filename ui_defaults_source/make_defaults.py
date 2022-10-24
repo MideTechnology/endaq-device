@@ -88,8 +88,8 @@ def makeModule(pn, pyname=None, inpath=root, outpath=defaults):
         data = f.read()
     with open(os.path.join(outpath, pyname + ".py"), 'w') as f:
         f.write(f'"""\nDefault ConfigUI for {pn} data recorders \n"""'
-                '\n\n'
-                'DEFAULT_CONFIG_UI = (\n')
+                '\n\nfrom base64 import b64decode\n\n'
+                'DEFAULT_CONFIG_UI = b64decode(\n')
         for line in wrap(base64.b64encode(data), 70):
             f.write(f"    {line!r}\n")
         f.write(')\n')
