@@ -3,9 +3,8 @@ import unittest
 
 from endaq.device import getRecorder
 
-import fake_recorders
 
-RECORDERS_ROOT = os.path.dirname(fake_recorders.__file__)
+RECORDERS_ROOT = os.path.join(os.path.dirname(__file__), 'fake_recorders')
 RECORDERS = [os.path.join(RECORDERS_ROOT, d) for d in os.listdir(RECORDERS_ROOT)
              if not d.startswith(('.', '_'))]
 S3_PATH = os.path.join(os.path.dirname(__file__), "fake_recorders", "S3-E25D40")
