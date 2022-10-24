@@ -6,9 +6,11 @@ work.
 It is expected that the name of each source file matches the part
 number of the device from which it was taken, plus the extension ".UI".
 
+Data that is determined to be identical for two models is given a
+'generic' name (the number after the series letter is `x`).
+
 TODO: Handle HwRev/BOM variants? This would really just be a change in the
   naming conventions here; the work would be in `endaq.device.ui_defaults`.
-TODO: Make a utility? This is currently used directly from the REPR.
 TODO: Process .UI files to remove unnecessary elements? It would save
   a couple hundred bytes, but not much more.
 """
@@ -103,5 +105,21 @@ def makeModules(inpath=root, outpath=defaults):
         :param outpath: The directory into which to write the .py files.
     """
     for pyname, pn in getDupes(inpath).items():
-        print(f'Creating module {pyname!r} from source {pn!r}')
+        print(f'Creating module {pyname!r}.py from source {pn!r}.UI')
         makeModule(pn, pyname, inpath=inpath, outpath=outpath)
+
+
+# ===========================================================================
+#
+# ===========================================================================
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Simple tool for making default ConfigUI data")
+    parser.add_argument("-i", "--inpath", type=str, default=root,
+                        help="Path to source .UI files")
+    parser.add_argument("-o", "--outpath", type=str, default=defaults,
+                        help="Path to output .py files")
+    args = parser.parse_args()
+
+    makeModules(inpath=args.inpath, outpath=args.outpath)
