@@ -347,7 +347,8 @@ class Recorder:
             if 'info' in kwargs:
                 devinfo = mideSchema.loads(kwargs['info']).dump()
             else:
-                devinfo = mideSchema.load(infoFile).dump()
+                with mideSchema.load(infoFile) as doc:
+                    devinfo = doc.dump()
 
             props = devinfo['RecordingProperties']['RecorderInfo']
             name = props['ProductName']
@@ -531,7 +532,8 @@ class Recorder:
 
     def _getConfig(self):
         """ Get the unmodified dict from the config file, will be replaced later. """
-        return loadSchema("mide_ide.xml").load(self.configFile).dump()
+        with loadSchema("mide_ide.xml").load(self.configFile) as conf:
+            return conf.dump()
 
 
     @property

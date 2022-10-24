@@ -174,28 +174,40 @@ def findDevice(sn: Union[str, int],
 #===============================================================================
 
 def getRecorder(path: Filename,
-                types: Optional[List[Type]] = None) -> Union[Recorder, None]:
+                types: Optional[List[Type]] = None,
+                strict: bool = True) -> Union[Recorder, None]:
     """ Get a specific recorder by its path.
     
         :param path: The filesystem path to the recorder's root directory.
         :param types: A list of `Recorder` subclasses to find.
-        :return: An instance of a `Recorder` subclass.
+        :param strict: If `False`, only the directory structure within `path`
+            is used to identify a recorder. If `True`, non-FAT file systems
+            will be automatically rejected.
+        :return: An instance of a `Recorder` subclass, or `None` if the path
+            is not a recorder.
     """
     types = types or RECORDER_TYPES
     path = os.path.realpath(path)
     for t in types:
-        if t.isRecorder(path):
-            return t(path)
+        if t.isRecorder(path, strict=strict):
+            return t(path, strict=strict)
     return None
 
 
-def isRecorder(dev: Filename,
-               types: Optional[List[Type]] = None) -> bool:
+def isRecorder(path: Filename,
+               types: Optional[List[Type]] = None,
+               strict: bool = True) -> bool:
     """ Determine if the given path is a recording device.
+
+        :param path: The filesystem path to check.
+        :param types: A list of `Recorder` subclasses to find.
+        :param strict: If `False`, only the directory structure within `path`
+            is used to identify a recorder. If `True`, non-FAT file systems
+            will be automatically rejected.
     """
     types = types or RECORDER_TYPES
     for t in types:
-        if t.isRecorder(dev):
+        if t.isRecorder(path, strict=strict):
             return True
     return False
 
