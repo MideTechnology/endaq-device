@@ -63,9 +63,16 @@ class Recorder:
     _RECPROP_FILE = os.path.join("SYSTEM", "DEV", "DEVPROPS")
     _CONFIG_UI_FILE = os.path.join("SYSTEM", "CONFIG.UI")
     _COMMAND_FILE = os.path.join("SYSTEM", "DEV", "COMMAND")
+
+    # Manifest and factory cal data on EFM32-based devices
+    _USERPAGE_FILE = os.path.join("SYSTEM", "DEV", "USERPG%d")
+
+    # Manifest and factory cal data on other devices (STM32)
+    _SYSCAL_FILE = os.path.join("SYSTEM", "DEV", "syscal")
+    _MANIFEST_FILE = os.path.join("SYSTEM", "DEV", "manifest")
+
     _CONFIG_FILE = os.path.join("SYSTEM", "config.cfg")
     _USERCAL_FILE = os.path.join("SYSTEM", "usercal.dat")
-
     _FW_UPDATE_FILE = os.path.join('SYSTEM', 'update.pkg')
     _RESPONSE_FILE = os.path.join('SYSTEM', 'DEV', 'RESPONSE')
     _BOOTLOADER_UPDATE_FILE = os.path.join("SYSTEM", 'boot.bin')
@@ -958,10 +965,9 @@ class Recorder:
             return self._manifest
 
         # Recombine all the 'user page' files
-        systemPath = os.path.join(self.path, 'SYSTEM', 'DEV')
         data = bytearray()
         for i in range(4):
-            filename = os.path.join(systemPath, 'USERPG%d' % i)
+            filename = os.path.join(self.path, self._USERPAGE_FILE % i)
             with open(filename, 'rb') as fs:
                 data.extend(fs.read())
 
@@ -1006,8 +1012,8 @@ class Recorder:
             cached for backwards compatibility, since one or both are in the
             older devices' EFM32 'userpage'.
         """
-        manFile = os.path.join(self.path, 'SYSTEM', 'DEV', 'MANIFEST')
-        calFile = os.path.join(self.path, 'SYSTEM', 'DEV', 'SYSCAL')
+        manFile = os.path.join(self.path, self._MANIFEST_FILE)
+        calFile = os.path.join(self.path, self._SYSCAL_FILE)
 
         try:
             self._manData = loadSchema("mide_manifest.xml").load(manFile)
@@ -1040,10 +1046,9 @@ class Recorder:
             if self.isVirtual or self._manifest is not None:
                 return self._manifest
 
-            systemPath = os.path.join(self.path, 'SYSTEM', 'DEV')
-            if os.path.exists(os.path.join(systemPath, 'USERPG0')):
+            if os.path.exists(os.path.join(self.path, self._USERPAGE_FILE % 0)):
                 self._readUserpage()
-            elif os.path.exists(os.path.join(systemPath, 'MANIFEST')):
+            elif os.path.exists(os.path.join(self.path, self._MANIFEST_FILE)):
                 self._readManifest()
 
             return self._manifest
