@@ -18,6 +18,7 @@ from idelib.dataset import Channel, SubChannel
 
 from . import ui_defaults
 from .exceptions import ConfigError, UnsupportedFeature
+from . import util
 
 logger = logging.getLogger('endaq.device')
 
@@ -493,8 +494,12 @@ class ConfigInterface:
         raise NotImplementedError("getConfig() not implemented")
 
 
-    def applyConfig(self):
+    def applyConfig(self, unknown: bool = True):
         """ Apply modified configuration data to the device.
+
+            :param unknown: If `True`, include values that do not correspond
+                to known configuration items (e.g., originally read from the
+                config file).
         """
         raise NotImplementedError("applyConfig() not implemented")
 
@@ -902,9 +907,13 @@ class VirtualConfigInterface(ConfigInterface):
         return self.device._config
 
 
-    def applyConfig(self):
+    def applyConfig(self, unknown: bool = True):
         """ Apply modified configuration data to the device. Not supported on
             virtual devices!
+
+            :param unknown: If `True`, include values that do not correspond
+                to known configuration items (e.g., originally read from the
+                config file).
         """
         raise UnsupportedFeature("Virtual devices cannot be configured")
 
@@ -966,14 +975,23 @@ class FileConfigInterface(ConfigInterface):
 
 
     def applyConfig(self, unknown: bool = True):
-        """ Apply modified configuration data to the device. Not supported on
-            virtual devices!
+        """ Apply modified configuration data to the device.
+
+            :param unknown: If `True`, include values that do not correspond
+                to known configuration items (e.g., originally read from the
+                config file).
         """
         config = self._makeConfig(unknown)
-        with open(self.device.configFile, 'wb') as f:
-            self.schema.encode(f, config, headers=False)
+        try:
+            util.makeBackup(self.device.configFile)
+            with open(self.device.configFile, 'wb') as f:
+                self.schema.encode(f, config, headers=False)
+            self.getChanges()  # to clear the change list
 
-        self.getChanges()  # to clear the change list
+        except Exception:
+            util.restoreBackup(self.device.configFile)
+            raise
+
 
 
 # ===========================================================================
