@@ -279,6 +279,7 @@ class Recorder:
 
     @property
     def volumeName(self):
+        """ The recorder's user-specified filesystem label. """
         if self.isVirtual:
             return False
 
