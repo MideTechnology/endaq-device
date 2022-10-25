@@ -8,7 +8,7 @@ HDLC encoding and checksum-related code.
 """
 
 from logging import getLogger
-logger = getLogger()
+logger = getLogger('endaq.device')
 
 
 class CRCError(ValueError):

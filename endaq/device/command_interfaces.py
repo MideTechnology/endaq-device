@@ -13,8 +13,7 @@ from typing import Optional, Tuple, Union, Callable
 import warnings
 
 import logging
-logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+logger = logging.getLogger('endaq.device')
 
 from ebmlite import loadSchema
 import serial

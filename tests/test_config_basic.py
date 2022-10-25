@@ -1,19 +1,15 @@
-import os.path
-import unittest
+import pytest
 
-from endaq.device import EndaqS
-from endaq.device import config
+import endaq.device
+from endaq.device import ui_defaults
 
-S3_PATH = os.path.join(os.path.dirname(__file__), "fake_recorders", "S3-E25D40")
-
-
-class BasicConfigTests(unittest.TestCase):
-    def setUp(self):
-        self.device = EndaqS(S3_PATH, strict=False)
-
-    # def test_something(self):
-    #     self.assertEqual(True, False)  # add assertion here
+from .fake_recorders import RECORDER_PATHS
 
 
-if __name__ == '__main__':
-    unittest.main()
+@pytest.mark.parametrize("path", RECORDER_PATHS)
+def test_configui_defaults(path):
+    """ Confirm there is default ConfigUI data for each fake recorder.
+    """
+    endaq.device.RECORDERS.clear()  # Clear cached devices, just to be safe
+    dev = endaq.device.getRecorder(path, strict=False)
+    assert ui_defaults.getDefaultConfigUI(dev) is not None

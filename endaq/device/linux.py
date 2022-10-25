@@ -134,7 +134,7 @@ def readRecorderClock(clockFile: Filename, pause: bool = True) -> Tuple[Epoch, E
 # ==============================================================================
 
 
-def getDeviceList(types: dict) -> list:
+def getDeviceList(types: dict, strict: bool = True) -> list:
     """ Get a list of data recorders, as their respective mount points.
     """
 
@@ -144,7 +144,7 @@ def getDeviceList(types: dict) -> list:
         if not os.path.exists(device):
             continue
         for t in types:
-            if t.isRecorder(mountpoint):
+            if t.isRecorder(mountpoint, strict=strict):
                 result.add(mountpoint)
 
     return sorted(result)

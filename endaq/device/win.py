@@ -155,7 +155,7 @@ def readRecorderClock(clockFile: Filename, pause: bool = True) -> Tuple[Epoch, E
 # ==============================================================================
 
 
-def getDeviceList(types: dict) -> List[Drive]:
+def getDeviceList(types: dict, strict: bool = True) -> List[Drive]:
     """ Get a list of data recorders, as their respective drive letter.
     """
     drivebits = kernel32.GetLogicalDrives()
@@ -165,10 +165,10 @@ def getDeviceList(types: dict) -> List[Drive]:
             driveLetter = '%s:\\' % letter
             devtype = win32file.GetDriveType(driveLetter)
             # First cut: only consider removable drives
-            if devtype == win32file.DRIVE_REMOVABLE:
+            if devtype == win32file.DRIVE_REMOVABLE or not strict:
                 info = getDriveInfo(driveLetter)
                 for t in types:
-                    if t.isRecorder(info):
+                    if t.isRecorder(info, strict=strict):
                         result.append(info)
                         break
         drivebits >>= 1
