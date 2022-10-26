@@ -1,3 +1,7 @@
+"""
+Tests of the command interfaces.
+"""
+
 import os.path
 import pytest
 
@@ -16,6 +20,7 @@ DEVICES = [pytest.param(getRecorder(path, strict=False), id=os.path.basename(pat
 
 @pytest.mark.parametrize("dev", DEVICES)
 def test_command_basics(dev):
-    """ Confirm there is default ConfigUI data for each fake recorder.
+    """ Initial 'sanity test' to verify `CommandInterface` instances are
+        being instantiated.
     """
     assert isinstance(dev.command, command_interfaces.CommandInterface)

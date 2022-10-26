@@ -1,3 +1,7 @@
+"""
+Configuration interface tests.
+"""
+
 import os.path
 import pytest
 
@@ -19,7 +23,6 @@ def test_config_basics(dev):
     """ Initial 'sanity test' to verify `ConfigInterface` instances are
         being instantiated.
     """
-    # dev = endaq.device.getRecorder(path, strict=False)
     assert isinstance(dev.config, config.ConfigInterface)
 
 

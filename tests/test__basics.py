@@ -1,3 +1,7 @@
+"""
+Initial 'sanity check' identification and instantiation tests. Perform early.
+"""
+
 import os.path
 import pytest
 
