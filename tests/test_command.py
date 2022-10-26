@@ -1,12 +1,17 @@
+import os.path
 import pytest
 
 import endaq.device
+from endaq.device import getRecorder
 from endaq.device import command_interfaces
 
 from .fake_recorders import RECORDER_PATHS
 
-endaq.device.RECORDERS.clear()  # Clear any cached devices, just to be safe
-DEVICES = [endaq.device.getRecorder(path, strict=False) for path in RECORDER_PATHS]
+# Clear any cached devices, just to be safe
+endaq.device.RECORDERS.clear()
+
+# Create parameters, mainly to provide an ID, making the results readable
+DEVICES = [pytest.param(getRecorder(path, strict=False), id=os.path.basename(path)) for path in RECORDER_PATHS]
 
 
 @pytest.mark.parametrize("dev", DEVICES)

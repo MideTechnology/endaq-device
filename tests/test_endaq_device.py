@@ -5,6 +5,9 @@ import endaq.device
 
 from .fake_recorders import RECORDER_PATHS
 
+# Create parameters, mainly to provide an ID, making the results more readable
+RECORDER_PATHS = [pytest.param(path, id=os.path.basename(path)) for path in RECORDER_PATHS]
+
 
 @pytest.mark.parametrize("path", RECORDER_PATHS)
 def test_basic_identification(path):
