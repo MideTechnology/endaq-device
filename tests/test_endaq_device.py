@@ -14,7 +14,7 @@ def test_basic_identification(path):
     assert endaq.device.isRecorder(path, strict=False)
 
 
-def test_identification_fail():
+def test_identification_negative():
     """ Test a non-recorder path to verify it isn't misidentified.
     """
     # Using the test file's directory because it's handy.
