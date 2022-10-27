@@ -982,16 +982,18 @@ class FileConfigInterface(ConfigInterface):
                 config file).
         """
         config = self._makeConfig(unknown)
+        configEbml = self.schema.encode(config, headers=False)
+
         try:
             util.makeBackup(self.device.configFile)
             with open(self.device.configFile, 'wb') as f:
-                self.schema.encode(f, config, headers=False)
-            self.getChanges()  # to clear the change list
-
+                f.write(configEbml)
         except Exception:
-            util.restoreBackup(self.device.configFile)
+            # Write failed, restore old config file
+            util.restoreBackup(self.device.configFile, remove=False)
             raise
 
+        self.getChanges()  # to clear the change list
 
 
 # ===========================================================================

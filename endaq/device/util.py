@@ -4,13 +4,15 @@ Some basic utility functions, for internal use.
 
 import errno
 import os.path
+import pathlib
 import shutil
+import typing
 
 import logging
 logger = logging.getLogger("endaq.device")
 
 
-def makeBackup(filename):
+def makeBackup(filename: typing.Union[str, pathlib.Path]) -> bool:
     """ Create a backup copy of the given file. For use in conjunction with
         `restoreBackup()`.
     """
@@ -25,7 +27,8 @@ def makeBackup(filename):
     return False
 
 
-def restoreBackup(filename, remove=False):
+def restoreBackup(filename: typing.Union[str, pathlib.Path],
+                  remove: bool = False) -> bool:
     """ Restore a backup copy of a file, overwriting the file. For use in
         conjunction with `makeBackup()`.
     """
