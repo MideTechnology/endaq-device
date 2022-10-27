@@ -6,6 +6,7 @@ data-logging devices.
 __author__ = "David Stokes"
 
 import os
+from pathlib import Path
 import string
 from typing import List, Optional, Type, Union
 
@@ -44,14 +45,13 @@ if "{idelib}/schemata" not in ebmlite.core.SCHEMA_PATH:
 # after the more specific ones. `SlamStickC` is first, since it is now sold
 # as Sx-D16 but has the old SlamStick hardware, but the naming convention
 # matches that of `EndaqS`.
-# FUTURE: Modularize device type registration, so new ones can be added
-#  cleanly (e.g., with a function call like `addRecorderType(class)`?).
 RECORDER_TYPES = [SlamStickC, EndaqS, EndaqW, SlamStickS, SlamStickX, Recorder]
 
 # Cache of previously seen recorders, to prevent redundant instantiations.
+# Keyed by the hash of the recorders DEVINFO (or equivalent).
 RECORDERS = {}
 
-# Max number of cached recorders. Probably not needed.
+# Max number of cached recorders. Probably not needed, but just in case.
 RECORDER_CACHE_SIZE = 100
 
 #===============================================================================
@@ -168,9 +168,9 @@ def getDevices(paths: Optional[List[Filename]] = None,
     if paths is None:
         paths = getDeviceList(types, strict=strict)
     else:
-        if isinstance(paths, (str, bytes, bytearray)):
+        if isinstance(paths, (str, bytes, bytearray, Path)):
             paths = [paths]
-        paths = [os.path.splitdrive(os.path.realpath(p))[0] for p in paths]
+            paths = [os.path.splitdrive(os.path.realpath(p))[0] for p in paths]
 
     result = []
 
@@ -184,7 +184,8 @@ def getDevices(paths: Optional[List[Filename]] = None,
 
 def findDevice(sn: Union[str, int],
                paths: Optional[List[Filename]] = None,
-               types: Optional[List[Type]] = None) -> Union[Recorder, None]:
+               types: Optional[List[Type]] = None,
+               strict: bool = True) -> Union[Recorder, None]:
     """ Find a specific recorder by serial number.
 
         :param sn: The serial number of the recorder to find.
@@ -192,6 +193,9 @@ def findDevice(sn: Union[str, int],
             Defaults to all found devices (as returned by `getDeviceList()`).
         :param types: A list of `Recorder` subclasses to find. Defaults to
             all types.
+        :param strict: If `False`, only the directory structure is used
+            to identify a recorder. If `True`, non-FAT file systems will
+            be automatically rejected.
         :return: An instance of a `Recorder` subclass representing the
             device with the specified serial number, or `None`.
     """
@@ -202,7 +206,7 @@ def findDevice(sn: Union[str, int],
             sn = 0
         sn = int(sn)
 
-    for d in getDevices(paths, types):
+    for d in getDevices(paths, types, strict=strict):
         if d.serialInt == sn:
             return d
 
@@ -232,7 +236,7 @@ def isRecorder(path: Filename,
     return False
 
 
-def onRecorder(path: Filename) -> bool:
+def onRecorder(path: Filename, strict: bool = True) -> bool:
     """ Returns the root directory of a recorder from a path to a directory or
         file on that recorder. It can be used to test whether a file is on
         a recorder. `False` is returned if the path is not on a recorder.
@@ -241,6 +245,9 @@ def onRecorder(path: Filename) -> bool:
         is valid, perform your own checks first.
         
         :param path: The full path/name of a file.
+        :param strict: If `False`, only the directory structure within `path`
+            is used to identify a recorder. If `True`, non-FAT file systems
+            will be automatically rejected.
         :return: The path to the root directory of a recorder (e.g. the drive
             letter in Windows) if the path is to a subdirectory on a recording 
             device, `False` if not.
@@ -248,7 +255,7 @@ def onRecorder(path: Filename) -> bool:
     oldp = None
     path = os.path.realpath(path)
     while path != oldp:
-        if isRecorder(path):
+        if isRecorder(path, strict=strict):
             return path
         oldp = path
         path = os.path.dirname(path)

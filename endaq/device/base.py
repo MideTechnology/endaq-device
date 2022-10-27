@@ -341,21 +341,19 @@ class Recorder:
             path = os.path.realpath(path)
             infoFile = os.path.join(path, cls._INFO_FILE)
 
-            if not os.path.exists(infoFile):
-                return not strict
-
             if strict:
                 if not fs:
                     fs = os_specific.getDriveInfo(dev).fs
                 if "fat" not in fs.lower():
                     return False
 
-            mideSchema = loadSchema('mide_ide.xml')
             if 'info' in kwargs:
-                devinfo = mideSchema.loads(kwargs['info']).dump()
-            else:
-                with mideSchema.load(infoFile) as doc:
+                devinfo = loadSchema('mide_ide.xml').loads(kwargs['info']).dump()
+            elif os.path.isfile(infoFile):
+                with loadSchema('mide_ide.xml').load(infoFile) as doc:
                     devinfo = doc.dump()
+            else:
+                return False
 
             props = devinfo['RecordingProperties']['RecorderInfo']
             name = props['ProductName']
