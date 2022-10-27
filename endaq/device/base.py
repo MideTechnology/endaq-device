@@ -8,7 +8,6 @@ __copyright__ = "Copyright 2022 Mide Technology Corporation"
 
 from collections import defaultdict
 from datetime import datetime, timedelta
-from io import BytesIO
 import logging
 import os
 from pathlib import Path
@@ -17,7 +16,7 @@ import struct
 import sys
 from threading import RLock
 from time import struct_time
-from typing import Any, AnyStr, BinaryIO, Callable, Optional, Tuple, Union
+from typing import Any, AnyStr, BinaryIO, Callable, Dict, Optional, Tuple, Union
 import warnings
 
 from idelib.dataset import Dataset, Channel
@@ -26,7 +25,7 @@ from idelib.parsers import CalibrationListParser, RecordingPropertiesParser
 from idelib.transforms import Transform
 
 import ebmlite
-from ebmlite import loadSchema
+from ebmlite import MasterElement, loadSchema
 
 if sys.platform == 'darwin':
     from . import macos as os_specific
@@ -938,14 +937,12 @@ class Recorder:
         return self.command.getClockDrift(pause=pause, retries=retries)
 
 
-    def _parsePolynomials(self, stream) -> dict:
+    def _parsePolynomials(self, cal: MasterElement) -> Dict[int, Transform]:
         """ Helper method to parse CalibrationList EBML into `Transform`
             objects.
         """
         try:
             parser = CalibrationListParser(None)
-            # stream.seek(0)
-            cal = loadSchema("mide_ide.xml").load(stream)
             calPolys = parser.parse(cal[0])
             if calPolys:
                 calPolys = {p.id: p for p in calPolys if p is not None}
@@ -975,8 +972,8 @@ class Recorder:
          calOffset, calSize,
          propOffset, propSize) = struct.unpack_from("<HHHHHH", data)
 
-        manData = BytesIO(data[manOffset:manOffset + manSize])
-        self._calData = BytesIO(data[calOffset:calOffset + calSize])
+        manData = data[manOffset:manOffset + manSize]
+        calData = data[calOffset:calOffset + calSize]
 
         # _propData is read and cached here but parsed in `getSensors()`.
         # New devices use a dynamically-generated properties file, which
@@ -991,11 +988,11 @@ class Recorder:
             self._propData = data[propOffset:propOffset + propSize]
 
         try:
-            self._manData = loadSchema("mide_manifest.xml").load(manData)
+            self._manData = loadSchema("mide_manifest.xml").loads(manData)
             self._manifest = self._manData.dump().get('DeviceManifest')
 
-            calDict = loadSchema("mide_ide.xml").load(self._calData).dump()
-            self._calibration = calDict.get('CalibrationList')
+            self._calData = loadSchema("mide_ide.xml").loads(calData)
+            self._calibration = self._calData.dump().get('CalibrationList')
 
         except (AttributeError, KeyError) as err:
             logger.debug("_readUserpage() raised a possibly-allowed exception: %r" % err)
@@ -1009,20 +1006,23 @@ class Recorder:
             data is a superset of the information returned by `getInfo()`.
 
             Factory calibration and recorder properties are also read and
-            cached for backwards compatibility, since one or both are in the
-            older devices' EFM32 'userpage'.
+            cached for backwards compatibility, since both are in the older
+            devices' EFM32 'userpage'.
         """
         manFile = os.path.join(self.path, self._MANIFEST_FILE)
         calFile = os.path.join(self.path, self._SYSCAL_FILE)
 
         try:
-            self._manData = loadSchema("mide_manifest.xml").load(manFile)
+            with open(manFile, 'rb') as f:
+                self._manData = loadSchema("mide_manifest.xml").loads(f.read())
             self._manifest = self._manData.dump().get('DeviceManifest')
         except (FileNotFoundError, AttributeError, KeyError) as err:
             logger.debug(f"Possibly-allowed exception when reading {manFile}: {err!r}")
 
         try:
-            calDict = loadSchema("mide_ide.xml").load(calFile).dump()
+            with loadSchema("mide_ide.xml").load(calFile) as doc:
+                self._calData = doc.schema.loads(doc.getRaw())
+                calDict = self._calData.dump()
             self._calibration = calDict.get('CalibrationList')
         except (FileNotFoundError, AttributeError, KeyError) as err:
             logger.debug(f"Possibly-allowed exception when reading {calFile}: {err!r}")
@@ -1084,12 +1084,15 @@ class Recorder:
                 `.dat` file to read (as opposed to the device's standard
                 user calibration).
         """
+        if self.isVirtual and not filename:
+            return None
+
         filename = self.userCalFile if filename is None else filename
         if filename is None or not os.path.exists(filename):
             return None
         if self._userCalPolys is None:
-            with open(filename, 'rb') as f:
-                self._userCalPolys = self._parsePolynomials(f)
+            with loadSchema('mide_ide.xml').load(filename) as doc:
+                self._userCalPolys = self._parsePolynomials(doc)
         return self._userCalPolys
 
 
