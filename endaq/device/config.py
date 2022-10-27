@@ -957,7 +957,8 @@ class FileConfigInterface(ConfigInterface):
         """
         if not self.configUi:
             if os.path.isfile(self.device.configUIFile):
-                self.configUi = self.schema.load(self.device.configUIFile)
+                with open(self.device.configUIFile, 'rb') as f:
+                    self.configUi = self.schema.loads(f.read())
             else:
                 self.configUi = ui_defaults.getDefaultConfigUI(self.device)
                 if not self.configUi:
@@ -970,7 +971,8 @@ class FileConfigInterface(ConfigInterface):
             the contents of a real device's `config.cfg` file), if any.
         """
         if os.path.isfile(self.device.configFile):
-            return self.schema.load(self.device.configFile)
+            with open(self.device.configFile, 'rb') as f:
+                return self.schema.loads(f.read())
         return None
 
 
@@ -981,8 +983,10 @@ class FileConfigInterface(ConfigInterface):
                 to known configuration items (e.g., originally read from the
                 config file).
         """
+        # Do encoding before opening the file, so it can fail safely and not
+        # affect any existing config file.
         config = self._makeConfig(unknown)
-        configEbml = self.schema.encode(config, headers=False)
+        configEbml = self.schema.encodes(config, headers=False)
 
         try:
             util.makeBackup(self.device.configFile)
