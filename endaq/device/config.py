@@ -717,7 +717,8 @@ class ConfigInterface:
         # config ID. Others (mostly digital) use bits in a single config item.
         if enItem.element.name.endswith('BitField'):
             if not isinstance(channel, SubChannel):
-                raise ConfigError('ConfigUI {} not applicable to {}'.format(enItem, channel))
+                raise ConfigError('ConfigUI {} not applicable to {}; '
+                                  'use a SubChannel instead'.format(enItem, channel))
 
             val = enItem.value
             if val is None:
@@ -863,7 +864,8 @@ class ConfigInterface:
 
             :return: A list of all trigger configuration items.
         """
-        return [v for v in self.items.values() if v.configId & 0xff0000 in (0x030000, 0x040000)]
+        return [v for v in self.items.values()
+                if v.configId & 0xff0000 in (0x030000, 0x040000)]
 
 
 # ===========================================================================

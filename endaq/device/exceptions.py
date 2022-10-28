@@ -2,6 +2,9 @@
 Exceptions raised when interacting with a recording device.
 """
 
+__all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
+           'DeviceError', 'DeviceTimeout', 'UnsupportedFeature')
+
 
 class DeviceError(Exception):
     """ Base class for device-related exceptions. """

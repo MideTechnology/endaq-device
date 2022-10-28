@@ -14,16 +14,19 @@ import ebmlite.core
 from idelib.dataset import Dataset
 
 from .base import Recorder, os_specific
-from .exceptions import ConfigError, ConfigVersionError, DeviceTimeout
+from .exceptions import *
 from .endaq import EndaqS, EndaqW
 from .slamstick import SlamStickX, SlamStickC, SlamStickS
 from .types import Filename, Epoch
 
 from . import schemata
 
-__all__ = ('ConfigError', 'ConfigVersionError', 'DeviceTimeout',
-           'deviceChanged','findDevice', 'fromRecording', 'getDeviceList',
-           'getDevices', 'getRecorder', 'isRecorder', 'onRecorder')
+__all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
+           'DeviceError', 'DeviceTimeout', 'UnsupportedFeature',
+           'deviceChanged', 'findDevice', 'fromRecording', 'getDeviceList',
+           'getDevices', 'getRecorder', 'isRecorder', 'onRecorder',
+           'Recorder', 'EndaqS', 'EndaqW', 'SlamStickX', 'SlamStickC',
+           'SlamStickS')
 
 #===============================================================================
 # 

@@ -39,14 +39,13 @@ from .config import ConfigInterface
 from . import measurement
 from .measurement import MeasurementType
 from . import command_interfaces
-from .exceptions import ConfigError, ConfigVersionError, DeviceTimeout, UnsupportedFeature
+from .exceptions import *
 from .types import Drive, Filename, Epoch
 
 logger = logging.getLogger('endaq.device')
 
 
-__all__ = ['ConfigError', 'ConfigVersionError', 'DeviceTimeout', 'Recorder',
-           'os_specific']
+__all__ = ('Recorder', 'os_specific')
 
 # ===============================================================================
 #
@@ -436,6 +435,9 @@ class Recorder:
         """ Device-specific configuration file saver. Used internally; call
             `Recorder.saveConfig()` instead.
         """
+        warnings.warn("Configuration access should now be done through the "
+                      "`config` attribute", DeprecationWarning)
+
         mideSchema = loadSchema("mide_ide.xml")
         with self._busy:
             if data is None:
@@ -495,6 +497,7 @@ class Recorder:
         """ Reverses the parsing done to create a valid config dict for newer
             devices.
         """
+        # FUTURE: Remove Recorder._encodeConfig() and related methods
         origConfig = self._getConfig()
         if 'RecorderConfigurationList' in origConfig:
             # New style config (FW 12 and up)
@@ -518,6 +521,10 @@ class Recorder:
     def getConfig(self) -> dict:
         """ Get the recorder's configuration data.
         """
+        # FUTURE: Remove Recorder.getConfig() and related methods
+        warnings.warn("Configuration access should now be done through the "
+                      "`config` attribute", DeprecationWarning)
+
         with self._busy:
             if self._config is not None:
                 return self._config
@@ -540,6 +547,7 @@ class Recorder:
 
     def _getConfig(self):
         """ Get the unmodified dict from the config file, will be replaced later. """
+        # FUTURE: Remove Recorder._getConfig() and related methods
         with loadSchema("mide_ide.xml").load(self.configFile) as conf:
             return conf.dump()
 
@@ -622,8 +630,10 @@ class Recorder:
                 for b in bytearray(info['UniqueChipIDLong']):
                     chid = (chid << 8) | b
                 self._chipId = chid
+            elif 'UniqueChipID' in info:
+                self._chipId = info['UniqueChipID']
             else:
-                self._chipId = info.get('UniqueChipID', 0)
+                return None
 
         return self._chipId
 
@@ -635,7 +645,7 @@ class Recorder:
             (optionally) a `BOM version` letter. Older versions will be
             a single number.
         """
-        rev = self.getInfo('HwRev', -1)
+        rev = self.hardwareVersionInt
         try:
             if rev > 99:
                 # New structure of HwRev, which includes version, revision,
@@ -643,7 +653,13 @@ class Recorder:
                 major = int(rev/10000)
                 minor = int((rev % 10000) / 100)
                 bom = rev % 100
-                rev = f"{major}.{minor}{chr(bom+64) if bom > 0 else ''}"
+                if bom == 0:
+                    bom = ""
+                elif bom <= 26:
+                    bom = chr(bom+64)
+                else:
+                    bom = f"_{bom}"
+                rev = f"{major}.{minor}{bom}"
         except TypeError:
             pass
         return str(rev)
@@ -651,7 +667,8 @@ class Recorder:
 
     @property
     def hardwareVersionInt(self) -> int:
-        """ The recorder's manufacturer-issued hardware version number. """
+        """ The recorder's manufacturer-issued hardware version number.
+        """
         return self.getInfo('HwRev', -1)
 
     @property
@@ -738,6 +755,9 @@ class Recorder:
             reported range (particularly for digital sensors) is that of the
             subchannel's parser, and may exceed values actually produced by
             the sensor.
+
+            :param subchannel: An `idelib.dataset.SubChannel` instance,
+                e.g., from the recorder's `channels` dictionary.
         """
         # XXX: WIP
         key = (subchannel.parent.id, subchannel.id)
