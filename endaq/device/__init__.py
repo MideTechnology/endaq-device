@@ -170,7 +170,6 @@ def getDevices(paths: Optional[List[Filename]] = None,
     else:
         if isinstance(paths, (str, bytes, bytearray, Path)):
             paths = [paths]
-            paths = [os.path.splitdrive(os.path.realpath(p))[0] for p in paths]
 
     result = []
 

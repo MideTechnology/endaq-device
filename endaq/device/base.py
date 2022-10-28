@@ -292,7 +292,7 @@ class Recorder:
         if self._path and self._volumeName is None:
             try:
                 self._volumeName = os_specific.getDriveInfo(self.path).label
-            except (IOError, TypeError) as err:
+            except (AttributeError, IOError, TypeError) as err:
                 logger.debug("Getting volumeName raised a possibly-allowed exception: %r" % err)
         return self._volumeName
 
@@ -343,7 +343,10 @@ class Recorder:
 
             if strict:
                 if not fs:
-                    fs = os_specific.getDriveInfo(dev).fs
+                    info = os_specific.getDriveInfo(dev)
+                    if not info:
+                        return False
+                    fs = info.fs
                 if "fat" not in fs.lower():
                     return False
 

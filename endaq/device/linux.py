@@ -10,7 +10,7 @@ import mmap
 import math
 import re
 from time import time
-from typing import ByteString, Tuple
+from typing import ByteString, Tuple, Union
 
 import psutil
 
@@ -33,15 +33,18 @@ def _getDeviceLabels() -> dict:
             for device in os.listdir(idRoot)}
 
 
-def getDriveInfo(dev: Filename) -> Drive:
+def getDriveInfo(dev: Filename) -> Union[Drive, None]:
     """ Get general device information. Not currently used.
     """
     dev = os.path.realpath(dev)
 
-    disk = [x for x in psutil.disk_partitions()
-            if x.mountpoint == dev
-            if os.path.split(x.device)[-1] in os.listdir('/dev')][0]
-    partName = disk.device
+    try:
+        disk = [x for x in psutil.disk_partitions()
+                if x.mountpoint == dev
+                if os.path.split(x.device)[-1] in os.listdir('/dev')][0]
+        partName = disk.device
+    except IndexError:
+        return None
 
     ids = _getDeviceIds()
     if partName not in ids:

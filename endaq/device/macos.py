@@ -4,29 +4,27 @@ MacOS-specific functions; primarily filesystem-related.
 TODO: THIS NEEDS TO BE REFACTORED. BASE ON NEXT RELEASE VERSION OF `linux.py`
 """
 
-from collections import namedtuple
 import os
-import time
 
-Drive = namedtuple("Drive", ("path", "label", "sn", "fs", "type"))
+from .linux import getDriveInfo, readUncachedFile, readRecorderClock
 
 #===============================================================================
 #
 #===============================================================================
 
 
-def getDriveInfo(dev):
-    # XXX: Total hack.
-    return Drive(dev, os.path.basename(dev), None, 'fat', None)
-
-
-def readRecorderClock(clockfile):
-    t0 = time.time()
-    f = open(clockfile, 'rb', 0)
-    t = f.read(8)
-    t1 = (time.time() + t0) / 2
-    f.close()
-    return t1, t
+# def getDriveInfo(dev):
+#     # XXX: Total hack.
+#     return Drive(dev, os.path.basename(dev), None, 'fat', None)
+#
+#
+# def readRecorderClock(clockfile):
+#     t0 = time.time()
+#     f = open(clockfile, 'rb', 0)
+#     t = f.read(8)
+#     t1 = (time.time() + t0) / 2
+#     f.close()
+#     return t1, t
 
 
 def getDeviceList(types, paths=None):
@@ -50,12 +48,12 @@ def deviceChanged(recordersOnly, types, clear=False):
     """ Returns `True` if a drive has been connected or disconnected since
         the last call to `deviceChanged()`.
 
-        :keyword recordersOnly: If `False`, any change to the mounted drives
+        :param recordersOnly: If `False`, any change to the mounted drives
             is reported as a change. If `True`, the mounted drives are checked
             and `True` is only returned if the change occurred to a recorder.
             Checking for recorders only takes marginally more time.
         :param types: A list of known `Recorder` classes to detect.
-        :keyword clear: If `True`, clear the cache of previously-detected
+        :param clear: If `True`, clear the cache of previously-detected
             drives and devices.
     """
     global _LAST_DEVICES, _LAST_RECORDERS
