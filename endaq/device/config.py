@@ -4,7 +4,9 @@ Interfaces for configuring enDAQ recorders.
 Note: Wi-Fi configuration is done through the command interface. Changes
 though the configuration interface are applied when the device next
 resets or starts recording, while Wi-Fi changes take effect immediately.
-This also keeps Wi-Fi access point passwords secret.
+This also keeps Wi-Fi access point passwords secret. Similarly, setting the
+device's realtime clock is also done through the command interface, as it
+also takes effect immediately.
 """
 
 import errno
@@ -74,7 +76,7 @@ class ConfigItem:
     # Default expression code objects for ValueFormat and DisplayFormat.
     # `noEffect` always returns the field's value unmodified (supplied as the
     # variable ``x``).
-    noEffect = compile("x", "<ConfigBase.noEffect>", "eval")
+    noEffect = compile("x", "<ConfigItem.noEffect>", "eval")
 
 
     @classmethod
@@ -697,9 +699,9 @@ class ConfigInterface:
             :return: The encoded channel ID
         """
         if isinstance(channel, SubChannel):
-            return channel.parent.id << 8 | channel.id
+            return channel.id << 8 | channel.parent.id
         else:
-            return channel.id << 8 | 0xff
+            return channel.id | 0xff00
 
 
     def enableChannel(self,
