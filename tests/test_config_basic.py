@@ -10,6 +10,8 @@ import endaq.device
 from endaq.device import getRecorder
 from endaq.device import config, ui_defaults
 
+from endaq.device.util import makeBackup
+
 from .fake_recorders import RECORDER_PATHS
 
 # Clear any cached devices, just to be safe
@@ -19,6 +21,7 @@ endaq.device.RECORDERS.clear()
 DEVICES = [pytest.param(getRecorder(path, strict=False), id=os.path.basename(path))
            for path in RECORDER_PATHS]
 
+RECORDER_ROOTS = [os.path.basename(p) for p in RECORDER_PATHS]
 
 @pytest.fixture(scope="session")
 def dev_copy_dir(tmpdir_factory):
@@ -47,7 +50,7 @@ def test_configui_defaults(dev):
     assert ui_defaults.getDefaultConfigUI(dev) is not None
 
 
-@pytest.mark.parametrize("path", [os.path.basename(p) for p in RECORDER_PATHS])
+@pytest.mark.parametrize("path", RECORDER_ROOTS)
 def test_temp(path, dev_copy_dir):
     """ Sanity check that temp copies of devices work.
     """
@@ -55,3 +58,54 @@ def test_temp(path, dev_copy_dir):
     dev = getRecorder(dev_copy_dir / path, strict=False)
     assert dev
 
+
+@pytest.mark.parametrize("path", RECORDER_ROOTS)
+def test_config_enable(path, dev_copy_dir):
+    """ Test setting, writing, and reading channel enable. """
+    dev = getRecorder(dev_copy_dir / path, strict=False)
+
+    # Remove existing config.cfg files (if any)
+    makeBackup(dev.configFile)
+    if os.path.exists(dev.configFile):
+        os.remove(dev.configFile)
+
+    # This will instantiate the ConfigInterface
+    config = dev.config
+
+    for chId in (8, 59):
+        if chId not in dev.channels:
+            continue
+
+        dev.config.enableChannel(dev.channels[chId][0], False)
+        dev.config.enableChannel(dev.channels[chId][1], True)
+        dev.config.enableChannel(dev.channels[chId][2], False)
+
+        # configId = 0x010000 | dev.config._encodeChannel(dev.channels[chId])
+        # assert dev.config.items[configId].value == False
+
+        assert dev.config.isEnabled(dev.channels[chId][0]) is False
+        assert dev.config.isEnabled(dev.channels[chId][1]) is True
+        assert dev.config.isEnabled(dev.channels[chId][2]) is False
+
+    if 80 in dev.channels:
+        dev.config.enableChannel(dev.channels[80], False)
+        assert dev.config.isEnabled(dev.channels[80]) is False
+
+    dev.config.applyConfig()
+
+    # Remove the old ConfigInterface and make a new one, ensuring all
+    # config values are being read from the config file.
+    dev.config = None
+    assert dev.config
+    assert dev.config is not config
+
+    for chId in (8, 59):
+        if chId not in dev.channels:
+            continue
+
+        assert dev.config.isEnabled(dev.channels[chId][0]) is False
+        assert dev.config.isEnabled(dev.channels[chId][1]) is True
+        assert dev.config.isEnabled(dev.channels[chId][2]) is False
+
+    if 80 in dev.channels:
+        assert dev.config.isEnabled(dev.channels[80]) is False
