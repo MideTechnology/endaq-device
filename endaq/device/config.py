@@ -12,7 +12,7 @@ also takes effect immediately.
 import errno
 import logging
 import os.path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 from ebmlite.core import loadSchema
 from ebmlite.core import Document, Element, MasterElement
@@ -21,6 +21,9 @@ from idelib.dataset import Channel, SubChannel
 from . import ui_defaults
 from .exceptions import ConfigError, UnsupportedFeature
 from . import util
+
+if TYPE_CHECKING:
+    from .base import Recorder
 
 logger = logging.getLogger('endaq.device')
 
@@ -364,7 +367,7 @@ class ConfigInterface:
         the config file.
     """
 
-    def __init__(self, device):
+    def __init__(self, device: "Recorder"):
         """ Constructor. Note that the actual initialization (loading the
             ConfigUI and configuration data) is done when first accessed.
 
@@ -424,7 +427,7 @@ class ConfigInterface:
 
 
     @classmethod
-    def hasInterface(cls, device) -> bool:
+    def hasInterface(cls, device: "Recorder") -> bool:
         """ Determine if a device supports this `ConfigInterface` type.
 
             :param device: The Recorder to check.
@@ -910,7 +913,7 @@ class VirtualConfigInterface(ConfigInterface):
     """
 
     @classmethod
-    def hasInterface(cls, device) -> bool:
+    def hasInterface(cls, device: "Recorder") -> bool:
         """
         Determine if a device supports this `ConfigInterface` type.
 
@@ -934,7 +937,7 @@ class VirtualConfigInterface(ConfigInterface):
 
     def getConfig(self):
         """ Low-level method that retrieves the device's config EBML (e.g.,
-            the contents of a real device's `config.cfg` file), if any.
+            the contents of a real device's ``config.cfg`` file), if any.
         """
         # This will have been cached when Recorder.fromRecording() was called
         return self.device._config
@@ -975,7 +978,7 @@ class FileConfigInterface(ConfigInterface):
     """
 
     @classmethod
-    def hasInterface(cls, device) -> bool:
+    def hasInterface(cls, device: "Recorder") -> bool:
         """
         Determine if a device supports this `ConfigInterface` type.
 

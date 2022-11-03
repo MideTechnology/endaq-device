@@ -9,7 +9,7 @@ __copyright__ = "Copyright 2022 Mide Technology Corporation"
 
 import os.path
 import shutil
-from typing import AnyStr, Optional
+from typing import AnyStr, Optional, TYPE_CHECKING
 
 from ebmlite import loadSchema
 
@@ -17,6 +17,9 @@ import logging
 logger = logging.getLogger('endaq.device.legacy')
 
 from .measurement import ACCELERATION
+
+if TYPE_CHECKING:
+    from .base import Recorder
 
 # ==============================================================================
 #
@@ -33,7 +36,7 @@ def _copyItems(oldD: AnyStr, newD: AnyStr, *keyPairs):
             newD[newK] = val
 
 
-def loadConfigData(device, data: Optional[dict] = None) -> dict:
+def loadConfigData(device: "Recorder", data: Optional[dict] = None) -> dict:
     """ Load old configuration data and return it in the new format.
 
         :param device: The `Recorder` object from which to read the data.
@@ -143,7 +146,7 @@ def loadConfigData(device, data: Optional[dict] = None) -> dict:
     return newData
 
 
-def encodeConfigData(configData: dict, device) -> dict:
+def encodeConfigData(configData: dict, device: "Recorder") -> dict:
     """ Build an EBML-encodable set of nested dictionaries containing the
         dialog's configuration values in the legacy format. Note: the
         `configData` should not contain any `None` values; these will be
@@ -251,7 +254,7 @@ def encodeConfigData(configData: dict, device) -> dict:
 #
 # ==============================================================================
 
-def convertConfig(device) -> bool:
+def convertConfig(device: "Recorder") -> bool:
     """ Convert a recorder's configuration file from the old format to the new
         version.
     """

@@ -9,7 +9,7 @@ import os.path
 import shutil
 import sys
 from time import sleep, time, struct_time
-from typing import Optional, Tuple, Union, Callable
+from typing import Optional, Tuple, Union, Callable, TYPE_CHECKING
 import warnings
 
 import logging
@@ -19,7 +19,7 @@ from ebmlite import loadSchema
 import serial
 import serial.tools.list_ports
 
-from .exceptions import DeviceError, CommandError, ConfigError, DeviceTimeout, UnsupportedFeature
+from .exceptions import DeviceError, CommandError, DeviceTimeout, UnsupportedFeature
 from .hdlc import hdlc_decode, hdlc_encode, HDLC_BREAK_CHAR
 from .types import Epoch
 
@@ -29,6 +29,9 @@ elif 'win' in sys.platform:
     from . import win as os_specific
 elif sys.platform == 'linux':
     from . import linux as os_specific
+
+if TYPE_CHECKING:
+    from .base import Recorder
 
 
 # ===========================================================================
@@ -84,7 +87,7 @@ class CommandInterface:
 
 
     def __init__(self,
-                 device,
+                 device: "Recorder",
                  timeout: Union[int, float] = 1):
         """
         Constructor.
@@ -107,7 +110,7 @@ class CommandInterface:
 
 
     @classmethod
-    def hasInterface(cls, device) -> bool:
+    def hasInterface(cls, device: "Recorder") -> bool:
         """
         Determine if a device supports this `CommandInterface` type.
 
