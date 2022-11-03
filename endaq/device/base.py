@@ -8,7 +8,6 @@ __copyright__ = "Copyright 2022 Mide Technology Corporation"
 
 from collections import defaultdict
 from datetime import datetime, timedelta
-from io import BytesIO
 import logging
 import os
 from pathlib import Path
@@ -17,7 +16,7 @@ import struct
 import sys
 from threading import RLock
 from time import struct_time
-from typing import Any, AnyStr, BinaryIO, Callable, Optional, Tuple, Union
+from typing import Any, AnyStr, BinaryIO, Callable, Dict, Optional, Tuple, Union
 import warnings
 
 from idelib.dataset import Dataset, Channel
@@ -26,7 +25,7 @@ from idelib.parsers import CalibrationListParser, RecordingPropertiesParser
 from idelib.transforms import Transform
 
 import ebmlite
-from ebmlite import loadSchema
+from ebmlite import MasterElement, loadSchema
 
 if sys.platform == 'darwin':
     from . import macos as os_specific
@@ -40,14 +39,13 @@ from .config import ConfigInterface
 from . import measurement
 from .measurement import MeasurementType
 from . import command_interfaces
-from .exceptions import ConfigError, ConfigVersionError, DeviceTimeout, UnsupportedFeature
+from .exceptions import *
 from .types import Drive, Filename, Epoch
 
 logger = logging.getLogger('endaq.device')
 
 
-__all__ = ['ConfigError', 'ConfigVersionError', 'DeviceTimeout', 'Recorder',
-           'os_specific']
+__all__ = ('Recorder', 'os_specific')
 
 # ===============================================================================
 #
@@ -293,7 +291,7 @@ class Recorder:
         if self._path and self._volumeName is None:
             try:
                 self._volumeName = os_specific.getDriveInfo(self.path).label
-            except (IOError, TypeError) as err:
+            except (AttributeError, IOError, TypeError) as err:
                 logger.debug("Getting volumeName raised a possibly-allowed exception: %r" % err)
         return self._volumeName
 
@@ -342,21 +340,22 @@ class Recorder:
             path = os.path.realpath(path)
             infoFile = os.path.join(path, cls._INFO_FILE)
 
-            if not os.path.exists(infoFile):
-                return not strict
-
             if strict:
                 if not fs:
-                    fs = os_specific.getDriveInfo(dev).fs
+                    info = os_specific.getDriveInfo(dev)
+                    if not info:
+                        return False
+                    fs = info.fs
                 if "fat" not in fs.lower():
                     return False
 
-            mideSchema = loadSchema('mide_ide.xml')
             if 'info' in kwargs:
-                devinfo = mideSchema.loads(kwargs['info']).dump()
-            else:
-                with mideSchema.load(infoFile) as doc:
+                devinfo = loadSchema('mide_ide.xml').loads(kwargs['info']).dump()
+            elif os.path.isfile(infoFile):
+                with loadSchema('mide_ide.xml').load(infoFile) as doc:
                     devinfo = doc.dump()
+            else:
+                return False
 
             props = devinfo['RecordingProperties']['RecorderInfo']
             name = props['ProductName']
@@ -427,121 +426,6 @@ class Recorder:
                 return self._info.copy()
             else:
                 return self._info.get(name, default)
-
-
-    def _saveConfig(self,
-                    dest: Union[Filename, BinaryIO],
-                    data: Optional[dict] = None,
-                    verify: bool = True) -> int:
-        """ Device-specific configuration file saver. Used internally; call
-            `Recorder.saveConfig()` instead.
-        """
-        mideSchema = loadSchema("mide_ide.xml")
-        with self._busy:
-            if data is None:
-                data = self.getConfig()
-
-            ebml = mideSchema.encodes({'RecorderConfiguration': self._encodeConfig(data)})
-
-            if verify:
-                try:
-                    mideSchema.verify(ebml)
-                except Exception:
-                    raise ValueError("Generated config EBML could not be verified")
-
-            if isinstance(dest, (str, bytes, Path)):
-                with open(dest, 'wb') as f:
-                    f.write(ebml)
-            elif hasattr(dest, 'write'):
-                dest.write(ebml)
-            else:
-                raise TypeError("Config save destination must be a filename or stream; got "
-                                "%r (%s)" % (dest, type(dest)))
-
-            return len(ebml)
-
-
-    def _parseConfig(self,
-                     origConfig: dict,
-                     default: Optional[dict] = None) -> dict:
-        """ Helper method to read configuration info from a file. Used
-            internally.
-        """
-        # NOTE: This is likely to change in the future with the next round of configui updates
-
-        config = {} if default is None else default.copy()
-
-        if 'RecorderConfigurationList' in origConfig:
-            # New style config (FW 12 and up)
-            root = origConfig.get('RecorderConfigurationList', None)
-            if root:
-                for item in root.get('RecorderConfigurationItem', []):
-                    k = item.get('ConfigID', None)
-                    v = None
-                    for x in item:
-                        if x == "BooleanValue":
-                            v = bool(item[x])
-                            break
-                        elif x.endswith('Value'):
-                            v = item[x]
-                            break
-                    if k is not None and v is not None:
-                        config[k] = v
-
-        return config
-
-
-    def _encodeConfig(self, data):
-        """ Reverses the parsing done to create a valid config dict for newer
-            devices.
-        """
-        origConfig = self._getConfig()
-        if 'RecorderConfigurationList' in origConfig:
-            # New style config (FW 12 and up)
-            root = origConfig.get('RecorderConfigurationList', None)
-            if root:
-                newConfigs = []
-                for item in root.get('RecorderConfigurationItem', []):
-                    configId = item.get('ConfigID', None)
-                    if configId in data:
-                        newItem = item.copy()
-                        dataKey = next(filter(lambda x: 'Value' in x, newItem.keys()))
-                        newItem[dataKey] = data[configId]
-                        newConfigs.append(newItem)
-                    else:
-                        newConfigs.append(item.copy())
-                return {'RecorderConfigurationItem': newConfigs}
-
-        raise ConfigError
-
-
-    def getConfig(self) -> dict:
-        """ Get the recorder's configuration data.
-        """
-        with self._busy:
-            if self._config is not None:
-                return self._config
-
-            if not self.path or not os.path.isfile(self.configFile):
-                return None
-
-            devinfo = self._getConfig()
-            config = self._parseConfig(devinfo)
-
-            if self._config is None:
-                self._config = config
-            else:
-                # Modify in place, just in case.
-                self._config.clear()
-                self._config.update(config)
-
-            return self._config
-
-
-    def _getConfig(self):
-        """ Get the unmodified dict from the config file, will be replaced later. """
-        with loadSchema("mide_ide.xml").load(self.configFile) as conf:
-            return conf.dump()
 
 
     @property
@@ -622,8 +506,10 @@ class Recorder:
                 for b in bytearray(info['UniqueChipIDLong']):
                     chid = (chid << 8) | b
                 self._chipId = chid
+            elif 'UniqueChipID' in info:
+                self._chipId = info['UniqueChipID']
             else:
-                self._chipId = info.get('UniqueChipID', 0)
+                return None
 
         return self._chipId
 
@@ -635,7 +521,7 @@ class Recorder:
             (optionally) a `BOM version` letter. Older versions will be
             a single number.
         """
-        rev = self.getInfo('HwRev', -1)
+        rev = self.hardwareVersionInt
         try:
             if rev > 99:
                 # New structure of HwRev, which includes version, revision,
@@ -643,7 +529,13 @@ class Recorder:
                 major = int(rev/10000)
                 minor = int((rev % 10000) / 100)
                 bom = rev % 100
-                rev = f"{major}.{minor}{chr(bom+64) if bom > 0 else ''}"
+                if bom == 0:
+                    bom = ""
+                elif bom <= 26:
+                    bom = chr(bom+64)
+                else:
+                    bom = f"_{bom}"
+                rev = f"{major}.{minor}{bom}"
         except TypeError:
             pass
         return str(rev)
@@ -651,7 +543,8 @@ class Recorder:
 
     @property
     def hardwareVersionInt(self) -> int:
-        """ The recorder's manufacturer-issued hardware version number. """
+        """ The recorder's manufacturer-issued hardware version number.
+        """
         return self.getInfo('HwRev', -1)
 
     @property
@@ -738,6 +631,9 @@ class Recorder:
             reported range (particularly for digital sensors) is that of the
             subchannel's parser, and may exceed values actually produced by
             the sensor.
+
+            :param subchannel: An `idelib.dataset.SubChannel` instance,
+                e.g., from the recorder's `channels` dictionary.
         """
         # XXX: WIP
         key = (subchannel.parent.id, subchannel.id)
@@ -938,14 +834,12 @@ class Recorder:
         return self.command.getClockDrift(pause=pause, retries=retries)
 
 
-    def _parsePolynomials(self, stream) -> dict:
+    def _parsePolynomials(self, cal: MasterElement) -> Dict[int, Transform]:
         """ Helper method to parse CalibrationList EBML into `Transform`
             objects.
         """
         try:
             parser = CalibrationListParser(None)
-            # stream.seek(0)
-            cal = loadSchema("mide_ide.xml").load(stream)
             calPolys = parser.parse(cal[0])
             if calPolys:
                 calPolys = {p.id: p for p in calPolys if p is not None}
@@ -975,8 +869,8 @@ class Recorder:
          calOffset, calSize,
          propOffset, propSize) = struct.unpack_from("<HHHHHH", data)
 
-        manData = BytesIO(data[manOffset:manOffset + manSize])
-        self._calData = BytesIO(data[calOffset:calOffset + calSize])
+        manData = data[manOffset:manOffset + manSize]
+        calData = data[calOffset:calOffset + calSize]
 
         # _propData is read and cached here but parsed in `getSensors()`.
         # New devices use a dynamically-generated properties file, which
@@ -991,11 +885,11 @@ class Recorder:
             self._propData = data[propOffset:propOffset + propSize]
 
         try:
-            self._manData = loadSchema("mide_manifest.xml").load(manData)
+            self._manData = loadSchema("mide_manifest.xml").loads(manData)
             self._manifest = self._manData.dump().get('DeviceManifest')
 
-            calDict = loadSchema("mide_ide.xml").load(self._calData).dump()
-            self._calibration = calDict.get('CalibrationList')
+            self._calData = loadSchema("mide_ide.xml").loads(calData)
+            self._calibration = self._calData.dump().get('CalibrationList')
 
         except (AttributeError, KeyError) as err:
             logger.debug("_readUserpage() raised a possibly-allowed exception: %r" % err)
@@ -1009,20 +903,23 @@ class Recorder:
             data is a superset of the information returned by `getInfo()`.
 
             Factory calibration and recorder properties are also read and
-            cached for backwards compatibility, since one or both are in the
-            older devices' EFM32 'userpage'.
+            cached for backwards compatibility, since both are in the older
+            devices' EFM32 'userpage'.
         """
         manFile = os.path.join(self.path, self._MANIFEST_FILE)
         calFile = os.path.join(self.path, self._SYSCAL_FILE)
 
         try:
-            self._manData = loadSchema("mide_manifest.xml").load(manFile)
+            with open(manFile, 'rb') as f:
+                self._manData = loadSchema("mide_manifest.xml").loads(f.read())
             self._manifest = self._manData.dump().get('DeviceManifest')
         except (FileNotFoundError, AttributeError, KeyError) as err:
             logger.debug(f"Possibly-allowed exception when reading {manFile}: {err!r}")
 
         try:
-            calDict = loadSchema("mide_ide.xml").load(calFile).dump()
+            with loadSchema("mide_ide.xml").load(calFile) as doc:
+                self._calData = doc.schema.loads(doc.getRaw())
+                calDict = self._calData.dump()
             self._calibration = calDict.get('CalibrationList')
         except (FileNotFoundError, AttributeError, KeyError) as err:
             logger.debug(f"Possibly-allowed exception when reading {calFile}: {err!r}")
@@ -1084,12 +981,15 @@ class Recorder:
                 `.dat` file to read (as opposed to the device's standard
                 user calibration).
         """
+        if self.isVirtual and not filename:
+            return None
+
         filename = self.userCalFile if filename is None else filename
         if filename is None or not os.path.exists(filename):
             return None
         if self._userCalPolys is None:
-            with open(filename, 'rb') as f:
-                self._userCalPolys = self._parsePolynomials(f)
+            with loadSchema('mide_ide.xml').load(filename) as doc:
+                self._userCalPolys = self._parsePolynomials(doc)
         return self._userCalPolys
 
 

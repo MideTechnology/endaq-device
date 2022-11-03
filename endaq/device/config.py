@@ -4,13 +4,15 @@ Interfaces for configuring enDAQ recorders.
 Note: Wi-Fi configuration is done through the command interface. Changes
 though the configuration interface are applied when the device next
 resets or starts recording, while Wi-Fi changes take effect immediately.
-This also keeps Wi-Fi access point passwords secret.
+This also keeps Wi-Fi access point passwords secret. Similarly, setting the
+device's realtime clock is also done through the command interface, as it
+also takes effect immediately.
 """
 
 import errno
 import logging
 import os.path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 from ebmlite.core import loadSchema
 from ebmlite.core import Document, Element, MasterElement
@@ -19,6 +21,9 @@ from idelib.dataset import Channel, SubChannel
 from . import ui_defaults
 from .exceptions import ConfigError, UnsupportedFeature
 from . import util
+
+if TYPE_CHECKING:
+    from .base import Recorder
 
 logger = logging.getLogger('endaq.device')
 
@@ -74,7 +79,7 @@ class ConfigItem:
     # Default expression code objects for ValueFormat and DisplayFormat.
     # `noEffect` always returns the field's value unmodified (supplied as the
     # variable ``x``).
-    noEffect = compile("x", "<ConfigBase.noEffect>", "eval")
+    noEffect = compile("x", "<ConfigItem.noEffect>", "eval")
 
 
     @classmethod
@@ -185,7 +190,7 @@ class ConfigItem:
             self.configValue = value
 
         if interface and self.vtype:
-            self.dtype = interface.schema[self.vtype].dtype
+            self.dtype = interface._schema[self.vtype].dtype
 
         self._originalValue = self.value
 
@@ -338,17 +343,19 @@ class ConfigItem:
         return None
 
 
-# ===============================================================================
+# ===========================================================================
 #
-# ===============================================================================
+# ===========================================================================
 
 class ConfigInterface:
     """
     Base class for mechanisms to access/modify device configuration.
 
-    :ivar config: Device configuration data. May be set manually to override
-        defaults. Manual setting must be done after instantiation and before
-        accessing config elements via `item` or `name`.
+    :ivar config: Device configuration data (e.g., data read from the config
+        file). This may be set manually to override defaults and/or existing
+        configuration data. Manual setting must be done after instantiation
+        and before accessing config elements via the interface's `item` or
+        `name` attributes.
     :ivar configUi: Device configuration UI information. May be set manually
         to override defaults. Manual setting must be done after instantiation
         and before accessing config elements via `item` or `name`.
@@ -356,16 +363,17 @@ class ConfigInterface:
         keyed by Config ID. Items read from the configuration file that do
         not match items in the ConfigUI data go into the dictionary. These
         will (by default) be written back to the config file verbatim.
-        Arbitrary items may be added manually (primarily for debugging).
+        `unknownConfig` may also be used to manually add arbitrary items to
+        the config file.
     """
 
-    def __init__(self, device):
+    def __init__(self, device: "Recorder"):
         """ Constructor. Note that the actual initialization (loading the
             ConfigUI and configuration data) is done when first accessed.
 
             :param device: The Recorder to configure.
         """
-        self.schema = loadSchema('mide_config_ui.xml')
+        self._schema = loadSchema('mide_config_ui.xml')
         self.device = device
         self.configUi: Optional[MasterElement] = None
         self.config: Optional[MasterElement] = None
@@ -383,7 +391,7 @@ class ConfigInterface:
 
 
     @property
-    def items(self) -> dict:
+    def items(self) -> Dict[int, ConfigItem]:
         """ All defined configuration items for the device, keyed by
             Config ID.
         """
@@ -398,12 +406,12 @@ class ConfigInterface:
 
 
     @items.setter
-    def items(self, items: dict):
+    def items(self, items: Dict[int, ConfigItem]):
         self._items = items
 
 
     @property
-    def names(self) -> dict:
+    def names(self) -> Dict[str, ConfigItem]:
         """ All defined configuration items for the device, keyed by
             name/label, as read from the fields in the recorder's
             configuration UI data. Note that some items may not have names,
@@ -414,12 +422,12 @@ class ConfigInterface:
 
 
     @names.setter
-    def names(self, names: dict):
+    def names(self, names: Dict[str, ConfigItem]):
         self._names = names
 
 
     @classmethod
-    def hasInterface(cls, device) -> bool:
+    def hasInterface(cls, device: "Recorder") -> bool:
         """ Determine if a device supports this `ConfigInterface` type.
 
             :param device: The Recorder to check.
@@ -478,7 +486,8 @@ class ConfigInterface:
         if unknown:
             for k, v in self.unknownConfig.items():
                 config.append({'ConfigID': k, v[0]: v[1]})
-        return {'RecorderConfigurationList': {'RecorderConfigurationItem': config}}
+        return {'RecorderConfigurationList':
+                    {'RecorderConfigurationItem': config}}
 
 
     def getConfigUI(self):
@@ -495,7 +504,7 @@ class ConfigInterface:
 
 
     def applyConfig(self, unknown: bool = True):
-        """ Apply modified configuration data to the device.
+        """ Apply configuration data to the device.
 
             :param unknown: If `True`, include values that do not correspond
                 to known configuration items (e.g., originally read from the
@@ -617,7 +626,7 @@ class ConfigInterface:
         self._setitem(0x0aff7f, action)
 
     @property
-    def pluginActions(self) -> dict:
+    def pluginActions(self) -> Dict[int, str]:
         """ The list of all known Plug-In Action options. """
         return self._getitem(0x0aff7f).options
 
@@ -633,7 +642,7 @@ class ConfigInterface:
         self._setitem(0x10ff7f, mode)
 
     @property
-    def buttonModes(self) -> dict:
+    def buttonModes(self) -> Dict[int, str]:
         """ The list of all known Button Mode options. """
         return self._getitem(0x10ff7f).options
 
@@ -689,17 +698,20 @@ class ConfigInterface:
 
     def _encodeChannel(self,
                        channel: Union[Channel, SubChannel]) -> int:
-        """ Create the low 2 bytes of a channel-specific config ID (high byte
-            is channel ID, low byte is subchannel ID or 0xFF if not a
+        """ Create the low 2 bytes of a channel-specific config ID (low byte
+            is channel ID, high byte is subchannel ID or 0xFF if not a
             `SubChannel`).
 
             :param channel: The channel or subchannel to encode
             :return: The encoded channel ID
         """
         if isinstance(channel, SubChannel):
-            return channel.parent.id << 8 | channel.id
+            return channel.id << 8 | channel.parent.id
+        elif isinstance(channel, Channel):
+            return channel.id | 0xff00
         else:
-            return channel.id << 8 | 0xff
+            raise TypeError("Expected a Channel or SubChannel object, "
+                            "got {}".format(type(channel)))
 
 
     def enableChannel(self,
@@ -710,23 +722,38 @@ class ConfigInterface:
             :param channel: The channel or subchannel to enable/disable.
             :param enabled: `True` to enable the channel/subchannel recording.
         """
-        configId = self._getChannelConfigId(0x01, channel)
+        configId = self._getChannelConfigId(0x010000, channel)
         enItem = self._getitem(configId)
 
         # Some subchannels (analog) are enabled explicitly with their own
         # config ID. Others (mostly digital) use bits in a single config item.
         if enItem.element.name.endswith('BitField'):
-            if not isinstance(channel, SubChannel):
-                raise ConfigError('ConfigUI {} not applicable to {}'.format(enItem, channel))
+            # Some Channels without individually-configurable SubChannels use
+            # a one-item BitField.
+            if len(enItem.options) == 1:
+                if isinstance(channel, SubChannel):
+                    raise ConfigError('ConfigUI {} not applicable to {}; '
+                                      'use a Channel instead'.format(enItem, channel))
+                enabled = int(enabled)
 
-            val = enItem.value
-            if val is None:
-                val = int('1' * len(channel.parent.children), 2)
-            bit = (1 << channel.id)
-            if enabled:
-                enabled = val | bit
             else:
-                enabled = val ^ bit
+                if not isinstance(channel, SubChannel):
+                    raise ConfigError('ConfigUI {} not applicable to {}; '
+                                      'use a SubChannel instead'.format(enItem, channel))
+
+                val = enItem.value
+                if val is None:
+                    val = 2 ** len(channel.parent.children) - 1
+                bit = (1 << channel.id)
+                if enabled:
+                    # Set
+                    enabled = val | bit
+                elif val & bit:
+                    # Clear if set
+                    enabled = val ^ bit
+                else:
+                    # No change
+                    enabled = val
 
         enItem.value = enabled
 
@@ -739,7 +766,7 @@ class ConfigInterface:
         :param channel: The `Channel` or `SubChannel` to check.
         :return: `True` if configured to record.
         """
-        configId = self._getChannelConfigId(0x01, channel)
+        configId = self._getChannelConfigId(0x010000, channel)
         enItem = self._getitem(configId)
         en = enItem.value
         if enItem.element.name.endswith('BitField') and isinstance(channel, SubChannel):
@@ -775,13 +802,21 @@ class ConfigInterface:
 
             :param channel: The channel or subchannel to configure.
             :keyword low: The trigger's low threshold value (if applicable).
-            :keyword high: The trigger's high threshold value (if applicable)
+            :keyword high: The trigger's high threshold value (if applicable).
+                Also used for sensors that have only an absolute threshold
+                trigger (e.g., a shock trigger).
             :keyword enabled: `True` to enable the channel/subchannel trigger.
-                Values of `high` and `low` are optional if `False`.
+                Threshold arguments are Values of `high` and `low` are optional if `False`.
         """
         loId = self._getChannelConfigId(0x030000, channel)
         hiId = self._getChannelConfigId(0x040000, channel)
-        enId = self._getChannelConfigId(0x010000, channel)
+        enId = self._getChannelConfigId(0x050000, channel)
+
+        # Some sensors have a main channel-level trigger enable as well as
+        # individual subchannel triggers. These main enables have a different
+        # 'prefix' byte (0x07).
+        if enId not in self.items and enId & 0x00ff00:
+            enId = self._getChannelConfigId(0x070000, channel)
 
         # Fail before setting if any ConfigID is unknown is bad.
         if 'low' in kwargs and loId not in self.items:
@@ -817,7 +852,7 @@ class ConfigInterface:
         """
         loId = self._getChannelConfigId(0x030000, channel)
         hiId = self._getChannelConfigId(0x040000, channel)
-        enId = self._getChannelConfigId(0x010000, channel)
+        enId = self._getChannelConfigId(0x050000, channel)
 
         trig = {}
         if loId in self.items:
@@ -843,7 +878,7 @@ class ConfigInterface:
             :param channel: The `Channel` to set.
             :param sampleRate: The new sampling rate, in hertz.
         """
-        configId = self._encodeChannel(channel) | 0x020000
+        configId = 0x020000 | self._encodeChannel(channel)
         self._getitem(configId).value = sampleRate
 
 
@@ -863,7 +898,8 @@ class ConfigInterface:
 
             :return: A list of all trigger configuration items.
         """
-        return [v for v in self.items.values() if v.configId & 0xff0000 in (0x030000, 0x040000)]
+        return [v for v in self.items.values()
+                if v.configId & 0xff0000 in (0x030000, 0x040000)]
 
 
 # ===========================================================================
@@ -877,7 +913,7 @@ class VirtualConfigInterface(ConfigInterface):
     """
 
     @classmethod
-    def hasInterface(cls, device) -> bool:
+    def hasInterface(cls, device: "Recorder") -> bool:
         """
         Determine if a device supports this `ConfigInterface` type.
 
@@ -901,7 +937,7 @@ class VirtualConfigInterface(ConfigInterface):
 
     def getConfig(self):
         """ Low-level method that retrieves the device's config EBML (e.g.,
-            the contents of a real device's `config.cfg` file), if any.
+            the contents of a real device's ``config.cfg`` file), if any.
         """
         # This will have been cached when Recorder.fromRecording() was called
         return self.device._config
@@ -942,7 +978,7 @@ class FileConfigInterface(ConfigInterface):
     """
 
     @classmethod
-    def hasInterface(cls, device) -> bool:
+    def hasInterface(cls, device: "Recorder") -> bool:
         """
         Determine if a device supports this `ConfigInterface` type.
 
@@ -957,7 +993,8 @@ class FileConfigInterface(ConfigInterface):
         """
         if not self.configUi:
             if os.path.isfile(self.device.configUIFile):
-                self.configUi = self.schema.load(self.device.configUIFile)
+                with open(self.device.configUIFile, 'rb') as f:
+                    self.configUi = self._schema.loads(f.read())
             else:
                 self.configUi = ui_defaults.getDefaultConfigUI(self.device)
                 if not self.configUi:
@@ -970,7 +1007,8 @@ class FileConfigInterface(ConfigInterface):
             the contents of a real device's `config.cfg` file), if any.
         """
         if os.path.isfile(self.device.configFile):
-            return self.schema.load(self.device.configFile)
+            with open(self.device.configFile, 'rb') as f:
+                return self._schema.loads(f.read())
         return None
 
 
@@ -981,8 +1019,10 @@ class FileConfigInterface(ConfigInterface):
                 to known configuration items (e.g., originally read from the
                 config file).
         """
+        # Do encoding before opening the file, so it can fail safely and not
+        # affect any existing config file.
         config = self._makeConfig(unknown)
-        configEbml = self.schema.encode(config, headers=False)
+        configEbml = self._schema.encodes(config, headers=False)
 
         try:
             util.makeBackup(self.device.configFile)

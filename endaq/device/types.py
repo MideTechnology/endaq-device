@@ -20,11 +20,15 @@ class Drive(NamedTuple):
     type: Optional[str]
 
 
+    def __str__(self):
+        return str(self.path)
+
+
 # ==============================================================================
 # Type hinting definitions
 # ==============================================================================
 
 Epoch = TypeVar('Epoch', float, int)
-Filename = TypeVar('Filename', AnyStr, Path, Drive)
+Filename = TypeVar('Filename', str, Path, Drive)
 
 
