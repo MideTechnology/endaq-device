@@ -9,6 +9,7 @@ import pytest
 import endaq.device
 from endaq.device import getRecorder
 from endaq.device import config, ui_defaults
+from endaq.device.exceptions import ConfigError
 
 from endaq.device.util import makeBackup
 
@@ -22,6 +23,7 @@ DEVICES = [pytest.param(getRecorder(path, strict=False), id=os.path.basename(pat
            for path in RECORDER_PATHS]
 
 RECORDER_ROOTS = [os.path.basename(p) for p in RECORDER_PATHS]
+
 
 @pytest.fixture(scope="session")
 def dev_copy_dir(tmpdir_factory):
@@ -61,7 +63,9 @@ def test_temp(path, dev_copy_dir):
 
 @pytest.mark.parametrize("path", RECORDER_ROOTS)
 def test_config_enable(path, dev_copy_dir):
-    """ Test setting, writing, and reading channel enable. """
+    """ Test setting, writing, and reading channel enable. These items can
+        be handled differently internally, so several channels are tested.
+    """
     dev = getRecorder(dev_copy_dir / path, strict=False)
 
     # Remove existing config.cfg files (if any)
@@ -71,7 +75,10 @@ def test_config_enable(path, dev_copy_dir):
 
     # This will instantiate the ConfigInterface
     config = dev.config
+    assert config
 
+    # Test channels 8 and 59. These have 3 or more subchannels which can
+    # be enabled/disabled individually. Most fake recorders have these.
     for chId in (8, 59):
         if chId not in dev.channels:
             continue
@@ -80,23 +87,30 @@ def test_config_enable(path, dev_copy_dir):
         dev.config.enableChannel(dev.channels[chId][1], True)
         dev.config.enableChannel(dev.channels[chId][2], False)
 
-        # configId = 0x010000 | dev.config._encodeChannel(dev.channels[chId])
-        # assert dev.config.items[configId].value == False
+        # Verify these subchannels can only be enabled individually
+        with pytest.raises(ConfigError):
+            dev.config.enableChannel(dev.channels[chId], True)
 
         assert dev.config.isEnabled(dev.channels[chId][0]) is False
         assert dev.config.isEnabled(dev.channels[chId][1]) is True
         assert dev.config.isEnabled(dev.channels[chId][2]) is False
 
+    # Test channel 80. It as 3 subchannels, but they cannot be individually
+    # enabled/disabled. '*D40' recorders have this channel.
     if 80 in dev.channels:
         dev.config.enableChannel(dev.channels[80], False)
         assert dev.config.isEnabled(dev.channels[80]) is False
 
+        # Verify only the channel as a whole can be enabled
+        with pytest.raises(ConfigError):
+            dev.config.enableChannel(dev.channels[80][0], True)
+
+    # Save config
     dev.config.applyConfig()
 
     # Remove the old ConfigInterface and make a new one, ensuring all
     # config values are being read from the config file.
     dev.config = None
-    assert dev.config
     assert dev.config is not config
 
     for chId in (8, 59):

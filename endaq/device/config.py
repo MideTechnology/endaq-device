@@ -799,9 +799,11 @@ class ConfigInterface:
 
             :param channel: The channel or subchannel to configure.
             :keyword low: The trigger's low threshold value (if applicable).
-            :keyword high: The trigger's high threshold value (if applicable)
+            :keyword high: The trigger's high threshold value (if applicable).
+                Also used for sensors that have only an absolute threshold
+                trigger (e.g., a shock trigger).
             :keyword enabled: `True` to enable the channel/subchannel trigger.
-                Values of `high` and `low` are optional if `False`.
+                Threshold arguments are Values of `high` and `low` are optional if `False`.
         """
         loId = self._getChannelConfigId(0x030000, channel)
         hiId = self._getChannelConfigId(0x040000, channel)
@@ -812,9 +814,6 @@ class ConfigInterface:
         # 'prefix' byte (0x07).
         if enId not in self.items and enId & 0x00ff00:
             enId = self._getChannelConfigId(0x070000, channel)
-
-        if 'threshold' in kwargs:
-            kwargs.setdefault('low', kwargs.pop('threshold'))
 
         # Fail before setting if any ConfigID is unknown is bad.
         if 'low' in kwargs and loId not in self.items:

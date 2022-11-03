@@ -40,6 +40,20 @@ def test_basic_instantiation(path):
     assert dev.partNumber == os.path.basename(path)
 
 
+@pytest.mark.parametrize("path", RECORDER_PATHS)
+def test_basic_caching(path):
+    """ Test that previously created recorders are cached and reused.
+    """
+    dev = endaq.device.getRecorder(path, strict=False)
+    dev2 = endaq.device.getRecorder(path, strict=False)
+    assert dev is dev2
+
+    # Clear cache and verify new recorders are created
+    endaq.device.RECORDERS.clear()
+    dev3 = endaq.device.getRecorder(path, strict=False)
+    assert dev is not dev3
+
+
 def test_getDevices():
     """ Test of `getDevices()`, comparing found device paths to the list of
         fake recorder directories.
