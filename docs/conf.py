@@ -43,8 +43,7 @@ extensions = [
     'sphinx.ext.todo',
     'sphinx.ext.ifconfig',
     'sphinx.ext.githubpages',
-    # 'sphinx_plotly_directive',
-    # 'nbsphinx',
+    'sphinx_autodoc_typehints',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -74,11 +73,14 @@ exclude_patterns = []
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = None
 
-
 autoclass_content = "both"
 autodoc_typehints = "description"
 autodoc_typehints_description_target = "documented"
 
+# Options for sphinx_autodoc_typehints
+typehints_defaults = 'comma'
+typehints_document_rtype = False
+# simplify_optional_unions = False
 
 # -- Options for HTML output -------------------------------------------------
 
