@@ -43,7 +43,7 @@ setuptools.setup(
         keywords='endaq configure recorder hardware',
         packages=[
             'endaq.device',
-            'endaq.device.defaults',
+            'endaq.device.ui_defaults',
             'endaq.device.schemata',
             ],
         package_dir={
