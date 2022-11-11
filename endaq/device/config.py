@@ -85,7 +85,7 @@ class ConfigItem:
     @classmethod
     def _generateLabel(cls, configId: int) -> Union[str, None]:
         """ Helper method to create a 'label' string from a ConfigID (using
-            the standard conventions) if the *Field element does not contain
+            the standard conventions) if the \*Field element does not contain
             one. Mainly works for standard channel/subchannel-specific fields.
         """
         if configId in cls.DEFAULT_LABELS:
@@ -115,9 +115,9 @@ class ConfigItem:
                  data: Optional[dict] = None,
                  value: Optional[Any] = None):
         """
-        Constructor. Note: `ConfigItem` is rarely (if ever) explicitly
-        instantiated; instances are automatically created by a
-        `ConfigInterface`, using CONFIG.UI data.
+        `ConfigItem` is rarely (if ever) explicitly instantiated; instances
+        are automatically created by a `ConfigInterface`, using CONFIG.UI
+        data.
 
         :param interface: The 'parent' `ConfigInterface`.
         :param element: The raw CONFIG.UI `*Field` EBML element.
@@ -192,6 +192,7 @@ class ConfigItem:
         if interface and self.vtype:
             self.dtype = interface._schema[self.vtype].dtype
 
+        self._changed = False
         self._originalValue = self.value
 
 
@@ -313,13 +314,20 @@ class ConfigItem:
 
 
     @property
-    def changed(self):
-        """ Has the value of the ConfigItem changed since the last time it
-            was checked?
+    def changed(self) -> bool:
+        """ Has the value of the ConfigItem changed? `True` if the current
+            value differs from the previous value. This can also be manually
+            set to `True` or `False`, although if set `False`, changing the
+            ConfigItem's value afterwards will override it.
         """
-        changed = self._value != self._originalValue
-        self._originalValue = self._value
-        return changed
+        return self._changed or self._value != self._originalValue
+
+
+    @changed.setter
+    def changed(self, changed: bool) -> bool:
+        if not changed:
+            self._originalValue = self._value
+        self._changed = changed
 
 
     def reset(self):
@@ -368,8 +376,10 @@ class ConfigInterface:
     """
 
     def __init__(self, device: "Recorder"):
-        """ Constructor. Note that the actual initialization (loading the
-            ConfigUI and configuration data) is done when first accessed.
+        """ `ConfigInterface` instances are rarely (if ever) explicitly
+            created; the parent `Recorder` object will create the
+            appropriate `ConfigInterface` when its `config` property is
+            first accessed.
 
             :param device: The Recorder to configure.
         """
@@ -474,6 +484,10 @@ class ConfigInterface:
     def _makeConfig(self, unknown: bool = True) -> dict:
         """ Generate a dictionary of configuration data.
 
+            Note: this is currently used directly by another project (the
+            config GUI's exporter). Be careful modifying until import/export
+            has been moved to this package and the config GUI is updated.
+
             :param unknown: If `True`, include configuration items in the
                 `ConfigInterface`'s `unknownConfig`; items read from the
                 configuration file but have IDs that do not correspond to
@@ -501,6 +515,31 @@ class ConfigInterface:
             the contents of a real device's `config.cfg` file), if any.
         """
         raise NotImplementedError("getConfig() not implemented")
+
+
+    def getConfigValues(self,
+                        defaults: bool = False,
+                        none: bool = False,
+                        unknown: bool = True) -> Dict[int, Any]:
+        """ Get the device configuration as a dictionary of config IDs and
+            values.
+
+            :param defaults: If `False`, exclude items with their default
+                values.
+            :param none: If `False`, exclude items with values of `None`.
+            :param unknown: If `True`, include values read from the
+                config file that do not correspond to know configuration
+                items.
+        """
+        conf = {item.configId: item.value for item in self.items.values()
+                if ((defaults or item.value != item.default) and
+                    (none or item.value is not None))}
+
+        if unknown:
+            for k, v in self.unknownConfig:
+                conf[k] = v[1]
+
+        return conf
 
 
     def applyConfig(self, unknown: bool = True):
@@ -534,6 +573,7 @@ class ConfigInterface:
                 v = next(filter(lambda x: 'Value' in x[0], item.items()))
                 if k in self.items:
                     self.items[k].value = v[1]
+                    self.items[k].changed = False
                 else:
                     self.unknownConfig[k] = v
 
@@ -627,7 +667,9 @@ class ConfigInterface:
 
     @property
     def pluginActions(self) -> Dict[int, str]:
-        """ The list of all known Plug-In Action options. """
+        """ The IDs and descriptions of all known Plug-In Action options.
+            Read only.
+        """
         return self._getitem(0x0aff7f).options
 
     @property
@@ -643,7 +685,9 @@ class ConfigInterface:
 
     @property
     def buttonModes(self) -> Dict[int, str]:
-        """ The list of all known Button Mode options. """
+        """ The IDs and descriptions of all known Button Mode options.
+            Read only.
+        """
         return self._getitem(0x10ff7f).options
 
     @property
@@ -1012,12 +1056,15 @@ class FileConfigInterface(ConfigInterface):
         return None
 
 
-    def applyConfig(self, unknown: bool = True):
+    def applyConfig(self,
+                    unknown: bool = True,
+                    clear: bool = True):
         """ Apply modified configuration data to the device.
 
             :param unknown: If `True`, include values that do not correspond
                 to known configuration items (e.g., originally read from the
                 config file).
+            :param clear: If `True`, mark all items as unchanged.
         """
         # Do encoding before opening the file, so it can fail safely and not
         # affect any existing config file.
@@ -1028,12 +1075,15 @@ class FileConfigInterface(ConfigInterface):
             util.makeBackup(self.device.configFile)
             with open(self.device.configFile, 'wb') as f:
                 f.write(configEbml)
+
+            if clear:
+                for item in self.items.values():
+                    item.changed = False
+
         except Exception:
             # Write failed, restore old config file
             util.restoreBackup(self.device.configFile, remove=False)
             raise
-
-        self.getChanges()  # to clear the change list
 
 
 # ===========================================================================
