@@ -159,7 +159,7 @@ class ConfigItem:
                 # (if present; fallback behaviors below)
                 self.vtype, self.default = k, v
             else:
-                # Elements with data type as suffix
+                # Elements with data type as prefix
                 for attr in ("Min", "Max", "Gain", "Offset"):
                     if k.endswith(attr):
                         setattr(self, attr.lower(), v)
@@ -215,7 +215,7 @@ class ConfigItem:
         return parsedoptions
 
 
-    def makeExpression(self, exp: str, name: str = ""):
+    def makeExpression(self, exp: Optional[str], name: str = ""):
         """ Helper method for compiling an expression in a string into a code
             object that can later be used with `eval()`. Used internally.
 
@@ -224,10 +224,15 @@ class ConfigItem:
                 "valueFormat"), embedded in the resulting code object. Mostly
                 for debugging.
         """
-        if not exp:
+        if exp is None:
             # No expression defined: value is returned unmodified (it matches
             # the config item's type)
             return self.noEffect
+        elif exp == '':
+            # Expression element exists, but empty: Config item generates no
+            # output. Usually for GUI interactivity (disabling one widget
+            # based on another, like CheckGroups).
+            return None
 
         # Create a nicely formatted, informative string for the compiled
         # expression's "filename" and for display if the expression is bad.
@@ -253,8 +258,8 @@ class ConfigItem:
         gain = 1.0 if self.gain is None else self.gain
         offset = 0.0 if self.offset is None else self.offset
 
-        self.displayFormat = "(x+{:.8f})*{:.8f}".format(offset, gain)
-        self.valueFormat = "x/{:.8f}-{:.8f}".format(gain, offset)
+        self.displayFormat = "(x + {:.8f}) * {:.8f}".format(offset, gain)
+        self.valueFormat = "x / {:.8f} - {:.8f}".format(gain, offset)
 
         self._displayFormat = self.makeExpression(self.displayFormat, "displayFormat")
         self._valueFormat = self.makeExpression(self.valueFormat, "valueFormat")
@@ -301,7 +306,8 @@ class ConfigItem:
     @property
     def configValue(self):
         """ The item's value, in the config file's native units. """
-        if self._value is None:
+        # Null string valueFormat
+        if self._value is None or self.valueFormat == '':
             return None
         return eval(self._valueFormat, {'x': self._value})
 
@@ -389,6 +395,7 @@ class ConfigInterface:
         self.configUi: Optional[MasterElement] = None
         self.config: Optional[MasterElement] = None
         self._items: Dict[int, ConfigItem] = {}
+        self._allitems: Dict[int, ConfigItem] = {}  # for debugging, mostly
 
         # Config values from the loaded configuration data that don't have
         # a corresponding field in the ConfigUI data. Keyed by ConfigID,
@@ -407,6 +414,7 @@ class ConfigInterface:
         """
         if not self.configUi:
             self._items.clear()
+            self._allitems.clear()
             self.configUi = self.getConfigUI()
             self.parseConfigUI(self.configUi)
             self.loadConfig()
@@ -417,6 +425,7 @@ class ConfigInterface:
     @items.setter
     def items(self, items: Dict[int, ConfigItem]):
         self._items = items
+        self._allitems.update(items)
 
 
     @classmethod
@@ -451,7 +460,11 @@ class ConfigInterface:
                 data = el.dump()
                 if 'ConfigID' in data:
                     item = ConfigItem(self, el, data)
-                    self.items[item.configId] = item
+                    self._allitems[item.configId] = item
+
+                    # Exclude items that don't generate config file values
+                    if item.valueFormat != '':
+                        self._items[item.configId] = item
 
             if el.name in ('ConfigUI', 'Tab') or 'Group' in el.name:
                 self.parseConfigUI(el)
