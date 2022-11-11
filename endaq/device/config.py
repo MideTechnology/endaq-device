@@ -19,7 +19,7 @@ from ebmlite.core import Document, Element, MasterElement
 from idelib.dataset import Channel, SubChannel
 
 from .exceptions import ConfigError, UnsupportedFeature
-from . import legacy
+# from . import legacy
 from . import ui_defaults
 from . import util
 
@@ -363,11 +363,11 @@ class ConfigInterface:
     :ivar config: Device configuration data (e.g., data read from the config
         file). This may be set manually to override defaults and/or existing
         configuration data. Manual setting must be done after instantiation
-        and before accessing config elements via the interface's `item` or
-        `name` attributes.
+        and before accessing config elements via the interface's `item`
+        attribute.
     :ivar configUi: Device configuration UI information. May be set manually
         to override defaults. Manual setting must be done after instantiation
-        and before accessing config elements via `item` or `name`.
+        and before accessing config elements via `item`.
     :ivar unknownConfig: A dictionary of configuration item types and values,
         keyed by Config ID. Items read from the configuration file that do
         not match items in the ConfigUI data go into the dictionary. These
@@ -385,11 +385,10 @@ class ConfigInterface:
             :param device: The Recorder to configure.
         """
         self._schema = loadSchema('mide_config_ui.xml')
-        self.device = device
+        self.device: Optional["Recorder"] = device
         self.configUi: Optional[MasterElement] = None
         self.config: Optional[MasterElement] = None
-        self._items = {}
-        self._names = {}
+        self._items: Dict[int, ConfigItem] = {}
 
         # Config values from the loaded configuration data that don't have
         # a corresponding field in the ConfigUI data. Keyed by ConfigID,
@@ -408,7 +407,6 @@ class ConfigInterface:
         """
         if not self.configUi:
             self._items.clear()
-            self._names.clear()
             self.configUi = self.getConfigUI()
             self.parseConfigUI(self.configUi)
             self.loadConfig()
@@ -419,22 +417,6 @@ class ConfigInterface:
     @items.setter
     def items(self, items: Dict[int, ConfigItem]):
         self._items = items
-
-
-    @property
-    def names(self) -> Dict[str, ConfigItem]:
-        """ All defined configuration items for the device, keyed by
-            name/label, as read from the fields in the recorder's
-            configuration UI data. Note that some items may not have names,
-            and will instead be keyed by ID.
-        """
-        _ = self.items
-        return self._names
-
-
-    @names.setter
-    def names(self, names: Dict[str, ConfigItem]):
-        self._names = names
 
 
     @classmethod
@@ -465,14 +447,13 @@ class ConfigInterface:
                 continue
 
             # Note: all MasterElement subclasses have the attribute `name`
-            if el.name.endswith("Field"):
+            if el.name.endswith("Field") or el.name == 'CheckGroup':
                 data = el.dump()
                 if 'ConfigID' in data:
                     item = ConfigItem(self, el, data)
                     self.items[item.configId] = item
-                    self.names[item.label or hex(item.configId)] = item
 
-            elif el.name in ('ConfigUI', 'Tab', 'Group', 'CheckGroup'):
+            if el.name in ('ConfigUI', 'Tab') or 'Group' in el.name:
                 self.parseConfigUI(el)
 
 
@@ -512,7 +493,7 @@ class ConfigInterface:
         return config
 
 
-    def _makeConfig(self, unknown: bool = True) -> dict:
+    def _makeConfig(self, unknown: bool = True) -> Dict[str, Any]:
         """ Generate a dictionary of configuration data, suitable for EBML
             encoding.
 
@@ -536,13 +517,13 @@ class ConfigInterface:
                     {'RecorderConfigurationItem': config}}
 
 
-    def getConfigUI(self):
+    def getConfigUI(self) -> Union[Document, MasterElement]:
         """ Get the device's ``<ConfigUI>`` data.
         """
         raise NotImplementedError("getConfigUI() not implemented")
 
 
-    def getConfig(self):
+    def getConfig(self) -> Union[Document, MasterElement]:
         """ Low-level method that retrieves the device's config EBML (e.g.,
             the contents of a real device's `config.cfg` file), if any.
         """
@@ -553,8 +534,8 @@ class ConfigInterface:
                         defaults: bool = False,
                         none: bool = False,
                         unknown: bool = True) -> Dict[int, Any]:
-        """ Get the device configuration as a dictionary of config IDs and
-            values.
+        """ Get the device configuration as a simple dictionary of values
+            keyed by config ID.
 
             :param defaults: If `False`, exclude items with their default
                 values.
@@ -628,9 +609,7 @@ class ConfigInterface:
             :return: The indicated `ConfigItem`.
         """
         try:
-            if item in self.items:
-                return self.items[item]
-            return self.names[item]
+            return self.items[item]
         except KeyError:
             s = hex(item) if isinstance(item, int) else repr(item)
             raise KeyError(item, "Config item {} not in CONFIG.UI data".format(s))
@@ -999,7 +978,7 @@ class VirtualConfigInterface(ConfigInterface):
         return device.isVirtual and super().hasInterface(device)
 
 
-    def getConfigUI(self):
+    def getConfigUI(self) -> Union[Document, MasterElement]:
         """ Load the virtual device's ``ConfigUI`` data.
         """
         # Use existing data, or data taken from source file
@@ -1010,12 +989,13 @@ class VirtualConfigInterface(ConfigInterface):
             self.configUi = ui_defaults.getDefaultConfigUI(self.device)
 
         if not self.configUi:
-            raise IOError(errno.ENOENT, "No default ConfigUI found for {}".format(self.device))
+            raise IOError(errno.ENOENT, "No default ConfigUI found for {}"
+                          .format(self.device))
 
         return self.configUi
 
 
-    def getConfig(self):
+    def getConfig(self) -> Union[Document, MasterElement]:
         """ Low-level method that retrieves the device's config EBML (e.g.,
             the contents of a real device's ``config.cfg`` file), if any.
         """
@@ -1079,7 +1059,7 @@ class FileConfigInterface(ConfigInterface):
         return super().hasInterface(device)
 
 
-    def getConfigUI(self):
+    def getConfigUI(self) -> Union[Document, MasterElement]:
         """ Load the device's `<ConfigUI>` data.
         """
         if not self.configUi:
@@ -1093,7 +1073,7 @@ class FileConfigInterface(ConfigInterface):
         return self.configUi
 
 
-    def getConfig(self):
+    def getConfig(self) -> Union[Document, MasterElement]:
         """ Low-level method that retrieves the device's config EBML (e.g.,
             the contents of a real device's `config.cfg` file), if any.
         """
@@ -1114,6 +1094,10 @@ class FileConfigInterface(ConfigInterface):
             :param clear: If `True`, mark all items as unchanged after
                 application.
         """
+        if not os.path.exists(self.device.path):
+            raise IOError(errno.ENOENT, "Could not find {}; is it connected?"
+                          .format(self.device))
+
         # Do encoding before opening the file, so it can fail safely and not
         # affect any existing config file.
         config = self._makeConfig(unknown)
