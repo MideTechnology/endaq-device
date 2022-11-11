@@ -18,8 +18,9 @@ from ebmlite.core import loadSchema
 from ebmlite.core import Document, Element, MasterElement
 from idelib.dataset import Channel, SubChannel
 
-from . import ui_defaults
 from .exceptions import ConfigError, UnsupportedFeature
+from . import legacy
+from . import ui_defaults
 from . import util
 
 if TYPE_CHECKING:
@@ -481,8 +482,39 @@ class ConfigInterface:
         return [item for item in self.items.values() if item.changed]
 
 
+    def _parseConfig(self,
+                     origConfig: dict,
+                     default: Optional[dict] = None) -> Dict[int, Any]:
+        """ Helper method to parse a dictionary of dumped EBML
+            ``RecorderConfigurationList`` data into a simple dictionary of
+            values keyed by ConfigID. Used internally.
+
+            :param origConfig: The unprocessed dictionary dumped from a
+                configuration EBML file.
+            :param default: A dictionary of default config values.
+        """
+        config = {} if default is None else default.copy()
+
+        root = origConfig.get('RecorderConfigurationList', None)
+        if root is None:
+            return None
+
+        for item in root.get('RecorderConfigurationItem', []):
+            configId = item.get('ConfigID', None)
+            if not configId:
+                continue
+
+            for k, v in item.items():
+                if k.endswith('Value') and v is not None:
+                    config[configId] = bool(item[v]) if "Boolean" in k else v
+                    break
+
+        return config
+
+
     def _makeConfig(self, unknown: bool = True) -> dict:
-        """ Generate a dictionary of configuration data.
+        """ Generate a dictionary of configuration data, suitable for EBML
+            encoding.
 
             Note: this is currently used directly by another project (the
             config GUI's exporter). Be careful modifying until import/export
@@ -505,7 +537,7 @@ class ConfigInterface:
 
 
     def getConfigUI(self):
-        """ Get the device's `<ConfigUI>` data.
+        """ Get the device's ``<ConfigUI>`` data.
         """
         raise NotImplementedError("getConfigUI() not implemented")
 
@@ -543,7 +575,7 @@ class ConfigInterface:
 
 
     def applyConfig(self, unknown: bool = True):
-        """ Apply configuration data to the device.
+        """ Apply (save) configuration data to the device.
 
             :param unknown: If `True`, include values that do not correspond
                 to known configuration items (e.g., originally read from the
@@ -968,14 +1000,18 @@ class VirtualConfigInterface(ConfigInterface):
 
 
     def getConfigUI(self):
-        """ Load the device's ``ConfigUI`` data.
+        """ Load the virtual device's ``ConfigUI`` data.
         """
+        # Use existing data, or data taken from source file
+        self.configUi = self.configUi or getattr(self.device, '_configUi', None)
+        if self.configUi:
+            return self.configUi
+        else:
+            self.configUi = ui_defaults.getDefaultConfigUI(self.device)
+
         if not self.configUi:
-            self.configUi = getattr(self.device, '_configUi', None)
-            if not self.configUi:
-                self.configUi = ui_defaults.getDefaultConfigUI(self.device)
-                if not self.configUi:
-                    raise IOError(errno.ENOENT, "No default ConfigUI found for {}".format(self.device))
+            raise IOError(errno.ENOENT, "No default ConfigUI found for {}".format(self.device))
+
         return self.configUi
 
 
@@ -1029,7 +1065,18 @@ class FileConfigInterface(ConfigInterface):
         :param device: The Recorder to check.
         :return: `True` if the device supports the interface.
         """
-        return not device.isVirtual and super().hasInterface(device)
+        if device.isVirtual:
+            return False
+
+        # Very simple initial check: is there a CONFIG.UI file?
+        # Unlikely to fail, but in a `try` just in case.
+        try:
+            if os.path.isfile(device.configUIFile):
+                return True
+        except IOError:
+            pass
+
+        return super().hasInterface(device)
 
 
     def getConfigUI(self):
@@ -1050,21 +1097,22 @@ class FileConfigInterface(ConfigInterface):
         """ Low-level method that retrieves the device's config EBML (e.g.,
             the contents of a real device's `config.cfg` file), if any.
         """
-        if os.path.isfile(self.device.configFile):
+        try:
             with open(self.device.configFile, 'rb') as f:
                 return self._schema.loads(f.read())
-        return None
+        except IOError:
+            return None
 
 
     def applyConfig(self,
                     unknown: bool = True,
                     clear: bool = True):
-        """ Apply modified configuration data to the device.
+        """ Save modified configuration data to the device.
 
-            :param unknown: If `True`, include values that do not correspond
-                to known configuration items (e.g., originally read from the
-                config file).
-            :param clear: If `True`, mark all items as unchanged.
+            :param unknown: If `True`, include values read from the config
+                file that did not correspond to known configuration items.
+            :param clear: If `True`, mark all items as unchanged after
+                application.
         """
         # Do encoding before opening the file, so it can fail safely and not
         # affect any existing config file.
@@ -1084,6 +1132,45 @@ class FileConfigInterface(ConfigInterface):
             # Write failed, restore old config file
             util.restoreBackup(self.device.configFile, remove=False)
             raise
+
+
+# ===========================================================================
+#
+# ===========================================================================
+
+# class LegacyFileConfigInterface(FileConfigInterface):
+#     """
+#     A configuration interface to handle config files in the old legacy
+#     format (SlamStick C/X/S with firmware before rev. 14 in the old
+#     version numbering system).
+#     """
+#
+#     @classmethod
+#     def hasInterface(cls, device: "Recorder") -> bool:
+#         """
+#         Determine if a device supports this `ConfigInterface` type.
+#
+#         :param device: The Recorder to check.
+#         :return: `True` if the device supports the interface.
+#         """
+#         mcu = device.getInfo('McuType', 'EFM32GG330')
+#         if not mcu or mcu.startswith("EFM32GG330"):
+#             if device.firmwareVersion <= 14:
+#                 return super().hasInterface(device)
+#         return False
+#
+#
+#     def getConfig(self):
+#         config = super().getConfig()
+#
+#         if not config:
+#             return None
+#
+#         for el in config:
+#             if el.name == 'RecorderConfigurationList':
+#                 return config
+#             elif el.name == 'RecorderConfiguration':
+#
 
 
 # ===========================================================================

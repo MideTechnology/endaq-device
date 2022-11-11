@@ -11,7 +11,6 @@ from typing import Optional
 
 from .base import Recorder
 from .endaq import EndaqS
-from . import legacy
 
 #===============================================================================
 #
@@ -36,31 +35,6 @@ class SlamStickX(Recorder):
 
     manufacturer = "Midé Technology Corporation"
     homepage = "https://endaq.com/collections/endaq-shock-recorders-vibration-data-logger-sensors"
-
-
-    @property
-    def usesOldConfig(self) -> bool:
-        """ Can this device use the 'old' configuration format?
-        """
-        # Very old FW does not report McuType, but only runs on EFM32GG330
-        mcu = self.getInfo('McuType', 'EFM32GG330')
-        if not mcu or mcu.startswith("EFM32GG330"):
-            return self.firmwareVersion <= 14
-        return False
-
-
-    def _parseConfig(self, devinfo: dict, default: Optional[dict] = None) -> dict:
-        """ Helper method to read configuration info from a file. Used
-            internally.
-        """
-        if 'RecorderConfiguration' in devinfo:
-            # Old style config (pre-FW 12)
-            config = {} if default is None else default.copy()
-            config.update(legacy.loadConfigData(self))
-        else:
-            config = super()._parseConfig(devinfo, default)
-
-        return config
 
 
     @property
