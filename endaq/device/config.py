@@ -500,7 +500,7 @@ class ConfigInterface:
 
             for k, v in item.items():
                 if k.endswith('Value') and v is not None:
-                    config[configId] = bool(item[v]) if "Boolean" in k else v
+                    config[configId] = bool(v) if "Boolean" in k else v
                     break
 
         return config
@@ -544,12 +544,15 @@ class ConfigInterface:
 
 
     def getConfigValues(self,
+                        original: bool = False,
                         defaults: bool = False,
                         none: bool = False,
                         unknown: bool = True) -> Dict[int, Any]:
         """ Get the device configuration as a simple dictionary of values
             keyed by config ID.
 
+            :param original: If `True`, return only the values read from the
+                device configuration. Overrides the other parameters.
             :param defaults: If `False`, exclude items with their default
                 values.
             :param none: If `False`, exclude items with values of `None`.
@@ -557,6 +560,13 @@ class ConfigInterface:
                 config file that do not correspond to know configuration
                 items.
         """
+        # TODO: this seems really kludgey. Maybe split into different methods?
+        if original:
+            if not self.config:
+                return {}
+
+            return self._parseConfig(self.config.dump())
+
         conf = {item.configId: item.value for item in self.items.values()
                 if ((defaults or item.value != item.default) and
                     (none or item.value is not None))}
