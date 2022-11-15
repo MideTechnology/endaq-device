@@ -10,9 +10,7 @@ HDLC encoding and checksum-related code.
 from logging import getLogger
 logger = getLogger('endaq.device')
 
-
-class CRCError(ValueError):
-    """ Exception raised if a packet's CRC16 check fails. """
+from .exceptions import CRCError
 
 
 # ==============================================================================

@@ -51,3 +51,9 @@ class UnsupportedFeature(DeviceError):
             pass
 
         return super().__str__()
+
+
+class CRCError(ValueError):
+    """ Exception raised if a packet's CRC16 check fails. """
+
+
