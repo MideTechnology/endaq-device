@@ -16,7 +16,7 @@ import struct
 import sys
 from threading import RLock
 from time import struct_time
-from typing import Any, AnyStr, BinaryIO, Callable, Dict, Optional, Tuple, Union
+from typing import Any, AnyStr, Callable, Dict, Optional, Tuple, Union
 import warnings
 
 from idelib.dataset import Dataset, Channel
@@ -53,7 +53,9 @@ __all__ = ('Recorder', 'os_specific')
 
 
 class Recorder:
-    """ The 'base' class representing an enDAQ/SlamStick data recorder.
+    """ A representation of an enDAQ/SlamStick data recorder. Some devices
+        will instantiate as a specialized subclass, but the interface remains
+        the same.
     """
 
     _INFO_FILE = os.path.join("SYSTEM", "DEV", "DEVINFO")
@@ -98,16 +100,16 @@ class Recorder:
 
     def __init__(self, path: Optional[Filename], strict=True, **kwargs):
         """ Constructor. Typically, instantiation should be done indirectly,
-            using `endaq.device.getDevices()` or `endaq.device.fromRecording()`.
-            Explicitly instantiating a `Recorder` or `Recorder` subclass is
-            rarely (if ever) necessary.
+            using functions such as `endaq.device.getDevices()` or
+            `endaq.device.fromRecording()`. Explicitly instantiating a
+            `Recorder` or `Recorder` subclass is rarely (if ever) necessary.
 
             :param path: The filesystem path to the recorder, or `None` if
                 it is a 'virtual' device (e.g., constructed from data in a
                 recording).
             :param strict: If `True`, only allow real device paths. If
-                `False`, allow any path that contains a recorder's
-                ``SYSTEM`` directory. Primarily for testing.
+                `False`, allow any path that contains the standard contents
+                of a recorder's ``SYSTEM`` directory. Primarily for testing.
         """
         # self.mideSchema = loadSchema("mide_ide.xml")
         # self.manifestSchema = loadSchema("mide_manifest.xml")

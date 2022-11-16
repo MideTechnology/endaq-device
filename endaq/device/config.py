@@ -85,7 +85,7 @@ class ConfigItem:
     @classmethod
     def _generateLabel(cls, configId: int) -> Union[str, None]:
         """ Helper method to create a 'label' string from a ConfigID (using
-            the standard conventions) if the *Field element does not contain
+            the standard conventions) if the \*Field element does not contain
             one. Mainly works for standard channel/subchannel-specific fields.
         """
         if configId in cls.DEFAULT_LABELS:
@@ -115,9 +115,9 @@ class ConfigItem:
                  data: Optional[dict] = None,
                  value: Optional[Any] = None):
         """
-        Constructor. Note: `ConfigItem` is rarely (if ever) explicitly
-        instantiated; instances are automatically created by a
-        `ConfigInterface`, using CONFIG.UI data.
+        `ConfigItem` is rarely (if ever) explicitly instantiated; instances
+        are automatically created by a `ConfigInterface`, using CONFIG.UI
+        data.
 
         :param interface: The 'parent' `ConfigInterface`.
         :param element: The raw CONFIG.UI `*Field` EBML element.
@@ -315,7 +315,7 @@ class ConfigItem:
     @property
     def changed(self):
         """ Has the value of the ConfigItem changed since the last time it
-            was checked?
+            was checked? Read only.
         """
         changed = self._value != self._originalValue
         self._originalValue = self._value
@@ -368,8 +368,10 @@ class ConfigInterface:
     """
 
     def __init__(self, device: "Recorder"):
-        """ Constructor. Note that the actual initialization (loading the
-            ConfigUI and configuration data) is done when first accessed.
+        """ `ConfigInterface` instances are rarely (if ever) explicitly
+            created; the parent `Recorder` object will create the
+            appropriate `ConfigInterface` when its `config` property is
+            first accessed.
 
             :param device: The Recorder to configure.
         """
@@ -627,7 +629,9 @@ class ConfigInterface:
 
     @property
     def pluginActions(self) -> Dict[int, str]:
-        """ The list of all known Plug-In Action options. """
+        """ The IDs and descriptions of all known Plug-In Action options.
+            Read only.
+        """
         return self._getitem(0x0aff7f).options
 
     @property
@@ -643,7 +647,9 @@ class ConfigInterface:
 
     @property
     def buttonModes(self) -> Dict[int, str]:
-        """ The list of all known Button Mode options. """
+        """ The IDs and descriptions of all known Button Mode options.
+            Read only.
+        """
         return self._getitem(0x10ff7f).options
 
     @property
