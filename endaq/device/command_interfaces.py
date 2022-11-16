@@ -258,7 +258,7 @@ class CommandInterface:
             to a second to run. Not applicable if a specific time is
             provided (i.e. `t` is not `None`).
         :return: The system time (float) and time that was set (integer).
-            Both are *NIX epoch time (seconds since 1970-01-01T00:00:00).
+            Both are \*NIX epoch time (seconds since 1970-01-01T00:00:00).
         """
         raise NotImplementedError
 
@@ -301,8 +301,8 @@ class CommandInterface:
             :param retries: The number of attempts to make, should the first
                 fail. Although rare, random filesystem things can potentially
                 cause hiccups.
-        :return: The system time (float) and time that was set (integer).
-            Both are *NIX epoch time (seconds since 1970-01-01T00:00:00).
+            :return: The system time (float) and time that was set (integer).
+                Both are \*NIX epoch time (seconds since 1970-01-01T00:00:00).
         """
         if t is not None:
             pause = False
@@ -716,26 +716,25 @@ class CommandInterface:
                 interval: float = 1.25,
                 callback: Optional[Callable] = None):
         """ Configure all known Wi-Fi access points. Applicable only
-            to devices with Wi-Fi hardware.
+            to devices with Wi-Fi hardware. The data is in the form of a
+            list of dictionaries with the following keys:
+
+            * ``"SSID"``: The Wi-Fi access point name (string)
+            * ``"Password"``: The access point's password (string, optional)
+            * ``"Selected"``: 1 if the device should use this AP, 0 if not
+
+            Note that devices may not support configuring multiple Wi-Fi AP.
+            In most cases, only one should be specified, and it should be
+            marked as selected.
 
             :param wifi_data: The information about the Wi-Fi networks to be
-                set on the device.  Specifically, it's a list of dictionaries,
-                where each element in the list corresponds to one of the Wi-Fi
-                networks to be set.  The following are two examples of this:
-                [{'SSID': 'office_wifi', 'Selected': 1, 'Password': 'pass123'}]
-                or
-                [{'SSID': 'ssid_1', 'Selected': 1, 'Password': 'pass_1'},
-                 {'SSID': 'ssid_2', 'Selected': 0},
-                 {'SSID': 'ssid_1', 'Selected': 0, 'Password': 'pass_3'}]
+                set on the device.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will be
                 cancelled. The callback function should take no arguments.
-
-            :raise DeviceTimeout: Raised if 'timeout' seconds have gone by
-                without getting a response
         """
         # FUTURE: Ensure that the setting of multiple networks at once behaves
         #  as expected (not currently implemented in FW?)
@@ -795,28 +794,30 @@ class CommandInterface:
         """ Initiate a scan for Wi-Fi access points (APs). Applicable only
             to devices with Wi-Fi hardware.
 
-            :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
-            :param interval: Time (in seconds) between checks for a response.
-            :param callback: A function to call each response-checking cycle.
-                If the callback returns `True`, the wait for a response will
-                be cancelled. The callback function should require no
-                arguments.
+            The resluts are returned as a list of dictionaries, one for each
+            access point, with keys:
 
-            :return: A list of dictionaries, one for each access point,
-                with keys:
-                - ``SSID`` (str): The access point name.
-                - ``RSSI`` (int): The AP's signal strength.
-                - ``AuthType`` (int): The authentication (security) type.
-                    Currently, this is either 0 (no authentication) or 1
-                    (any authentication).
-                - ``Known`` (bool): Is this access point known (i.e. has
-                    a stored password on the device)?
-                - ``Selected`` (bool): Is this the currently selected AP?
+            * ``SSID`` (str): The access point name.
+            * ``RSSI`` (int): The AP's signal strength.
+            * ``AuthType`` (int): The authentication (security) type.
+              Currently, this is either 0 (no authentication) or 1
+              (any authentication).
+            * ``Known`` (bool): Is this access point known (i.e. has
+              a stored password on the device)?
+            * ``Selected`` (bool): Is this the currently selected AP?
 
             :raise DeviceTimeout: Raised if 'timeout' seconds have gone by
                 without getting a response
+
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+            :param interval: Time (in seconds) between checks for a response.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will
+                be cancelled. The callback function should take no arguments.
+            :return: A list of dictionaries, described above.
         """
+
         if not self.device.hasWifi:
             raise UnsupportedFeature('{!r} has no Wi-Fi adapter'.format(self.device))
 
@@ -1317,7 +1318,7 @@ class SerialCommandInterface(CommandInterface):
             to a second to run. Not applicable if a specific time is
             provided (i.e. `t` is not `None`).
         :return: The system time (float) and time that was set (integer).
-            Both are *NIX epoch time (seconds since 1970-01-01T00:00:00).
+            Both are \*NIX epoch time (seconds since 1970-01-01T00:00:00).
         """
         if t is None:
             t = time()
@@ -1660,7 +1661,7 @@ class FileCommandInterface(CommandInterface):
             to a second to run. Not applicable if a specific time is
             provided (i.e. `t` is not `None`).
         :return: The system time (float) and time that was set (integer).
-            Both are *NIX epoch time (seconds since 1970-01-01T00:00:00).
+            Both are \*NIX epoch time (seconds since 1970-01-01T00:00:00).
         """
         if t is None:
             t = time()
