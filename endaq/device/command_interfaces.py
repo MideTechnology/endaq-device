@@ -115,8 +115,8 @@ class CommandInterface:
         """
         Determine if a device supports this `CommandInterface` type.
 
-        :param device:
-        :return:
+        :param device: The recorder to check.
+        :return: `True` if the device supports the interface.
         """
         raise NotImplementedError
 
@@ -461,7 +461,19 @@ class CommandInterface:
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
                 require no arguments.
-            :return:
+            :return: A dictionary with the parsed battery status. It will
+                always contain the key `"hasBattery"`, and if that is `True`,
+                it will contain other keys:
+
+                - `"charging"`: (bool)
+                - `"percentage"`: (bool) `True` if the reported charge
+                    level is a percentage, or 3 states (0 = empty,
+                    255 = full, anything else is 'some' charge).
+                - `"level"`: (int) The current battery charge level.
+
+                If the device is capable of reporting if it is receiving
+                external power, the dict will contain `"externalPower"`
+                (bool).
         """
         # Only interfaces that support this method will implement it.
         raise UnsupportedFeature(self, self.getBatteryStatus)
@@ -848,7 +860,6 @@ class CommandInterface:
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
                 require no arguments.
-            :return:
         """
         # FUTURE: This (and other file-based update) will need refactoring
         #  if/when we have another means of uploading (serial, wireless,
@@ -868,7 +879,7 @@ class CommandInterface:
         self._copyUpdateFile(firmware, destination)
 
         cmd = {'EBMLCommand': {'ESPFW': payload}}
-        response = self._sendCommand(cmd, timeout=timeout, callback=callback)
+        return self._sendCommand(cmd, timeout=timeout, callback=callback)
 
 
 # Populate the STATUS_CODES dictionary, mapping code numbers back to names
@@ -1483,41 +1494,6 @@ class SerialCommandInterface(CommandInterface):
                                       callback=callback)
 
 
-    def _queryWifi(self,
-                  timeout: int = 10,
-                  interval: float = .25,
-                  callback: Optional[Callable] = None) -> Union[None, dict]:
-        """ Check the current state of the Wi-Fi (if present). Applicable only
-            to devices with Wi-Fi hardware.
-
-            :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
-            :param interval: Time (in seconds) between checks for a response.
-            :param callback: A function to call each response-checking
-                cycle. If the callback returns `True`, the wait for a
-                response will be cancelled. The callback function should
-                require no arguments.
-            :return: None if no information was recieved, else it will return
-                the information from the ``QueryWiFiResponse`` command (this
-                return statement is not used anywhere)
-
-            :raise DeviceTimeout: Raised if 'timeout' seconds have gone by
-                without getting a response
-        """
-        # TODO: Remove this workaround. It exists because too many Wi-Fi AP
-        #  produce too much data for current FW to transmit via serial.
-        try:
-            return super().queryWifi(timeout, interval, callback)
-        except CRCError:
-            logger.warning('CRCError in SerialCommandInterface.queryWifi(), '
-                           'falling back to FileCommandInterface.')
-
-        if not hasattr(self, '_fileinterface'):
-            self._fileinterface = FileCommandInterface(self.device)
-
-        return self._fileinterface.queryWifi(timeout, interval, callback)
-
-
     def scanWifi(self,
                  timeout: int = 10,
                  interval: float = .25,
@@ -1532,7 +1508,6 @@ class SerialCommandInterface(CommandInterface):
                 If the callback returns `True`, the wait for a response will
                 be cancelled. The callback function should require no
                 arguments.
-
             :return: A list of dictionaries, one for each access point,
                 with keys:
                 - ``SSID`` (str): The access point name.
@@ -1547,6 +1522,8 @@ class SerialCommandInterface(CommandInterface):
             :raise DeviceTimeout: Raised if 'timeout' seconds have gone by
                 without getting a response
         """
+        # TODO: Remove this workaround. It exists because too many Wi-Fi AP
+        #  produce too much data for current FW to transmit via serial.
         try:
             return super().scanWifi(timeout, interval, callback)
         except CRCError:
