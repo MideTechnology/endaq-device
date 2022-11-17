@@ -61,7 +61,7 @@ class CommandInterface:
     # Error status codes:
     ERR_BUSY = -10
     ERR_INVALID_COMMAND = -20
-    ERR_UNKNOWN_COMMANND = -30
+    ERR_UNKNOWN_COMMAND = -30
     ERR_BAD_PAYLOAD = -40
     ERR_BAD_EBML = -50
     ERR_BAD_CHECKSUM = -60
@@ -637,9 +637,15 @@ class CommandInterface:
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
                 require no arguments.
-            :returns: `True` if the device rebooted. This does not indicate
-                that the updates were successfully applied.
+            :returns: `True` if the device rebooted. Note: this does
+                not indicate that the updates were successfully applied.
         """
+        if isinstance(firmware, str) and firmware.lower().endswith('.bin'):
+            if self.device.getInfo('KeyRev'):
+                raise ValueError(
+                    'Cannot apply unencrypted firmware (*.bin) to device '
+                    'with encryption; use *.pkg version if available.')
+
         with self.device._busy:
             # Update filenames on device
             fw = os.path.join(self.device.path, self.device._FW_UPDATE_FILE)
@@ -690,7 +696,7 @@ class CommandInterface:
             :return:
         """
         cmd = {'EBMLCommand': {'SetKeys': keys}}
-        response = self._sendCommand(cmd, timeout=timeout, callback=callback)
+        return self._sendCommand(cmd, timeout=timeout, callback=callback)
 
 
     # =======================================================================
@@ -897,7 +903,6 @@ class SerialCommandInterface(CommandInterface):
     """
     A mechanism for sending commands to a recorder via a serial port.
 
-    :ivar timeout: The default response timeout.
     :ivar status: The last reported device status. Not available on all
         interface types.
     :ivar make_crc: If `True`, generate CRCs for outgoing packets.
@@ -1238,11 +1243,17 @@ class SerialCommandInterface(CommandInterface):
                         raise
 
                 if resp:
-                    self.status = resp.get('DeviceStatusCode', 0), resp.get('DeviceStatusMessage')
+                    code = resp.get('DeviceStatusCode', 0)
+                    msg = resp.get('DeviceStatusMessage')
                     queueDepth = resp.get('CMDQueueDepth', 1)
+                    self.status = code, msg
 
-                    if self.status[0] < 0:
-                        raise DeviceError(*self.status)
+                    if code < 0:
+                        # Raise a CommandError or DeviceError. -20 and -30 refer
+                        # to bad commands sent by the user.
+                        EXC = CommandError if -30 <= code <= -20 else DeviceError
+                        desc = self.STATUS_CODES.get(code, "Unknown")
+                        raise EXC(code, desc, msg)
 
                     if queueDepth == 0:
                         logger.debug('Command queue full, retrying.')
@@ -1528,8 +1539,8 @@ class SerialCommandInterface(CommandInterface):
         try:
             return super().scanWifi(timeout, interval, callback)
         except CRCError:
-            logger.warning('CRCError in SerialCommandInterface.scanWifi(), '
-                           'too many APs? Falling back to FileCommandInterface.')
+            logger.debug('CRCError in SerialCommandInterface.scanWifi(), '
+                         'too many APs? Falling back to FileCommandInterface.')
 
         if not hasattr(self, '_fileinterface'):
             self._fileinterface = FileCommandInterface(self.device)
