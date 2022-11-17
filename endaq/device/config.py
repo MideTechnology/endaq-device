@@ -376,8 +376,8 @@ class ConfigInterface:
         and before accessing config elements via `item`.
     :ivar unknownConfig: A dictionary of configuration item types and values,
         keyed by Config ID. Items read from the configuration file that do
-        not match items in the ConfigUI data go into the dictionary. These
-        will (by default) be written back to the config file verbatim.
+        not match items in the ``ConfigUI`` data go into the dictionary.
+        These will (by default) be written back to the config file verbatim.
         `unknownConfig` may also be used to manually add arbitrary items to
         the config file.
     """
@@ -517,7 +517,7 @@ class ConfigInterface:
             :param unknown: If `True`, include configuration items in the
                 `ConfigInterface`'s `unknownConfig`; items read from the
                 configuration file but have IDs that do not correspond to
-                fields in the device's ConfigUI data.
+                fields in the device's ``ConfigUI`` data.
             :return: A dictionary of configuration values, ready for encoding
                 as EBML.
         """
@@ -531,7 +531,7 @@ class ConfigInterface:
 
 
     def getConfigUI(self) -> Union[Document, MasterElement]:
-        """ Get the device's ``<ConfigUI>`` data.
+        """ Get the device's ``ConfigUI`` data.
         """
         raise NotImplementedError("getConfigUI() not implemented")
 
@@ -1083,7 +1083,7 @@ class FileConfigInterface(ConfigInterface):
 
 
     def getConfigUI(self) -> Union[Document, MasterElement]:
-        """ Load the device's `<ConfigUI>` data.
+        """ Load the device's ``ConfigUI`` data.
         """
         if not self.configUi:
             if os.path.isfile(self.device.configUIFile):
