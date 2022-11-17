@@ -13,6 +13,7 @@ import errno
 import logging
 import os.path
 from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+import warnings
 
 from ebmlite.core import loadSchema
 from ebmlite.core import Document, Element, MasterElement
@@ -134,7 +135,7 @@ class ConfigItem:
         # These attributes don't appear in ARGS
         self.interface = interface
         self.element = element
-        self.default = None
+        self._default = None  # field default, in internal units
         self.vtype = None  # Type of *Value element in config data
         self.dtype = None  # Value's Python data type
 
@@ -157,7 +158,7 @@ class ConfigItem:
             elif k.endswith('Value'):
                 # Config item type determined by *Value element type
                 # (if present; fallback behaviors below)
-                self.vtype, self.default = k, v
+                self.vtype, self._default = k, v
             else:
                 # Elements with data type as prefix
                 for attr in ("Min", "Max", "Gain", "Offset"):
@@ -186,7 +187,7 @@ class ConfigItem:
             self.tooltip = self.DEFAULT_LABELS.get(self.configId, ('', ''))[1]
 
         if value is None:
-            self.configValue = self.default
+            self.configValue = self._default
         else:
             self.configValue = value
 
@@ -270,16 +271,18 @@ class ConfigItem:
         if self.label:
             msg = "{}: {!r}".format(msg, self.label)
         if self.dtype:
+            dtype = self.dtype.__name__
             if self._value is not None:
-                changed = "" if self.configValue == self.default or self._value == self._originalValue else "*"
-                msg = "{} ({}={!r}){}".format(msg, self.dtype.__name__, self.value, changed)
+                default = self.configValue == self._default
+                changed = "" if default or self._value == self._originalValue else "*"
+                msg = "{} ({}={!r}){}".format(msg, dtype, self.value, changed)
             else:
-                msg = "{} ({})".format(msg, self.dtype.__name__)
+                msg = "{} ({})".format(msg, dtype)
         return "<{}>".format(msg)
 
 
     @property
-    def value(self):
+    def value(self) -> Any:
         """ The configuration item value, in standard engineering units. """
         return self._value
 
@@ -297,14 +300,14 @@ class ConfigItem:
             elif self.max == float('inf'):
                 msg = ">= {}".format(self.min)
             else:
-                msg = "{} <= v <= {}".format(self, self.min, self.max)
+                msg = "{} <= v <= {}".format(self.min, self.max)
             raise ValueError("Invalid value for {}, must be {}".format(self, msg))
         else:
             self._value = v
 
 
     @property
-    def configValue(self):
+    def configValue(self) -> Any:
         """ The item's value, in the config file's native units. """
         # Null string valueFormat
         if self._value is None or self.valueFormat == '':
@@ -318,6 +321,13 @@ class ConfigItem:
         if v is None:
             self._value = v
         self._value = eval(self._displayFormat, {'x': v})
+
+
+    @property
+    def default(self) -> Any:
+        """ The configuration item's default value. """
+        if self._default:
+            return eval(self._valueFormat, {'x': self._default})
 
 
     @property
@@ -339,8 +349,8 @@ class ConfigItem:
 
     def reset(self):
         """ Change the item's value to the default. """
-        if self.configValue != self.default:
-            self.configValue = self.default
+        if self.configValue != self._default:
+            self.configValue = self._default
 
 
     def dump(self, defaults: bool = False) -> Union[None, dict]:
@@ -352,7 +362,7 @@ class ConfigItem:
             :return: A 2 item dictionary if `value` is not `None`, else
                 `None`.
         """
-        if self.value is not None and (defaults or self.configValue != self.default):
+        if self.value is not None and (defaults or self.configValue != self._default):
             return {'ConfigID': self.configId,
                     self.vtype: self.configValue}
         return None
@@ -417,7 +427,12 @@ class ConfigInterface:
             self._allitems.clear()
             self.configUi = self.getConfigUI()
             self.parseConfigUI(self.configUi)
-            self.loadConfig()
+
+        if not self.config:
+            try:
+                self.loadConfig()
+            except Exception as err:
+                warnings.warn('Error when reading config file: {!r}'.format(err))
 
         return self._items
 
@@ -568,7 +583,7 @@ class ConfigInterface:
             return self._parseConfig(self.config.dump())
 
         conf = {item.configId: item.value for item in self.items.values()
-                if ((defaults or item.value != item.default) and
+                if ((defaults or item.configValue != item._default) and
                     (none or item.value is not None))}
 
         if unknown:
@@ -607,9 +622,9 @@ class ConfigInterface:
             for item in root.get('RecorderConfigurationItem', []):
                 k = item['ConfigID']
                 v = next(filter(lambda x: 'Value' in x[0], item.items()))
-                if k in self.items:
-                    self.items[k].value = v[1]
-                    self.items[k].changed = False
+                if k in self._items:
+                    self._items[k].configValue = v[1]
+                    self._items[k].changed = False
                 else:
                     self.unknownConfig[k] = v
 
