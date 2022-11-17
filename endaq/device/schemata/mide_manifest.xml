@@ -135,7 +135,8 @@
         </MasterElement>
         <MasterElement name="DigitalSensorBMG250" id="0x4D95" mandatory="0" multiple="0" minver="1">Indicates the presence of a BMG250 Gyroscope</MasterElement>
         <MasterElement name="DigitalSensorBMG250Int" id="0x4D96" mandatory="0" multiple="0" minver="1">Indicates the presence of a BMG250 Gyroscope, with an interrupt line</MasterElement>
-
+		<MasterElement name="DigitalSensorBMI270" id="0x4D97" mandatory="0" multiple="0" minver="1">Indicates the presence of a BMI270 Gyroscope, with an interrupt line</MasterElement>
+		
         <!-- Digital pressure/other sensors -->
         <MasterElement name="DigitalSensorMPL3115A2" id="0x4DA0" mandatory="0" multiple="0" minver="1">Indicates the presence of an MPL3115A2 P/T sensor on the I2C0 bus.</MasterElement>
         <MasterElement name="DigitalSensorMS8607" id="0x4DA1" mandatory="0" multiple="0" minver="1">Indicates the presence of an MS8607 P/T/H sensor on the I2C1 bus.</MasterElement>
