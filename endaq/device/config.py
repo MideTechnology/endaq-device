@@ -13,13 +13,15 @@ import errno
 import logging
 import os.path
 from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+import warnings
 
 from ebmlite.core import loadSchema
 from ebmlite.core import Document, Element, MasterElement
 from idelib.dataset import Channel, SubChannel
 
-from . import ui_defaults
 from .exceptions import ConfigError, UnsupportedFeature
+# from . import legacy
+from . import ui_defaults
 from . import util
 
 if TYPE_CHECKING:
@@ -133,7 +135,7 @@ class ConfigItem:
         # These attributes don't appear in ARGS
         self.interface = interface
         self.element = element
-        self.default = None
+        self._default = None  # field default, in internal units
         self.vtype = None  # Type of *Value element in config data
         self.dtype = None  # Value's Python data type
 
@@ -156,9 +158,9 @@ class ConfigItem:
             elif k.endswith('Value'):
                 # Config item type determined by *Value element type
                 # (if present; fallback behaviors below)
-                self.vtype, self.default = k, v
+                self.vtype, self._default = k, v
             else:
-                # Elements with data type as suffix
+                # Elements with data type as prefix
                 for attr in ("Min", "Max", "Gain", "Offset"):
                     if k.endswith(attr):
                         setattr(self, attr.lower(), v)
@@ -185,13 +187,14 @@ class ConfigItem:
             self.tooltip = self.DEFAULT_LABELS.get(self.configId, ('', ''))[1]
 
         if value is None:
-            self.configValue = self.default
+            self.configValue = self._default
         else:
             self.configValue = value
 
         if interface and self.vtype:
             self.dtype = interface._schema[self.vtype].dtype
 
+        self._changed = False
         self._originalValue = self.value
 
 
@@ -213,7 +216,7 @@ class ConfigItem:
         return parsedoptions
 
 
-    def makeExpression(self, exp: str, name: str = ""):
+    def makeExpression(self, exp: Optional[str], name: str = ""):
         """ Helper method for compiling an expression in a string into a code
             object that can later be used with `eval()`. Used internally.
 
@@ -222,10 +225,15 @@ class ConfigItem:
                 "valueFormat"), embedded in the resulting code object. Mostly
                 for debugging.
         """
-        if not exp:
+        if exp is None:
             # No expression defined: value is returned unmodified (it matches
             # the config item's type)
             return self.noEffect
+        elif exp == '':
+            # Expression element exists, but empty: Config item generates no
+            # output. Usually for GUI interactivity (disabling one widget
+            # based on another, like CheckGroups).
+            return None
 
         # Create a nicely formatted, informative string for the compiled
         # expression's "filename" and for display if the expression is bad.
@@ -251,8 +259,8 @@ class ConfigItem:
         gain = 1.0 if self.gain is None else self.gain
         offset = 0.0 if self.offset is None else self.offset
 
-        self.displayFormat = "(x+{:.8f})*{:.8f}".format(offset, gain)
-        self.valueFormat = "x/{:.8f}-{:.8f}".format(gain, offset)
+        self.displayFormat = "(x + {:.8f}) * {:.8f}".format(offset, gain)
+        self.valueFormat = "x / {:.8f} - {:.8f}".format(gain, offset)
 
         self._displayFormat = self.makeExpression(self.displayFormat, "displayFormat")
         self._valueFormat = self.makeExpression(self.valueFormat, "valueFormat")
@@ -263,16 +271,18 @@ class ConfigItem:
         if self.label:
             msg = "{}: {!r}".format(msg, self.label)
         if self.dtype:
+            dtype = self.dtype.__name__
             if self._value is not None:
-                changed = "" if self.configValue == self.default or self._value == self._originalValue else "*"
-                msg = "{} ({}={!r}){}".format(msg, self.dtype.__name__, self.value, changed)
+                default = self.configValue == self._default
+                changed = "" if default or self._value == self._originalValue else "*"
+                msg = "{} ({}={!r}){}".format(msg, dtype, self.value, changed)
             else:
-                msg = "{} ({})".format(msg, self.dtype.__name__)
+                msg = "{} ({})".format(msg, dtype)
         return "<{}>".format(msg)
 
 
     @property
-    def value(self):
+    def value(self) -> Any:
         """ The configuration item value, in standard engineering units. """
         return self._value
 
@@ -290,16 +300,17 @@ class ConfigItem:
             elif self.max == float('inf'):
                 msg = ">= {}".format(self.min)
             else:
-                msg = "{} <= v <= {}".format(self, self.min, self.max)
+                msg = "{} <= v <= {}".format(self.min, self.max)
             raise ValueError("Invalid value for {}, must be {}".format(self, msg))
         else:
             self._value = v
 
 
     @property
-    def configValue(self):
+    def configValue(self) -> Any:
         """ The item's value, in the config file's native units. """
-        if self._value is None:
+        # Null string valueFormat
+        if self._value is None or self.valueFormat == '':
             return None
         return eval(self._valueFormat, {'x': self._value})
 
@@ -313,19 +324,33 @@ class ConfigItem:
 
 
     @property
-    def changed(self):
-        """ Has the value of the ConfigItem changed since the last time it
-            was checked? Read only.
+    def default(self) -> Any:
+        """ The configuration item's default value. """
+        if self._default:
+            return eval(self._valueFormat, {'x': self._default})
+
+
+    @property
+    def changed(self) -> bool:
+        """ Has the value of the ConfigItem changed? `True` if the current
+            value differs from the previous value. This can also be manually
+            set to `True` or `False`, although if set `False`, changing the
+            ConfigItem's value afterwards will override it.
         """
-        changed = self._value != self._originalValue
-        self._originalValue = self._value
-        return changed
+        return self._changed or self._value != self._originalValue
+
+
+    @changed.setter
+    def changed(self, changed: bool) -> bool:
+        if not changed:
+            self._originalValue = self._value
+        self._changed = changed
 
 
     def reset(self):
         """ Change the item's value to the default. """
-        if self.configValue != self.default:
-            self.configValue = self.default
+        if self.configValue != self._default:
+            self.configValue = self._default
 
 
     def dump(self, defaults: bool = False) -> Union[None, dict]:
@@ -337,7 +362,7 @@ class ConfigItem:
             :return: A 2 item dictionary if `value` is not `None`, else
                 `None`.
         """
-        if self.value is not None and (defaults or self.configValue != self.default):
+        if self.value is not None and (defaults or self.configValue != self._default):
             return {'ConfigID': self.configId,
                     self.vtype: self.configValue}
         return None
@@ -354,15 +379,15 @@ class ConfigInterface:
     :ivar config: Device configuration data (e.g., data read from the config
         file). This may be set manually to override defaults and/or existing
         configuration data. Manual setting must be done after instantiation
-        and before accessing config elements via the interface's `item` or
-        `name` attributes.
+        and before accessing config elements via the interface's `item`
+        attribute.
     :ivar configUi: Device configuration UI information. May be set manually
         to override defaults. Manual setting must be done after instantiation
-        and before accessing config elements via `item` or `name`.
+        and before accessing config elements via `item`.
     :ivar unknownConfig: A dictionary of configuration item types and values,
         keyed by Config ID. Items read from the configuration file that do
-        not match items in the ConfigUI data go into the dictionary. These
-        will (by default) be written back to the config file verbatim.
+        not match items in the ``ConfigUI`` data go into the dictionary.
+        These will (by default) be written back to the config file verbatim.
         `unknownConfig` may also be used to manually add arbitrary items to
         the config file.
     """
@@ -376,11 +401,11 @@ class ConfigInterface:
             :param device: The Recorder to configure.
         """
         self._schema = loadSchema('mide_config_ui.xml')
-        self.device = device
+        self.device: Optional["Recorder"] = device
         self.configUi: Optional[MasterElement] = None
         self.config: Optional[MasterElement] = None
-        self._items = {}
-        self._names = {}
+        self._items: Dict[int, ConfigItem] = {}
+        self._allitems: Dict[int, ConfigItem] = {}  # for debugging, mostly
 
         # Config values from the loaded configuration data that don't have
         # a corresponding field in the ConfigUI data. Keyed by ConfigID,
@@ -399,10 +424,15 @@ class ConfigInterface:
         """
         if not self.configUi:
             self._items.clear()
-            self._names.clear()
+            self._allitems.clear()
             self.configUi = self.getConfigUI()
             self.parseConfigUI(self.configUi)
-            self.loadConfig()
+
+        if not self.config:
+            try:
+                self.loadConfig()
+            except Exception as err:
+                warnings.warn('Error when reading config file: {!r}'.format(err))
 
         return self._items
 
@@ -410,22 +440,7 @@ class ConfigInterface:
     @items.setter
     def items(self, items: Dict[int, ConfigItem]):
         self._items = items
-
-
-    @property
-    def names(self) -> Dict[str, ConfigItem]:
-        """ All defined configuration items for the device, keyed by
-            name/label, as read from the fields in the recorder's
-            configuration UI data. Note that some items may not have names,
-            and will instead be keyed by ID.
-        """
-        _ = self.items
-        return self._names
-
-
-    @names.setter
-    def names(self, names: Dict[str, ConfigItem]):
-        self._names = names
+        self._allitems.update(items)
 
 
     @classmethod
@@ -456,14 +471,17 @@ class ConfigInterface:
                 continue
 
             # Note: all MasterElement subclasses have the attribute `name`
-            if el.name.endswith("Field"):
+            if el.name.endswith("Field") or el.name == 'CheckGroup':
                 data = el.dump()
                 if 'ConfigID' in data:
                     item = ConfigItem(self, el, data)
-                    self.items[item.configId] = item
-                    self.names[item.label or hex(item.configId)] = item
+                    self._allitems[item.configId] = item
 
-            elif el.name in ('ConfigUI', 'Tab', 'Group', 'CheckGroup'):
+                    # Exclude items that don't generate config file values
+                    if item.valueFormat != '':
+                        self._items[item.configId] = item
+
+            if el.name in ('ConfigUI', 'Tab') or 'Group' in el.name:
                 self.parseConfigUI(el)
 
 
@@ -473,13 +491,48 @@ class ConfigInterface:
         return [item for item in self.items.values() if item.changed]
 
 
-    def _makeConfig(self, unknown: bool = True) -> dict:
-        """ Generate a dictionary of configuration data.
+    def _parseConfig(self,
+                     origConfig: dict,
+                     default: Optional[dict] = None) -> Dict[int, Any]:
+        """ Helper method to parse a dictionary of dumped EBML
+            ``RecorderConfigurationList`` data into a simple dictionary of
+            values keyed by ConfigID. Used internally.
+
+            :param origConfig: The unprocessed dictionary dumped from a
+                configuration EBML file.
+            :param default: A dictionary of default config values.
+        """
+        config = {} if default is None else default.copy()
+
+        root = origConfig.get('RecorderConfigurationList', None)
+        if root is None:
+            return None
+
+        for item in root.get('RecorderConfigurationItem', []):
+            configId = item.get('ConfigID', None)
+            if not configId:
+                continue
+
+            for k, v in item.items():
+                if k.endswith('Value') and v is not None:
+                    config[configId] = bool(v) if "Boolean" in k else v
+                    break
+
+        return config
+
+
+    def _makeConfig(self, unknown: bool = True) -> Dict[str, Any]:
+        """ Generate a dictionary of configuration data, suitable for EBML
+            encoding.
+
+            Note: this is currently used directly by another project (the
+            config GUI's exporter). Be careful modifying until import/export
+            has been moved to this package and the config GUI is updated.
 
             :param unknown: If `True`, include configuration items in the
                 `ConfigInterface`'s `unknownConfig`; items read from the
                 configuration file but have IDs that do not correspond to
-                fields in the device's ConfigUI data.
+                fields in the device's ``ConfigUI`` data.
             :return: A dictionary of configuration values, ready for encoding
                 as EBML.
         """
@@ -492,21 +545,56 @@ class ConfigInterface:
                     {'RecorderConfigurationItem': config}}
 
 
-    def getConfigUI(self):
-        """ Get the device's `<ConfigUI>` data.
+    def getConfigUI(self) -> Union[Document, MasterElement]:
+        """ Get the device's ``ConfigUI`` data.
         """
         raise NotImplementedError("getConfigUI() not implemented")
 
 
-    def getConfig(self):
+    def getConfig(self) -> Union[Document, MasterElement]:
         """ Low-level method that retrieves the device's config EBML (e.g.,
             the contents of a real device's `config.cfg` file), if any.
         """
         raise NotImplementedError("getConfig() not implemented")
 
 
+    def getConfigValues(self,
+                        original: bool = False,
+                        defaults: bool = False,
+                        none: bool = False,
+                        unknown: bool = True) -> Dict[int, Any]:
+        """ Get the device configuration as a simple dictionary of values
+            keyed by config ID.
+
+            :param original: If `True`, return only the values read from the
+                device configuration. Overrides the other parameters.
+            :param defaults: If `False`, exclude items with their default
+                values.
+            :param none: If `False`, exclude items with values of `None`.
+            :param unknown: If `True`, include values read from the
+                config file that do not correspond to know configuration
+                items.
+        """
+        # TODO: this seems really kludgey. Maybe split into different methods?
+        if original:
+            if not self.config:
+                return {}
+
+            return self._parseConfig(self.config.dump())
+
+        conf = {item.configId: item.value for item in self.items.values()
+                if ((defaults or item.configValue != item._default) and
+                    (none or item.value is not None))}
+
+        if unknown:
+            for k, v in self.unknownConfig:
+                conf[k] = v[1]
+
+        return conf
+
+
     def applyConfig(self, unknown: bool = True):
-        """ Apply configuration data to the device.
+        """ Apply (save) configuration data to the device.
 
             :param unknown: If `True`, include values that do not correspond
                 to known configuration items (e.g., originally read from the
@@ -534,8 +622,9 @@ class ConfigInterface:
             for item in root.get('RecorderConfigurationItem', []):
                 k = item['ConfigID']
                 v = next(filter(lambda x: 'Value' in x[0], item.items()))
-                if k in self.items:
-                    self.items[k].value = v[1]
+                if k in self._items:
+                    self._items[k].configValue = v[1]
+                    self._items[k].changed = False
                 else:
                     self.unknownConfig[k] = v
 
@@ -558,9 +647,7 @@ class ConfigInterface:
             :return: The indicated `ConfigItem`.
         """
         try:
-            if item in self.items:
-                return self.items[item]
-            return self.names[item]
+            return self.items[item]
         except KeyError:
             s = hex(item) if isinstance(item, int) else repr(item)
             raise KeyError(item, "Config item {} not in CONFIG.UI data".format(s))
@@ -929,19 +1016,24 @@ class VirtualConfigInterface(ConfigInterface):
         return device.isVirtual and super().hasInterface(device)
 
 
-    def getConfigUI(self):
-        """ Load the device's ``ConfigUI`` data.
+    def getConfigUI(self) -> Union[Document, MasterElement]:
+        """ Load the virtual device's ``ConfigUI`` data.
         """
+        # Use existing data, or data taken from source file
+        self.configUi = self.configUi or getattr(self.device, '_configUi', None)
+        if self.configUi:
+            return self.configUi
+        else:
+            self.configUi = ui_defaults.getDefaultConfigUI(self.device)
+
         if not self.configUi:
-            self.configUi = getattr(self.device, '_configUi', None)
-            if not self.configUi:
-                self.configUi = ui_defaults.getDefaultConfigUI(self.device)
-                if not self.configUi:
-                    raise IOError(errno.ENOENT, "No default ConfigUI found for {}".format(self.device))
+            raise IOError(errno.ENOENT, "No default ConfigUI found for {}"
+                          .format(self.device))
+
         return self.configUi
 
 
-    def getConfig(self):
+    def getConfig(self) -> Union[Document, MasterElement]:
         """ Low-level method that retrieves the device's config EBML (e.g.,
             the contents of a real device's ``config.cfg`` file), if any.
         """
@@ -991,11 +1083,22 @@ class FileConfigInterface(ConfigInterface):
         :param device: The Recorder to check.
         :return: `True` if the device supports the interface.
         """
-        return not device.isVirtual and super().hasInterface(device)
+        if device.isVirtual:
+            return False
+
+        # Very simple initial check: is there a CONFIG.UI file?
+        # Unlikely to fail, but in a `try` just in case.
+        try:
+            if os.path.isfile(device.configUIFile):
+                return True
+        except IOError:
+            pass
+
+        return super().hasInterface(device)
 
 
-    def getConfigUI(self):
-        """ Load the device's `<ConfigUI>` data.
+    def getConfigUI(self) -> Union[Document, MasterElement]:
+        """ Load the device's ``ConfigUI`` data.
         """
         if not self.configUi:
             if os.path.isfile(self.device.configUIFile):
@@ -1008,23 +1111,31 @@ class FileConfigInterface(ConfigInterface):
         return self.configUi
 
 
-    def getConfig(self):
+    def getConfig(self) -> Union[Document, MasterElement]:
         """ Low-level method that retrieves the device's config EBML (e.g.,
             the contents of a real device's `config.cfg` file), if any.
         """
-        if os.path.isfile(self.device.configFile):
+        try:
             with open(self.device.configFile, 'rb') as f:
                 return self._schema.loads(f.read())
-        return None
+        except IOError:
+            return None
 
 
-    def applyConfig(self, unknown: bool = True):
-        """ Apply modified configuration data to the device.
+    def applyConfig(self,
+                    unknown: bool = True,
+                    clear: bool = True):
+        """ Save modified configuration data to the device.
 
-            :param unknown: If `True`, include values that do not correspond
-                to known configuration items (e.g., originally read from the
-                config file).
+            :param unknown: If `True`, include values read from the config
+                file that did not correspond to known configuration items.
+            :param clear: If `True`, mark all items as unchanged after
+                application.
         """
+        if not os.path.exists(self.device.path):
+            raise IOError(errno.ENOENT, "Could not find {}; is it connected?"
+                          .format(self.device))
+
         # Do encoding before opening the file, so it can fail safely and not
         # affect any existing config file.
         config = self._makeConfig(unknown)
@@ -1034,12 +1145,54 @@ class FileConfigInterface(ConfigInterface):
             util.makeBackup(self.device.configFile)
             with open(self.device.configFile, 'wb') as f:
                 f.write(configEbml)
+
+            if clear:
+                for item in self.items.values():
+                    item.changed = False
+
         except Exception:
             # Write failed, restore old config file
             util.restoreBackup(self.device.configFile, remove=False)
             raise
 
-        self.getChanges()  # to clear the change list
+
+# ===========================================================================
+#
+# ===========================================================================
+
+# class LegacyFileConfigInterface(FileConfigInterface):
+#     """
+#     A configuration interface to handle config files in the old legacy
+#     format (SlamStick C/X/S with firmware before rev. 14 in the old
+#     version numbering system).
+#     """
+#
+#     @classmethod
+#     def hasInterface(cls, device: "Recorder") -> bool:
+#         """
+#         Determine if a device supports this `ConfigInterface` type.
+#
+#         :param device: The Recorder to check.
+#         :return: `True` if the device supports the interface.
+#         """
+#         mcu = device.getInfo('McuType', 'EFM32GG330')
+#         if not mcu or mcu.startswith("EFM32GG330"):
+#             if device.firmwareVersion <= 14:
+#                 return super().hasInterface(device)
+#         return False
+#
+#
+#     def getConfig(self):
+#         config = super().getConfig()
+#
+#         if not config:
+#             return None
+#
+#         for el in config:
+#             if el.name == 'RecorderConfigurationList':
+#                 return config
+#             elif el.name == 'RecorderConfiguration':
+#
 
 
 # ===========================================================================

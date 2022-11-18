@@ -9,7 +9,7 @@ __copyright__ = "Copyright 2022 Mide Technology Corporation"
 
 import os.path
 import shutil
-from typing import AnyStr, Optional, TYPE_CHECKING
+from typing import Any, AnyStr, Dict, Optional, TYPE_CHECKING
 
 from ebmlite import loadSchema
 
@@ -43,18 +43,35 @@ def loadConfigData(device: "Recorder", data: Optional[dict] = None) -> dict:
         :param data: An alternate set of configuration data, overriding
             that on the device. For importing configuration data.
     """
-    logger.info("Loading legacy configuration format")
+    try:
+        raw = loadSchema('mide_ide.xml').load(device.configFile)
+        config = raw.dump()['RecorderConfiguration']
+    except (IOError, KeyError):
+        config = {}
+
+    converted = convertConfigData(config, device)
+    if data:
+        converted.update(data)
+
+    return converted
+
+
+def convertConfigData(config: dict,
+                      device: "Recorder") -> Dict[int, Any]:
+    """ Convert legacy-style ``RecorderConfiguration`` data to the
+        new ``RecorderConfigurationList`` style.
+
+        :param config: A dictionary, dumped from an EBML
+            ``RecorderConfiguration`` element.
+        :param device: The device containing the data.
+        :return: A dictionary of ConfigIDs and values (the 'new' format).
+    """
+    logger.info("Converting legacy configuration format")
+
+    if not config:
+        return {}
 
     newData = {}
-    if data is None:
-        try:
-            raw = loadSchema('mide_ide.xml').load(device.configFile)
-            config = raw.dump()['RecorderConfiguration']
-        except (IOError, KeyError):
-            config = {}
-    else:
-        config = data
-
     channels = device.getChannels()
 
     # Combine 'root' dictionaries for easy access
@@ -106,7 +123,7 @@ def loadConfigData(device: "Recorder", data: Optional[dict] = None) -> dict:
             continue
 
         if chId not in channels:
-            # Convert really old firmware channel IDs
+            # Convert very early firmware channel IDs
             if chId == 0 and 8 in channels:
                 chId = 8
             elif chId == 1 and 36 in channels:
