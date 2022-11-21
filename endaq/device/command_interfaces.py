@@ -474,6 +474,9 @@ class CommandInterface:
                 If the device is capable of reporting if it is receiving
                 external power, the dict will contain `"externalPower"`
                 (bool).
+
+            :raise UnsupportedFeature: Raised if the device does not
+            support the command.
         """
         # Only interfaces that support this method will implement it.
         raise UnsupportedFeature(self, self.getBatteryStatus)
@@ -496,6 +499,9 @@ class CommandInterface:
                 require no arguments.
             :return: The received data, which should be identical to the
                 data sent.
+
+            :raise UnsupportedFeature: Raised if the device does not
+            support the command.
         """
         # Only interfaces that support this method will implement it.
         raise UnsupportedFeature(self, self.ping)
@@ -741,6 +747,9 @@ class CommandInterface:
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will be
                 cancelled. The callback function should take no arguments.
+
+            :raise UnsupportedFeature: Raised if the device does not
+                support Wi-Fi.
         """
         # FUTURE: Ensure that the setting of multiple networks at once behaves
         #  as expected (not currently implemented in FW?)
@@ -775,6 +784,8 @@ class CommandInterface:
                 the information from the ``QueryWiFiResponse`` command (this
                 return statement is not used anywhere)
 
+            :raise UnsupportedFeature: Raised if the device does not
+                support Wi-Fi.
             :raise DeviceTimeout: Raised if 'timeout' seconds have gone by
                 without getting a response
         """
@@ -822,6 +833,9 @@ class CommandInterface:
                 If the callback returns `True`, the wait for a response will
                 be cancelled. The callback function should take no arguments.
             :return: A list of dictionaries, described above.
+
+            :raise UnsupportedFeature: Raised if the device does not
+                support Wi-Fi.
         """
 
         if not self.device.hasWifi:
@@ -867,6 +881,9 @@ class CommandInterface:
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
                 require no arguments.
+
+            :raise UnsupportedFeature: Raised if the device does not
+                support Wi-Fi via ESP32 hardware.
         """
         # FUTURE: This (and other file-based update) will need refactoring
         #  if/when we have another means of uploading (serial, wireless,

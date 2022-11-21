@@ -290,6 +290,10 @@ class ConfigItem:
     @value.setter
     def value(self, v: Any):
         """ Set the configuration item value, in engineering units. """
+        if self.interface and not self.interface.validate:
+            self._value = v
+            return
+
         if self.element.name.endswith('EnumField') and self.options and v not in self.options:
             raise ValueError("Invalid value for {}, must be one of {}".format(self, tuple(self.options)))
         elif isinstance(v, str) and len(v) > self.maxLength:
@@ -415,6 +419,10 @@ class ConfigInterface:
 
         # For future use
         self.postConfigMsg = None
+
+        # For disabling validation of item values. Setting to `False` will
+        # ignore the item's min/max and options. Primarily for testing.
+        self.validate = True
 
 
     @property
