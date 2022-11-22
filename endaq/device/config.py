@@ -20,7 +20,7 @@ from ebmlite.core import Document, Element, MasterElement
 from idelib.dataset import Channel, SubChannel
 
 from .exceptions import ConfigError, UnsupportedFeature
-# from . import legacy
+from . import legacy
 from . import ui_defaults
 from . import util
 
@@ -654,11 +654,11 @@ class ConfigInterface:
             :param item: The config ID or label of a configuration item.
             :return: The indicated `ConfigItem`.
         """
-        try:
+        if item in self.items:
             return self.items[item]
-        except KeyError:
-            s = hex(item) if isinstance(item, int) else repr(item)
-            raise KeyError(item, "Config item {} not in CONFIG.UI data".format(s))
+
+        s = hex(item) if isinstance(item, int) else repr(item)
+        raise KeyError(item, "Config item {} not in CONFIG.UI data".format(s))
 
 
     def _setitem(self, item: Union[int, str], value: Optional[Any]):
@@ -894,6 +894,27 @@ class ConfigInterface:
         if configId not in self.items:
             configId |= 0x00ff00
         return configId
+
+
+    def _getChannel(self, configId: int) -> Union[Channel, SubChannel]:
+        """ Get the Channel/SubChannel corresponding to a configuration ID.
+        """
+        ch = configId & 0xFF
+        subCh = configId >> 8 & 0xFF
+
+        channel = self.device.channels.get(ch, None)
+        if not channel:
+            logger.debug('No channel for ConfigID {:x}'.format(configId))
+            return None
+
+        if subCh == 0xFF:
+            return channel
+
+        if subCh > len(channel.children):
+            logger.debug('No subchannel for ConfigID {:x}'.format(configId))
+            return None
+
+        return channel[subCh]
 
 
     def setTrigger(self,
@@ -1168,39 +1189,87 @@ class FileConfigInterface(ConfigInterface):
 #
 # ===========================================================================
 
-# class LegacyFileConfigInterface(FileConfigInterface):
-#     """
-#     A configuration interface to handle config files in the old legacy
-#     format (SlamStick C/X/S with firmware before rev. 14 in the old
-#     version numbering system).
-#     """
-#
-#     @classmethod
-#     def hasInterface(cls, device: "Recorder") -> bool:
-#         """
-#         Determine if a device supports this `ConfigInterface` type.
-#
-#         :param device: The Recorder to check.
-#         :return: `True` if the device supports the interface.
-#         """
-#         mcu = device.getInfo('McuType', 'EFM32GG330')
-#         if not mcu or mcu.startswith("EFM32GG330"):
-#             if device.firmwareVersion <= 14:
-#                 return super().hasInterface(device)
-#         return False
-#
-#
-#     def getConfig(self):
-#         config = super().getConfig()
-#
-#         if not config:
-#             return None
-#
-#         for el in config:
-#             if el.name == 'RecorderConfigurationList':
-#                 return config
-#             elif el.name == 'RecorderConfiguration':
-#
+class LegacyFileConfigInterface(FileConfigInterface):
+    """
+    A configuration interface to handle config files in the old legacy
+    format (SlamStick C/X/S with firmware before rev. 14 in the old
+    version numbering system).
+    """
+
+    def __init__(self, device: "Recorder"):
+        """ `ConfigInterface` instances are rarely (if ever) explicitly
+            created; the parent `Recorder` object will create the
+            appropriate `ConfigInterface` when its `config` property is
+            first accessed.
+
+            :param device: The Recorder to configure.
+        """
+        self.usesLegacyFormat = False
+        self.saveLegacyFormat = False
+        super().__init__(device=device)
+
+
+    @classmethod
+    def hasInterface(cls, device: "Recorder") -> bool:
+        """
+        Determine if a device supports this `ConfigInterface` type.
+
+        :param device: The Recorder to check.
+        :return: `True` if the device supports the interface.
+        """
+        mcu = device.getInfo('McuType', 'EFM32GG330')
+        if not mcu or mcu.startswith("EFM32GG330"):
+            if device.firmwareVersion <= 14:
+                return super().hasInterface(device)
+        return False
+
+
+    def loadConfig(self, config: Optional[MasterElement] = None):
+        """ Process a device's configuration data.
+
+            :param config: Optional, explicit configuration EBML data to
+                process. If none is provided, the data retrieved by
+                `getConfig()` will be used.
+        """
+        if config is None:
+            config = self.config or self.getConfig()
+
+        if not config:
+            return
+
+        if config[0].name == "RecorderConfigurationList":
+            self.usesLegacyFormat = False
+            return super().loadConfig(config)
+        if config[0].name != "RecorderConfiguration":
+            return None
+
+        self.usesLegacyFormat = True
+        data = legacy.convertConfigData(config[0].dump(), self.device)
+        config = loadSchema('mide_ide.xml').encodes(data)
+
+        return super().loadConfig(config)
+
+
+    def _makeConfig(self, unknown: bool = True) -> Dict[str, Any]:
+        """ Generate a dictionary of configuration data, suitable for EBML
+            encoding.
+
+            Note: this is currently used directly by another project (the
+            config GUI's exporter). Be careful modifying until import/export
+            has been moved to this package and the config GUI is updated.
+
+            :param unknown: If `True`, include configuration items in the
+                `ConfigInterface`'s `unknownConfig`; items read from the
+                configuration file but have IDs that do not correspond to
+                fields in the device's ``ConfigUI`` data.
+            :return: A dictionary of configuration values, ready for encoding
+                as EBML.
+        """
+        if not self.saveLegacyFormat:
+            return super()._makeConfig(unknown)
+
+        config = self.getConfigValues()
+        return legacy.encodeConfigData(config, self.device)
 
 
 # ===========================================================================
