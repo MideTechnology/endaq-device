@@ -194,8 +194,9 @@ class ConfigItem:
         if interface and self.vtype:
             self.dtype = interface._schema[self.vtype].dtype
 
-        self._changed = False
-        self._originalValue = self.value
+        self._fromFile = False  # Indicates value was read from file, set during load
+        self._changed = False  # Overrides item value change detection
+        self._originalValue = self.value  # Part of change detection
 
 
     def parseOptions(self, options: list) -> dict:
@@ -369,7 +370,7 @@ class ConfigItem:
             :return: A 2 item dictionary if `value` is not `None`, else
                 `None`.
         """
-        if self.value is not None and (defaults or self.configValue != self._default):
+        if self.value is not None and ((defaults or self.configValue != self._default) or self._fromFile):
             return {'ConfigID': self.configId,
                     self.vtype: self.configValue}
         return None
@@ -664,6 +665,7 @@ class ConfigInterface:
                 if k in self._items:
                     self._items[k].configValue = v[1]
                     self._items[k].changed = False
+                    self._items[k]._fromFile = True
                 else:
                     self.unknownConfig[k] = v
 
