@@ -427,6 +427,19 @@ class ConfigInterface:
         # ignore the item's min/max and options. Primarily for testing.
         self.validate = True
 
+        # The format version of the last config data read.
+        self.configVersionRead = None
+        self._supportedConfigVersions = None
+
+
+    @property
+    def supportedConfigVersions(self):
+        """ A tuple of configuration data format versions supported by
+            the interface. 1 is the original SlamStick version, only
+            supported on old hardware/firmware. The current version is 2.
+        """
+        return (2,)
+
 
     @property
     def items(self) -> Dict[int, ConfigItem]:
@@ -532,7 +545,9 @@ class ConfigInterface:
         return config
 
 
-    def _makeConfig(self, unknown: bool = True) -> Dict[str, Any]:
+    def _makeConfig(self,
+                    unknown: bool = True,
+                    version: Optional[int] = None) -> Dict[str, Any]:
         """ Generate a dictionary of configuration data, suitable for EBML
             encoding.
 
@@ -544,9 +559,15 @@ class ConfigInterface:
                 `ConfigInterface`'s `unknownConfig`; items read from the
                 configuration file but have IDs that do not correspond to
                 fields in the device's ``ConfigUI`` data.
+            :param version: The version of configuration data to use.
             :return: A dictionary of configuration values, ready for encoding
                 as EBML.
         """
+        supportedVersions = self.supportedConfigVersions
+        if version is not None and version not in supportedVersions:
+            raise ConfigError("Device does not support config data version {}, only {}".
+                              format(version, supportedVersions))
+
         config = [item.dump() for item in self.items.values()
                   if item.dump() is not None]
         if unknown:
@@ -605,12 +626,17 @@ class ConfigInterface:
         return conf
 
 
-    def applyConfig(self, unknown: bool = True):
+    def applyConfig(self,
+                    unknown: bool = True,
+                    version: Optional[int] = None):
         """ Apply (save) configuration data to the device.
 
             :param unknown: If `True`, include values that do not correspond
                 to known configuration items (e.g., originally read from the
                 config file).
+            :param version: The version of configuration data to use, if the
+                device supports more than one. Defaults to the latest
+                version supported.
         """
         raise NotImplementedError("applyConfig() not implemented")
 
@@ -642,6 +668,7 @@ class ConfigInterface:
                     self.unknownConfig[k] = v
 
         self.config = config
+        self.configVersionRead = 2  # Future: detect version?
 
 
     # =======================================================================
@@ -1116,10 +1143,7 @@ class FileConfigInterface(ConfigInterface):
     (if present), and reads/writes a local device's ``config.cfg`` file.
 
     This interface also handles converting to and from the legacy
-    configuration file format. If the imported ``config.cfg`` used the old
-    format, the attribute `readLegacyFormat` will be `True`. The config file
-    will be written in the new format unless the attribute `saveLegacyFormat`
-    is set to `True`.
+    configuration file format (version 1).
     """
 
     @classmethod
@@ -1144,21 +1168,28 @@ class FileConfigInterface(ConfigInterface):
         return super().hasInterface(device)
 
 
-    def __init__(self, device: "Recorder"):
-        """ `ConfigInterface` instances are rarely (if ever) explicitly
-            created; the parent `Recorder` object will create the
-            appropriate `ConfigInterface` when its `config` property is
-            first accessed.
-
-            :param device: The Recorder to configure.
+    @property
+    def supportedConfigVersions(self):
+        """ A tuple of configuration file format versions supported by
+            the interface.
         """
-        self.readLegacyFormat = False
-        self.saveLegacyFormat = False
+        if self._supportedConfigVersions is not None:
+            return self._supportedConfigVersions
 
-        super().__init__(device)
+        mcu = self.device.getInfo('McuType', 'EFM32GG330')
+        if not mcu.startswith("EFM32GG330"):
+            return super().supportedConfigVersions
+
+        vers = (1,)
+
+        if self.device.firmwareVersion > 14:
+            vers += super().supportedConfigVersions
+
+        self._supportedConfigVersions = vers
+        return vers
 
 
-    def _makeConfig(self, unknown: bool = True) -> Dict[str, Any]:
+    def _makeConfig(self, unknown: bool = True, version: Optional[int] = None) -> Dict[str, Any]:
         """ Generate a dictionary of configuration data, suitable for EBML
             encoding.
 
@@ -1170,10 +1201,18 @@ class FileConfigInterface(ConfigInterface):
                 `ConfigInterface`'s `unknownConfig`; items read from the
                 configuration file but have IDs that do not correspond to
                 fields in the device's ``ConfigUI`` data.
+            :param version: The version of configuration data to use.
             :return: A dictionary of configuration values, ready for encoding
                 as EBML.
         """
-        if not self.saveLegacyFormat:
+        supportedVersions = self.supportedConfigVersions
+        if version is not None and version not in supportedVersions:
+            raise ConfigError("Device does not support config data version {}, only {}".
+                              format(version, supportedVersions))
+
+        version = version or supportedVersions[-1]
+
+        if version != 1:
             return super()._makeConfig(unknown=unknown)
 
         logger.debug('Writing legacy config file for {!r}'.format(self.device))
@@ -1223,22 +1262,29 @@ class FileConfigInterface(ConfigInterface):
         if config[0].name == "RecorderConfiguration":
             logger.debug("Reading legacy config file data from {!r}"
                          .format(self.device))
-            self.readLegacyFormat = True
+            versionRead = 1
             self._originalConfig = config  # for testing
             config = legacy.convertConfigFile(config, self)
+        else:
+            versionRead = 2
 
-        return super().loadConfig(config)
+        super().loadConfig(config)
+        self.configVersionRead = versionRead
 
 
     def applyConfig(self,
                     unknown: bool = True,
-                    clear: bool = True):
+                    clear: bool = True,
+                    version: Optional[int] = None):
         """ Save modified configuration data to the device.
 
             :param unknown: If `True`, include values read from the config
                 file that did not correspond to known configuration items.
             :param clear: If `True`, mark all items as unchanged after
                 application.
+            :param version: The version of configuration data to use, if the
+                device supports more than one. Defaults to the latest
+                version supported.
         """
         if not os.path.exists(self.device.path):
             raise IOError(errno.ENOENT, "Could not find {}; is it connected?"
@@ -1246,7 +1292,7 @@ class FileConfigInterface(ConfigInterface):
 
         # Do encoding before opening the file, so it can fail safely and not
         # affect any existing config file.
-        config = self._makeConfig(unknown)
+        config = self._makeConfig(unknown, version=version)
         configEbml = self._schema.encodes(config, headers=False)
 
         try:
