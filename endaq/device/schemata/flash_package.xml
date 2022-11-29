@@ -39,7 +39,7 @@
     <StringElement name="TargetProcessor" id="0xF6" multiple="0" mandatory="1"> Processor the attached update is intended for. Values include "EFM32GG11B820F2048GL120", "STM32U585AII6", or "ANY" for non-firmware updates</StringElement>
     <StringElement name="FWRevString" id="0xF7" multiple="0" mandatory="0"> Human readable firmware revision</StringElement>
     <StringElement name="UpdateNotes" id="0xF8" multiple="0" mandatory="0"> Human readable notes regarding the update</StringElement>
-    <MasterElement name="FutureElements" global="1" id="0xE0" multiple="0" mandatory="0">The device may skip elements inside FutureElements without stopping the update. Any other unrecognized elements will kill the firmware update.
+    <MasterElement name="NonCriticalElements" global="1" id="0xE0" multiple="0" mandatory="0">The device may skip elements inside NonCriticalElements without stopping the update. Any other unrecognized elements will kill the firmware update.
     </MasterElement> <!-- UpdatePkg -->
 
 </MasterElement> <!-- UpdatePkg -->
