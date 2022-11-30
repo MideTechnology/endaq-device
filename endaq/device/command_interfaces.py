@@ -647,7 +647,7 @@ class CommandInterface:
                 not indicate that the updates were successfully applied.
         """
         if isinstance(firmware, str) and firmware.lower().endswith('.bin'):
-            if self.device.getInfo('KeyRev'):
+            if self.device.getInfo('KeyRev', 0):
                 raise ValueError(
                     'Cannot apply unencrypted firmware (*.bin) to device '
                     'with encryption; use *.pkg version if available.')

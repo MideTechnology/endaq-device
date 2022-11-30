@@ -64,6 +64,15 @@ class ConfigItem:
              0x07: "UIntValue",  # enum, bitfield
              0x08: "BooleanValue"}  # group (e.g. a CheckGroup)
 
+    # The low nybble of *Field EBML IDs represents their data type.
+    DTYPES = {0x0: bool,
+              0x1: int,
+              0x2: int,
+              0x3: float,
+              0x4: str,
+              0x5: str,
+              0x6: bytes}
+
     # Names for configuration item types based on the high 8 bits of the
     # ConfigID, for generating labels for *Fields without Label elements
     TYPE_LABELS = {0x010000: 'Enable',
@@ -83,6 +92,12 @@ class ConfigItem:
     # variable ``x``).
     noEffect = compile("x", "<ConfigItem.noEffect>", "eval")
 
+
+    _tagsDisplay = compile("[t.strip() for t in x.split(',')]",
+                          "<ConfigItem._tagDisplay>", "eval")
+
+    _tagsValue = compile("','.join(str(x).strip()) if x else ''",
+                          "<ConfigItem._tagValue>", "eval")
 
     @classmethod
     def _generateLabel(cls, configId: int) -> Union[str, None]:
@@ -137,7 +152,7 @@ class ConfigItem:
         self.element = element
         self._default = None  # field default, in internal units
         self.vtype = None  # Type of *Value element in config data
-        self.dtype = None  # Value's Python data type
+        self.dtype = self.DTYPES.get(element.id & 0x0F, None)  # Value's Python data type
 
         # Internal/engineering unit conversion
         self.displayFormat = self.valueFormat = None
@@ -174,6 +189,11 @@ class ConfigItem:
             # fall back to type encoded in *Field EBML ID
             self.vtype = self.TYPES.get(self.element.id & 0x0f, None)
 
+        if self.dtype is None and interface and self.vtype:
+            # Data type not in dictionary of types (probably an *Enum);
+            # get type from *Value element
+            self.dtype = interface._schema[self.vtype].dtype
+
         if self.gain or self.offset:
             self.makeGainOffsetFormat()
         else:
@@ -186,13 +206,7 @@ class ConfigItem:
         if not self.tooltip:
             self.tooltip = self.DEFAULT_LABELS.get(self.configId, ('', ''))[1]
 
-        if value is None:
-            self.configValue = self._default
-        else:
-            self.configValue = value
-
-        if interface and self.vtype:
-            self.dtype = interface._schema[self.vtype].dtype
+        self.configValue = value
 
         self._fromFile = False  # Indicates value was read from file, set during load
         self._changed = False  # Overrides item value change detection
@@ -273,10 +287,11 @@ class ConfigItem:
             msg = "{}: {!r}".format(msg, self.label)
         if self.dtype:
             dtype = self.dtype.__name__
+            bits = "Bit" in self.element.name
             if self._value is not None:
-                default = self.configValue == self._default
-                changed = "" if default or self._value == self._originalValue else "*"
-                msg = "{} ({}={!r}){}".format(msg, dtype, self.value, changed)
+                val = bin(self._value) if bits else repr(self._value)
+                changed = "" if self._value == self._originalValue else "*"
+                msg = "{} ({}={}){}".format(msg, dtype, val, changed)
             else:
                 msg = "{} ({})".format(msg, dtype)
         return "<{}>".format(msg)
@@ -291,7 +306,7 @@ class ConfigItem:
     @value.setter
     def value(self, v: Any):
         """ Set the configuration item value, in engineering units. """
-        if self.interface and not self.interface.validate:
+        if v is None or (self.interface and not self.interface.validate):
             self._value = v
             return
 
@@ -328,7 +343,8 @@ class ConfigItem:
         """ Set the item's value using the config file's native units. """
         if v is None:
             self._value = v
-        self._value = eval(self._displayFormat, {'x': v})
+        else:
+            self._value = eval(self._displayFormat, {'x': v})
 
 
     @property
@@ -361,16 +377,14 @@ class ConfigItem:
             self.configValue = self._default
 
 
-    def dump(self, defaults: bool = False) -> Union[None, dict]:
+    def dump(self) -> Union[None, dict]:
         """ Generate a dictionary containing the item's config ID and value.
             Used when generating a new config file.
 
-            :param defaults: If `False` and the value is the same as the
-                default, return `None` instead of a dictionary.
             :return: A 2 item dictionary if `value` is not `None`, else
                 `None`.
         """
-        if self.value is not None and ((defaults or self.configValue != self._default) or self._fromFile):
+        if self.value is not None:
             return {'ConfigID': self.configId,
                     self.vtype: self.configValue}
         return None
@@ -602,8 +616,8 @@ class ConfigInterface:
 
             :param original: If `True`, return only the values read from the
                 device configuration. Overrides the other parameters.
-            :param defaults: If `False`, exclude items with their default
-                values.
+            :param defaults: If `True`, include items with their default
+                values, not only those explicitly set or read from a file.
             :param none: If `False`, exclude items with values of `None`.
             :param unknown: If `True`, include values read from the
                 config file that do not correspond to know configuration
@@ -737,8 +751,8 @@ class ConfigInterface:
 
     @property
     def tags(self) -> Union[str, None]:
-        """ The device's recording tags (comma-separated string). Primarily
-            used on enDAQ Cloud.
+        """ The device's recording tags (comma-separated string), stored in
+            each recording. Primarily used for organization on enDAQ Cloud.
         """
         return self._getitem(0x17ff7f).value
 
@@ -1111,13 +1125,9 @@ class VirtualConfigInterface(ConfigInterface):
         return self.device._config
 
 
-    def applyConfig(self, unknown: bool = True):
+    def applyConfig(self, **kwargs):
         """ Apply modified configuration data to the device. Not supported on
             virtual devices!
-
-            :param unknown: If `True`, include values that do not correspond
-                to known configuration items (e.g., originally read from the
-                config file).
         """
         raise UnsupportedFeature("Virtual devices cannot be configured")
 

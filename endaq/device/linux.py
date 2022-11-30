@@ -1,20 +1,28 @@
 """
-Linux-specific functions; primarily filesystem-related.
+Linux-specific functions; primarily filesystem-related. The parent package
+imports the appropriate version for the host OS.
 """
 
 __author__ = "Connor"
 
+__all__ = ('deviceChanged', 'getDeviceList', 'getBlockSize', 'getFreeSpace',
+           'getDriveInfo', 'readRecorderClock', 'readUncachedFile')
+
 import errno
+import logging
 import os
 import mmap
 import math
 import re
 from time import time
 from typing import ByteString, Tuple, Union
+import warnings
 
 import psutil
 
 from .types import Drive, Epoch, Filename
+
+logger = logging.getLogger('endaq.device')
 
 # ==============================================================================
 #
@@ -144,11 +152,18 @@ def getDeviceList(types: dict, strict: bool = True) -> list:
     result = set()
 
     for device, mountpoint, fstype, opts, maxfile, maxpath in psutil.disk_partitions():
-        if not os.path.exists(device):
-            continue
-        for t in types:
-            if t.isRecorder(mountpoint, strict=strict):
-                result.add(mountpoint)
+        try:
+            if not os.path.exists(device):
+                continue
+            for t in types:
+                if t.isRecorder(mountpoint, strict=strict):
+                    result.add(mountpoint)
+        except IOError as err:
+            # Rare error, may be caused by flaky device or USB.
+            msg = ("getDeviceList(): Could not access {} ({}); "
+                   "ignoring error and continuing".format(device, err))
+            warnings.warn(msg)
+            logger.error(msg)
 
     return sorted(result)
 
