@@ -109,7 +109,7 @@ class CommandInterface:
         self.timeout: Union[int, float] = timeout
 
         # Last reported device status. Not available on all interfaces.
-        self.status: Tuple[int, Optional[str]] = None, None
+        self.status: Tuple[int, Optional[str]] = (None, None)
 
         # Some interfaces (i.e. serial) have a maximum packet size.
         self.maxCommandSize = self.DEFAULT_MAX_COMMAND_SIZE
