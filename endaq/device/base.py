@@ -6,10 +6,8 @@ eliminate circular dependencies.
 __author__ = "dstokes"
 __copyright__ = "Copyright 2022 Mide Technology Corporation"
 
-import calendar
 from collections import defaultdict
 from datetime import datetime, timedelta
-from io import BytesIO
 import logging
 import os
 from pathlib import Path
@@ -17,8 +15,8 @@ import re
 import struct
 import sys
 from threading import RLock
-from time import sleep, struct_time
-from typing import Any, AnyStr, Callable, Optional, Tuple, Union
+from time import struct_time
+from typing import Any, AnyStr, Callable, Dict, Optional, Tuple, Union
 import warnings
 
 from idelib.dataset import Dataset, Channel
@@ -27,7 +25,7 @@ from idelib.parsers import CalibrationListParser, RecordingPropertiesParser
 from idelib.transforms import Transform
 
 import ebmlite
-from ebmlite import loadSchema
+from ebmlite import MasterElement, loadSchema
 
 if sys.platform == 'darwin':
     from . import macos as os_specific
@@ -41,14 +39,13 @@ from .config import ConfigInterface
 from . import measurement
 from .measurement import MeasurementType
 from . import command_interfaces
-from .exceptions import ConfigError, ConfigVersionError, DeviceTimeout, UnsupportedFeature
+from .exceptions import *
 from .types import Drive, Filename, Epoch
 
 logger = logging.getLogger('endaq.device')
 
 
-__all__ = ['ConfigError', 'ConfigVersionError', 'DeviceTimeout', 'Recorder',
-           'os_specific']
+__all__ = ('Recorder', 'os_specific')
 
 # ===============================================================================
 #
@@ -56,7 +53,9 @@ __all__ = ['ConfigError', 'ConfigVersionError', 'DeviceTimeout', 'Recorder',
 
 
 class Recorder:
-    """ The 'base' class representing an enDAQ/SlamStick data recorder.
+    """ A representation of an enDAQ/SlamStick data recorder. Some devices
+        will instantiate as a specialized subclass, but the interface remains
+        the same.
     """
 
     _INFO_FILE = os.path.join("SYSTEM", "DEV", "DEVINFO")
@@ -64,9 +63,16 @@ class Recorder:
     _RECPROP_FILE = os.path.join("SYSTEM", "DEV", "DEVPROPS")
     _CONFIG_UI_FILE = os.path.join("SYSTEM", "CONFIG.UI")
     _COMMAND_FILE = os.path.join("SYSTEM", "DEV", "COMMAND")
+
+    # Manifest and factory cal data on EFM32-based devices
+    _USERPAGE_FILE = os.path.join("SYSTEM", "DEV", "USERPG%d")
+
+    # Manifest and factory cal data on other devices (STM32)
+    _SYSCAL_FILE = os.path.join("SYSTEM", "DEV", "syscal")
+    _MANIFEST_FILE = os.path.join("SYSTEM", "DEV", "manifest")
+
     _CONFIG_FILE = os.path.join("SYSTEM", "config.cfg")
     _USERCAL_FILE = os.path.join("SYSTEM", "usercal.dat")
-
     _FW_UPDATE_FILE = os.path.join('SYSTEM', 'update.pkg')
     _RESPONSE_FILE = os.path.join('SYSTEM', 'DEV', 'RESPONSE')
     _BOOTLOADER_UPDATE_FILE = os.path.join("SYSTEM", 'boot.bin')
@@ -93,17 +99,20 @@ class Recorder:
 
 
     def __init__(self, path: Optional[Filename], strict=True, **kwargs):
-        """ Constructor.
+        """ Constructor. Typically, instantiation should be done indirectly,
+            using functions such as `endaq.device.getDevices()` or
+            `endaq.device.fromRecording()`. Explicitly instantiating a
+            `Recorder` or `Recorder` subclass is rarely (if ever) necessary.
 
             :param path: The filesystem path to the recorder, or `None` if
-                it is a 'virtual' device (e.g., constructed from data
-                in a recording).
+                it is a 'virtual' device (e.g., constructed from data in a
+                recording).
             :param strict: If `True`, only allow real device paths. If
-                `False`, allow any path that contains a recorder's
-                ``SYSTEM`` directory. Primarily for testing.
+                `False`, allow any path that contains the standard contents
+                of a recorder's ``SYSTEM`` directory. Primarily for testing.
         """
-        self.mideSchema = loadSchema("mide_ide.xml")
-        self.manifestSchema = loadSchema("mide_manifest.xml")
+        # self.mideSchema = loadSchema("mide_ide.xml")
+        # self.manifestSchema = loadSchema("mide_manifest.xml")
 
         self._busy = RLock()
         self.strict = strict
@@ -214,12 +223,13 @@ class Recorder:
             self._config = None
             self._sn = None
             self._snInt = None
+            self._chipId = None
             self._sensors = None
             self._channels = None
             self._channelRanges = {}
             self._manifest = None
             self._calibration = None
-            self._calData = None
+            self._calData = None  # Note: unlike _manData, _calData is raw
             self._calPolys = None
             self._userCalPolys = None
             self._userCalDict = None
@@ -276,13 +286,14 @@ class Recorder:
 
     @property
     def volumeName(self):
+        """ The recorder's user-specified filesystem label. """
         if self.isVirtual:
             return False
 
         if self._path and self._volumeName is None:
             try:
                 self._volumeName = os_specific.getDriveInfo(self.path).label
-            except (IOError, TypeError) as err:
+            except (AttributeError, IOError, TypeError) as err:
                 logger.debug("Getting volumeName raised a possibly-allowed exception: %r" % err)
         return self._volumeName
 
@@ -331,19 +342,22 @@ class Recorder:
             path = os.path.realpath(path)
             infoFile = os.path.join(path, cls._INFO_FILE)
 
-            if not os.path.exists(infoFile):
-                return not strict
-
             if strict:
                 if not fs:
-                    fs = os_specific.getDriveInfo(dev).fs
+                    info = os_specific.getDriveInfo(dev)
+                    if not info:
+                        return False
+                    fs = info.fs
                 if "fat" not in fs.lower():
                     return False
 
             if 'info' in kwargs:
                 devinfo = loadSchema('mide_ide.xml').loads(kwargs['info']).dump()
+            elif os.path.isfile(infoFile):
+                with loadSchema('mide_ide.xml').load(infoFile) as doc:
+                    devinfo = doc.dump()
             else:
-                devinfo = loadSchema('mide_ide.xml').load(infoFile).dump()
+                return False
 
             props = devinfo['RecordingProperties']['RecorderInfo']
             name = props['ProductName']
@@ -375,13 +389,14 @@ class Recorder:
                 device data. If a `name` is specified, the type returned will
                 vary.
         """
+        mideSchema = loadSchema("mide_ide.xml")
         with self._busy:
             if self._info is None:
                 if self.path is not None:
                     with open(self.infoFile, 'rb') as f:
                         data = f.read()
                     self._hash = self._getHash(self.path, data)
-                    infoFile = self.mideSchema.loads(data)
+                    infoFile = mideSchema.loads(data)
                     try:
                         props = infoFile.dump().get('RecordingProperties', '')
                         if 'RecorderInfo' in props:
@@ -413,117 +428,6 @@ class Recorder:
                 return self._info.copy()
             else:
                 return self._info.get(name, default)
-
-
-    def _saveConfig(self,
-                    dest: Filename,
-                    data: Optional[dict] = None,
-                    verify: bool = True) -> int:
-        """ Device-specific configuration file saver. Used internally; call
-            `Recorder.saveConfig()` instead.
-        """
-        with self._busy:
-            if data is None:
-                data = self.getConfig()
-
-            ebml = self.mideSchema.encodes({'RecorderConfiguration': self._encodeConfig(data)})
-
-            if verify:
-                try:
-                    self.mideSchema.verify(ebml)
-                except Exception:
-                    raise ValueError("Generated config EBML could not be verified")
-
-            if isinstance(dest, (str, bytes, Path)):
-                with open(dest, 'wb') as f:
-                    f.write(ebml)
-            elif hasattr(dest, 'write'):
-                dest.write(ebml)
-            else:
-                raise TypeError("Config save destination must be a filename or stream; got "
-                                "%r (%s)" % (dest, type(dest)))
-
-            return len(ebml)
-
-
-    def _parseConfig(self, origConfig: dict, default: Optional[dict] = None) -> dict:
-        """ Helper method to read configuration info from a file. Used
-            internally.
-        """
-        # NOTE: This is likely to change in the future with the next round of configui updates
-
-        config = {} if default is None else default.copy()
-
-        if 'RecorderConfigurationList' in origConfig:
-            # New style config (FW 12 and up)
-            root = origConfig.get('RecorderConfigurationList', None)
-            if root:
-                for item in root.get('RecorderConfigurationItem', []):
-                    k = item.get('ConfigID', None)
-                    v = None
-                    for x in item:
-                        if x == "BooleanValue":
-                            v = bool(item[x])
-                            break
-                        elif x.endswith('Value'):
-                            v = item[x]
-                            break
-                    if k is not None and v is not None:
-                        config[k] = v
-
-        return config
-
-
-    def _encodeConfig(self, data):
-        """
-            Reverses the parsing done to create a valid config dict for newer devices.
-        """
-        origConfig = self._getConfig()
-        if 'RecorderConfigurationList' in origConfig:
-            # New style config (FW 12 and up)
-            root = origConfig.get('RecorderConfigurationList', None)
-            if root:
-                newConfigs = []
-                for item in root.get('RecorderConfigurationItem', []):
-                    configId = item.get('ConfigID', None)
-                    if configId in data:
-                        newItem = item.copy()
-                        dataKey = next(filter(lambda x: 'Value' in x, newItem.keys()))
-                        newItem[dataKey] = data[configId]
-                        newConfigs.append(newItem)
-                    else:
-                        newConfigs.append(item.copy())
-                return {'RecorderConfigurationItem': newConfigs}
-
-        raise ConfigError
-
-
-    def getConfig(self) -> dict:
-        """ Get the recorder's configuration data.
-        """
-        with self._busy:
-            if self._config is not None:
-                return self._config
-
-            if not self.path or not os.path.isfile(self.configFile):
-                return None
-
-            devinfo = self._getConfig()
-            config = self._parseConfig(devinfo)
-
-            if self._config is None:
-                self._config = config
-            else:
-                # Modify in place, just in case.
-                self._config.clear()
-                self._config.update(config)
-
-            return self._config
-
-
-    def _getConfig(self):
-        """ Get the unmodified dict from the config file, will be replaced later. """
-        return self.mideSchema.load(self.configFile).dump()
 
 
     @property
@@ -558,12 +462,6 @@ class Recorder:
         return self.getInfo('ProductName', '')
 
 
-    # @property
-    # def productId(self) -> int:
-    #     """ The recording device's type ID. """
-    #     return self.getInfo('RecorderTypeUID', 0x12) & 0xff
-
-
     @property
     def partNumber(self):
         """ The recording device's manufacturer-issued part number.
@@ -591,13 +489,41 @@ class Recorder:
 
 
     @property
+    def mcuType(self):
+        """ The recorder's CPU/MCU type. """
+        return self.getInfo('McuType', None)
+
+
+    @property
+    def chipId(self) -> Union[int, None]:
+        """ The recorder CPU/MCU unique chip ID. """
+        if self._chipId is None:
+            info = self.getInfo()
+
+            # IDs 64 bits or shorter can be a UniqueChipID (UnsignedInteger).
+            # Longer IDs (e.g., on STM32) are stored in a UniqueChipIDLong
+            # (BinaryElement), big-endian.
+            if 'UniqueChipIDLong' in info:
+                chid = 0
+                for b in bytearray(info['UniqueChipIDLong']):
+                    chid = (chid << 8) | b
+                self._chipId = chid
+            elif 'UniqueChipID' in info:
+                self._chipId = info['UniqueChipID']
+            else:
+                return None
+
+        return self._chipId
+
+
+    @property
     def hardwareVersion(self) -> str:
         """ The recorder's manufacturer-issued hardware version number. Newer
             version numbers will be split into *version*, *revision*, and
             (optionally) a `BOM version` letter. Older versions will be
             a single number.
         """
-        rev = self.getInfo('HwRev', -1)
+        rev = self.hardwareVersionInt
         try:
             if rev > 99:
                 # New structure of HwRev, which includes version, revision,
@@ -605,7 +531,13 @@ class Recorder:
                 major = int(rev/10000)
                 minor = int((rev % 10000) / 100)
                 bom = rev % 100
-                rev = f"{major}.{minor}{chr(bom+64) if bom > 0 else ''}"
+                if bom == 0:
+                    bom = ""
+                elif bom <= 26:
+                    bom = chr(bom+64)
+                else:
+                    bom = f"_{bom}"
+                rev = f"{major}.{minor}{bom}"
         except TypeError:
             pass
         return str(rev)
@@ -613,7 +545,8 @@ class Recorder:
 
     @property
     def hardwareVersionInt(self) -> int:
-        """ The recorder's manufacturer-issued hardware version number. """
+        """ The recorder's manufacturer-issued hardware version number.
+        """
         return self.getInfo('HwRev', -1)
 
     @property
@@ -651,6 +584,8 @@ class Recorder:
     @property
     def postConfigMsg(self) -> str:
         """ The message to be displayed after configuration. """
+        if not self.isVirtual and self.config and self.config.postConfigMsg:
+            return self.config.postConfigMsg
         return self._POST_CONFIG_MSG
 
 
@@ -659,8 +594,8 @@ class Recorder:
         """ Can the device record on command? """
         if not self.hasCommandInterface:
             return False
-        # All 'real' GG11-based devices can (ostensibly) do this.
-        return self.getInfo('McuType', '').startswith("EFM32GG11")
+        # All 'real' GG11-based and newer devices can (ostensibly) do this.
+        return self.getInfo('McuType', '').startswith(("EFM32GG11", "STM32"))
 
 
     @property
@@ -668,13 +603,14 @@ class Recorder:
         """ Can the device get new firmware/userpage from a file? """
         if not self.hasCommandInterface:
             return False
-        # All 'real' GG11-based devices can (ostensibly) do this.
-        return self.getInfo('McuType', '').startswith("EFM32GG11")
+        # All 'real' GG11-based and newer devices can (ostensibly) do this.
+        return self.getInfo('McuType', '').startswith(("EFM32GG11", "STM32"))
 
 
     @property
     def hasWifi(self) -> bool:
-        """ The name of the Wi-Fi hardware type, or `False` if none.
+        """ The name of the Wi-Fi hardware type, or `False` if none. The name
+            will not be blank, so expressions like `if dev.hasWifi:` will work.
         """
         if not self.hasCommandInterface:
             return False
@@ -697,6 +633,9 @@ class Recorder:
             reported range (particularly for digital sensors) is that of the
             subchannel's parser, and may exceed values actually produced by
             the sensor.
+
+            :param subchannel: An `idelib.dataset.SubChannel` instance,
+                e.g., from the recorder's `channels` dictionary.
         """
         # XXX: WIP
         key = (subchannel.parent.id, subchannel.id)
@@ -728,7 +667,8 @@ class Recorder:
         return self._channelRanges[key]
 
 
-    def getAccelRange(self, channel: Optional[int] = None,
+    def getAccelRange(self,
+                      channel: Optional[int] = None,
                       subchannel: Optional[int] = None,
                       rounded: bool = True) -> tuple:
         """ Get the range of the device's acceleration measurement.
@@ -844,7 +784,8 @@ class Recorder:
         return self.command.getTime(epoch=epoch)
 
 
-    def setTime(self, t: Union[Epoch, datetime, struct_time, tuple, None] = None,
+    def setTime(self,
+                t: Union[Epoch, datetime, struct_time, tuple, None] = None,
                 pause=True,
                 retries=1) -> Epoch:
         """ Set a recorder's date/time. A variety of standard time types are
@@ -895,14 +836,12 @@ class Recorder:
         return self.command.getClockDrift(pause=pause, retries=retries)
 
 
-    def _parsePolynomials(self, stream) -> dict:
+    def _parsePolynomials(self, cal: MasterElement) -> Dict[int, Transform]:
         """ Helper method to parse CalibrationList EBML into `Transform`
             objects.
         """
         try:
             parser = CalibrationListParser(None)
-            stream.seek(0)
-            cal = self.mideSchema.load(stream)
             calPolys = parser.parse(cal[0])
             if calPolys:
                 calPolys = {p.id: p for p in calPolys if p is not None}
@@ -912,67 +851,125 @@ class Recorder:
             pass
 
 
-    def getManifest(self) -> Union[dict, None]:
-        """ Read the device's manifest data. The data is a superset of the
-            information returned by `getInfo()`.
+    def _readUserpage(self) -> Union[dict, None]:
+        """ Read the device's manifest data from the EFM32 'userpage'. The
+            data is a superset of the information returned by `getInfo()`.
+            Factory calibration and recorder properties are also read
+            and cached, since one or both are in the userpage.
         """
-        if self.isVirtual:
+        if self._manifest is not None:
             return self._manifest
 
-        with self._busy:
-            if self._manifest is not None:
-                return self._manifest
+        # Recombine all the 'user page' files
+        data = bytearray()
+        for i in range(4):
+            filename = os.path.join(self.path, self._USERPAGE_FILE % i)
+            with open(filename, 'rb') as fs:
+                data.extend(fs.read())
 
-            # Recombine all the 'user page' files
-            systemPath = os.path.join(self.path, 'SYSTEM', 'DEV')
-            data = bytearray()
-            for i in range(4):
-                filename = os.path.join(systemPath, 'USERPG%d' % i)
-                with open(filename, 'rb') as fs:
-                    data.extend(fs.read())
+        (manOffset, manSize,
+         calOffset, calSize,
+         propOffset, propSize) = struct.unpack_from("<HHHHHH", data)
 
-            (manOffset, manSize,
-             calOffset, calSize,
-             propOffset, propSize) = struct.unpack_from("<HHHHHH", data)
+        manData = data[manOffset:manOffset + manSize]
+        calData = data[calOffset:calOffset + calSize]
 
-            manData = BytesIO(data[manOffset:manOffset + manSize])
-            self._calData = BytesIO(data[calOffset:calOffset + calSize])
+        # _propData is read and cached here but parsed in `getSensors()`.
+        # New devices use a dynamically-generated properties file, which
+        # overrides any property data in the USERPAGE.
+        if os.path.exists(self.recpropFile):
+            with open(self.recpropFile, 'rb') as f:
+                self._propData = f.read()
+        else:
+            # Zero offset means no property data (very old devices). For new
+            # devices, a size of 1 also means no data (it's a null byte).
+            propSize = 0 if (propOffset == 0 or propSize <= 1) else propSize
+            self._propData = data[propOffset:propOffset + propSize]
 
-            # _propData is read here but parsed in `getSensors()`
-            # New devices use a dynamically-generated properties file, which
-            # overrides any property data in the USERPAGE.
-            if os.path.exists(self.recpropFile):
-                with open(self.recpropFile, 'rb') as f:
-                    self._propData = f.read()
-            else:
-                # Zero offset means no property data (very old devices). For new
-                # devices, a size of 1 also means no data (it's a null byte).
-                propSize = 0 if (propOffset == 0 or propSize <= 1) else propSize
-                self._propData = data[propOffset:propOffset + propSize]
+        try:
+            self._manData = loadSchema("mide_manifest.xml").loads(manData)
+            self._manifest = self._manData.dump().get('DeviceManifest')
 
-            try:
-                self._manData = self.manifestSchema.load(manData)
-                manDict = self._manData.dump()
-                calDict = self.mideSchema.load(self._calData).dump()
-                self._manifest = manDict.get('DeviceManifest')
-                self._calibration = calDict.get('CalibrationList')
-            except (AttributeError, KeyError) as err:
-                logger.debug("getManifest() raised a possibly-allowed exception: %r" % err)
-                pass
+            self._calData = loadSchema("mide_ide.xml").loads(calData)
+            self._calibration = self._calData.dump().get('CalibrationList')
+
+        except (AttributeError, KeyError) as err:
+            logger.debug("_readUserpage() raised a possibly-allowed exception: %r" % err)
+            pass
 
         return self._manifest
 
 
-    def getUserCalibration(self, filename: Optional[Filename] = None) -> Union[dict, None]:
+    def _readManifest(self) -> Union[dict, None]:
+        """ Read the device's manifest data from the 'MANIFEST' file. The
+            data is a superset of the information returned by `getInfo()`.
+
+            Factory calibration and recorder properties are also read and
+            cached for backwards compatibility, since both are in the older
+            devices' EFM32 'userpage'.
+        """
+        manFile = os.path.join(self.path, self._MANIFEST_FILE)
+        calFile = os.path.join(self.path, self._SYSCAL_FILE)
+
+        try:
+            with open(manFile, 'rb') as f:
+                self._manData = loadSchema("mide_manifest.xml").loads(f.read())
+            self._manifest = self._manData.dump().get('DeviceManifest')
+        except (FileNotFoundError, AttributeError, KeyError) as err:
+            logger.debug(f"Possibly-allowed exception when reading {manFile}: {err!r}")
+
+        try:
+            with loadSchema("mide_ide.xml").load(calFile) as doc:
+                self._calData = doc.schema.loads(doc.getRaw())
+                calDict = self._calData.dump()
+            self._calibration = calDict.get('CalibrationList')
+        except (FileNotFoundError, AttributeError, KeyError) as err:
+            logger.debug(f"Possibly-allowed exception when reading {calFile}: {err!r}")
+
+        try:
+            # _propData is read and cached here but parsed in `getSensors()`.
+            # Old EFM32 recorders stored this w/ the manifest in the USERPAGE.
+            with open(self.recpropFile, 'rb') as f:
+                self._propData = f.read()
+        except (FileNotFoundError, AttributeError, KeyError) as err:
+            logger.debug(f"Possibly-allowed exception when reading {self.recpropFile}: {err!r}")
+
+        return self._manifest
+
+
+    def getManifest(self) -> Union[dict, None]:
+        """ Read the device's manifest data. The data is a superset of the
+            information returned by `getInfo()`.
+        """
+        with self._busy:
+            if self.isVirtual or self._manifest is not None:
+                return self._manifest
+
+            if os.path.exists(os.path.join(self.path, self._USERPAGE_FILE % 0)):
+                self._readUserpage()
+            elif os.path.exists(os.path.join(self.path, self._MANIFEST_FILE)):
+                self._readManifest()
+
+            return self._manifest
+
+
+    def getUserCalibration(self,
+                           filename: Optional[Filename] = None) -> Union[dict, None]:
         """ Get the recorder's user-defined calibration data as a dictionary
             of parameters.
         """
+        if self.isVirtual:
+            return self._userCalDict
+
         filename = self.userCalFile if filename is None else filename
         if filename is None or not os.path.exists(filename):
             return None
+        if filename != self.userCalFile:
+            self._userCalDict = None
+
         if self._userCalDict is None:
             with open(self.userCalFile, 'rb') as f:
-                d = self.mideSchema.load(f).dump()
+                d = loadSchema("mide_ide.xml").load(f).dump()
                 self._userCalDict = d.get('CalibrationList', None)
         return self._userCalDict
 
@@ -986,16 +983,19 @@ class Recorder:
                 `.dat` file to read (as opposed to the device's standard
                 user calibration).
         """
+        if self.isVirtual and not filename:
+            return None
+
         filename = self.userCalFile if filename is None else filename
         if filename is None or not os.path.exists(filename):
             return None
         if self._userCalPolys is None:
-            with open(filename, 'rb') as f:
-                self._userCalPolys = self._parsePolynomials(f)
+            with loadSchema('mide_ide.xml').load(filename) as doc:
+                self._userCalPolys = self._parsePolynomials(doc)
         return self._userCalPolys
 
 
-    def getCalibration(self, user=True) -> Union[dict, None]:
+    def getCalibration(self, user: bool = True) -> Union[dict, None]:
         """ Get the recorder's current calibration information. User-supplied
             calibration, if present, takes priority (as it is what will be
             applied in recordings).
@@ -1012,7 +1012,7 @@ class Recorder:
         return self._calibration
 
 
-    def getCalPolynomials(self, user=True) -> Union[dict, None]:
+    def getCalPolynomials(self, user: bool = True) -> Union[dict, None]:
         """ Get the constructed Polynomial objects created from the device's
             current calibration data, as a dictionary of
             `idelib.transform.Transform` subclass instances, keyed by ID.
@@ -1034,7 +1034,9 @@ class Recorder:
         return self._calPolys
 
 
-    def getCalDate(self, user=False, epoch=False) -> Union[datetime, Epoch, None]:
+    def getCalDate(self,
+                   user: bool = False,
+                   epoch: bool = False) -> Union[datetime, Epoch, None]:
         """ Get the date of the recorder's calibration. By default,
             the factory calibration date is returned, as user calibration
             typically has no date.
@@ -1121,13 +1123,11 @@ class Recorder:
     def getProperties(self) -> dict:
         """ Get the raw Recording Properties from the device.
         """
-        if self.isVirtual:
-            return self._properties
-        elif self._properties is not None:
+        if self.isVirtual or self._properties is not None:
             return self._properties
 
         self.getManifest()
-        props = self.mideSchema.loads(self._propData).dump()
+        props = loadSchema("mide_ide.xml").loads(self._propData).dump()
 
         self._properties = props.get('RecordingProperties', {})
         return self._properties
@@ -1156,7 +1156,7 @@ class Recorder:
                 # Parse userpage recorder property data
                 parser = RecordingPropertiesParser(doc)
                 doc._parsers = {'RecordingProperties': parser}
-                parser.parse(self.mideSchema.loads(self._propData)[0])
+                parser.parse(loadSchema("mide_ide.xml").loads(self._propData)[0])
             self._channels = doc.channels
             self._sensors = doc.sensors
             self._warnings = doc.warningRanges

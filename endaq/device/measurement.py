@@ -11,6 +11,7 @@ __all__ = ['ANY', 'ACCELERATION', 'ALTITUDE', 'ANG_RATE', 'AUDIO', 'DIRECTION',
 
 from fnmatch import fnmatch
 from shlex import shlex
+from typing import List, Dict, Tuple, Union
 
 from idelib.dataset import Dataset, Channel, SubChannel
 
@@ -208,7 +209,7 @@ QUATERNION = ORIENTATION
 #
 # ============================================================================
 
-def get_measurement_type(channel):
+def get_measurement_type(channel: Channel) -> Union[MeasurementType, List[MeasurementType], None]:
     """ Get the appropriate `MeasurementType` object for a given `SubChannel`.
         Calling with a `Channel` returns a list of `MeasurementType` objects,
         with one for each child `SubChannel`.
@@ -239,7 +240,7 @@ def get_measurement_type(channel):
     return None
 
 
-def split_types(query):
+def split_types(query: Union[MeasurementType, str]) -> Tuple[set, set]:
     """ Split a string of multiple `MeasurementType` keys (e.g., one generated
         by using addition or subtraction of `MeasurementType` objects and/or
         strings).
@@ -272,7 +273,8 @@ def split_types(query):
     return inc, exc
 
 
-def filter_channels(channels, measurement_type=ANY):
+def filter_channels(channels: Union[List[Channel], Dict[int, Channel]],
+                    measurement_type: Union[MeasurementType, str] = ANY) -> List[Channel]:
     """ Filter a list of `Channel` and/or `SubChannel` instances by their
         measurement type(s).
 

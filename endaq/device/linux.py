@@ -1,20 +1,28 @@
 """
-Linux-specific functions; primarily filesystem-related.
+Linux-specific functions; primarily filesystem-related. The parent package
+imports the appropriate version for the host OS.
 """
 
 __author__ = "Connor"
 
+__all__ = ('deviceChanged', 'getDeviceList', 'getBlockSize', 'getFreeSpace',
+           'getDriveInfo', 'readRecorderClock', 'readUncachedFile')
+
 import errno
+import logging
 import os
 import mmap
 import math
 import re
 from time import time
-from typing import ByteString, Tuple
+from typing import ByteString, Tuple, Union
+import warnings
 
 import psutil
 
 from .types import Drive, Epoch, Filename
+
+logger = logging.getLogger('endaq.device')
 
 # ==============================================================================
 #
@@ -33,15 +41,18 @@ def _getDeviceLabels() -> dict:
             for device in os.listdir(idRoot)}
 
 
-def getDriveInfo(dev: Filename) -> Drive:
+def getDriveInfo(dev: Filename) -> Union[Drive, None]:
     """ Get general device information. Not currently used.
     """
     dev = os.path.realpath(dev)
 
-    disk = [x for x in psutil.disk_partitions()
-            if x.mountpoint == dev
-            if os.path.split(x.device)[-1] in os.listdir('/dev')][0]
-    partName = disk.device
+    try:
+        disk = [x for x in psutil.disk_partitions()
+                if x.mountpoint == dev
+                if os.path.split(x.device)[-1] in os.listdir('/dev')][0]
+        partName = disk.device
+    except IndexError:
+        return None
 
     ids = _getDeviceIds()
     if partName not in ids:
@@ -134,18 +145,25 @@ def readRecorderClock(clockFile: Filename, pause: bool = True) -> Tuple[Epoch, E
 # ==============================================================================
 
 
-def getDeviceList(types: dict) -> list:
+def getDeviceList(types: dict, strict: bool = True) -> list:
     """ Get a list of data recorders, as their respective mount points.
     """
 
     result = set()
 
     for device, mountpoint, fstype, opts, maxfile, maxpath in psutil.disk_partitions():
-        if not os.path.exists(device):
-            continue
-        for t in types:
-            if t.isRecorder(mountpoint):
-                result.add(mountpoint)
+        try:
+            if not os.path.exists(device):
+                continue
+            for t in types:
+                if t.isRecorder(mountpoint, strict=strict):
+                    result.add(mountpoint)
+        except IOError as err:
+            # Rare error, may be caused by flaky device or USB.
+            msg = ("getDeviceList(): Could not access {} ({}); "
+                   "ignoring error and continuing".format(device, err))
+            warnings.warn(msg)
+            logger.error(msg)
 
     return sorted(result)
 

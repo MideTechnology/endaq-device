@@ -1,32 +1,20 @@
 """
-MacOS-specific functions; primarily filesystem-related.
+MacOS-specific functions; primarily filesystem-related. The parent package
+imports the appropriate version for the host OS.
 
 TODO: THIS NEEDS TO BE REFACTORED. BASE ON NEXT RELEASE VERSION OF `linux.py`
 """
 
-from collections import namedtuple
-import os
-import time
+__all__ = ('deviceChanged', 'getDeviceList', 'getBlockSize', 'getFreeSpace',
+           'getDriveInfo', 'readRecorderClock', 'readUncachedFile')
 
-Drive = namedtuple("Drive", ("path", "label", "sn", "fs", "type"))
+import os
+
+from .linux import getBlockSize, getDriveInfo, readUncachedFile, readRecorderClock
 
 #===============================================================================
 #
 #===============================================================================
-
-
-def getDriveInfo(dev):
-    # XXX: Total hack.
-    return Drive(dev, os.path.basename(dev), None, 'fat', None)
-
-
-def readRecorderClock(clockfile):
-    t0 = time.time()
-    f = open(clockfile, 'rb', 0)
-    t = f.read(8)
-    t1 = (time.time() + t0) / 2
-    f.close()
-    return t1, t
 
 
 def getDeviceList(types, paths=None):
@@ -50,12 +38,12 @@ def deviceChanged(recordersOnly, types, clear=False):
     """ Returns `True` if a drive has been connected or disconnected since
         the last call to `deviceChanged()`.
 
-        :keyword recordersOnly: If `False`, any change to the mounted drives
+        :param recordersOnly: If `False`, any change to the mounted drives
             is reported as a change. If `True`, the mounted drives are checked
             and `True` is only returned if the change occurred to a recorder.
             Checking for recorders only takes marginally more time.
         :param types: A list of known `Recorder` classes to detect.
-        :keyword clear: If `True`, clear the cache of previously-detected
+        :param clear: If `True`, clear the cache of previously-detected
             drives and devices.
     """
     global _LAST_DEVICES, _LAST_RECORDERS
@@ -88,12 +76,3 @@ def getFreeSpace(path):
     # TODO: Make sure this actually works. Should work on all POSIX OSes.
     st = os.statvfs(path)
     return st.f_bavail * st.f_frsize
-
-
-def getBlockSize(path):
-    """ Return the bytes per sector and sectors per cluster of a drive.
-
-        :param path: The path to the drive to check. Can be a subdirectory.
-        :return: A tuple containing the bytes/sector and sectors/cluster.
-    """
-    raise NotImplementedError("XXX: IMPLEMENT macos.getBlockSize()!")

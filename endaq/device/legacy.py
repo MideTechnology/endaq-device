@@ -9,14 +9,18 @@ __copyright__ = "Copyright 2022 Mide Technology Corporation"
 
 import os.path
 import shutil
-from typing import AnyStr, Optional
+from typing import Any, AnyStr, Dict, Optional, TYPE_CHECKING, Union
 
-from ebmlite import loadSchema
+from ebmlite import loadSchema, Document, MasterElement
 
 import logging
 logger = logging.getLogger('endaq.device.legacy')
 
 from .measurement import ACCELERATION
+
+if TYPE_CHECKING:
+    from .base import Recorder
+    from .config import ConfigInterface
 
 # ==============================================================================
 #
@@ -33,26 +37,24 @@ def _copyItems(oldD: AnyStr, newD: AnyStr, *keyPairs):
             newD[newK] = val
 
 
-def loadConfigData(device, data: Optional[dict] = None) -> dict:
-    """ Load old configuration data and return it in the new format.
+def convertConfigItems(config: dict,
+                       device: "Recorder") -> Dict[int, Any]:
+    """ Convert legacy-style ``RecorderConfiguration`` items to the
+        new ``RecorderConfigurationList`` style.
 
-        :param device: The `Recorder` object from which to read the data.
-        :param data: An alternate set of configuration data, overriding
-            that on the device. For importing configuration data.
+        :param config: A dictionary, dumped from an EBML
+            ``RecorderConfiguration`` element.
+        :param device: The device containing the data.
+        :return: A dictionary of ConfigIDs and values (the 'new' format).
     """
-    logger.info("Loading legacy configuration format")
+    if not config:
+        return {}
 
     newData = {}
-    if data is None:
-        try:
-            raw = loadSchema('mide_ide.xml').load(device.configFile)
-            config = raw.dump()['RecorderConfiguration']
-        except (IOError, KeyError):
-            config = {}
-    else:
-        config = data
-
     channels = device.getChannels()
+
+    if 'RecorderConfiguration' in config:
+        config = config['RecorderConfiguration']
 
     # Combine 'root' dictionaries for easy access
     basicConfig = config.get('SSXBasicRecorderConfiguration', {})
@@ -103,7 +105,7 @@ def loadConfigData(device, data: Optional[dict] = None) -> dict:
             continue
 
         if chId not in channels:
-            # Convert really old firmware channel IDs
+            # Convert very early firmware channel IDs
             if chId == 0 and 8 in channels:
                 chId = 8
             elif chId == 1 and 36 in channels:
@@ -143,7 +145,32 @@ def loadConfigData(device, data: Optional[dict] = None) -> dict:
     return newData
 
 
-def encodeConfigData(configData: dict, device) -> dict:
+def convertConfigFile(original: Union[Document, MasterElement],
+                      interface: "ConfigInterface") -> MasterElement:
+    """ Convert legacy-style ``RecorderConfiguration`` data to the
+        new ``RecorderConfigurationList`` style.
+
+        :param original: The original, legacy format EBML config document.
+        :param interface: The `ConfigInterface` requesting the conversion.
+        :return: An EBML config document in the new format.
+    """
+    vals = convertConfigItems(original.dump(), interface.device)
+
+    data = []
+    items = {'RecorderConfigurationItem': data}
+
+    for k, v in vals.items():
+        if k in interface._items:
+            data.append({'ConfigID': k,
+                         interface._items[k].vtype: v})
+
+    schema = loadSchema('mide_ide.xml')
+    ebml = schema.encodes({'RecorderConfigurationList': items},
+                          headers=False)
+    return schema.loads(ebml)
+
+
+def generateLegacyConfig(configData: dict, device: "Recorder") -> dict:
     """ Build an EBML-encodable set of nested dictionaries containing the
         dialog's configuration values in the legacy format. Note: the
         `configData` should not contain any `None` values; these will be
@@ -153,8 +180,6 @@ def encodeConfigData(configData: dict, device) -> dict:
             style (flat, keyed by ConfigID).
         :param device: The device to which to write.
     """
-    logger.info("Translating to legacy configuration format")
-
     # Copy the data, just in case.
     configData = configData.copy()
 
@@ -246,31 +271,3 @@ def encodeConfigData(configData: dict, device) -> dict:
 
     return {'RecorderConfiguration': legacyConfigData}
 
-
-# ==============================================================================
-#
-# ==============================================================================
-
-def convertConfig(device) -> bool:
-    """ Convert a recorder's configuration file from the old format to the new
-        version.
-    """
-    backupName = "%s_old.%s" % os.path.splitext(device.configFile)
-    if not os.path.exists(device.configFile):
-        return False
-
-    shutil.copy(device.configFile, backupName)
-    data = encodeConfigData(loadConfigData(device), device)
-
-    schema = loadSchema('mide_ide.xml')
-    encoded = schema.encodes(data)
-
-    try:
-        with open(device.configFile, 'wb') as f:
-            f.write(encoded)
-
-        return True
-
-    except Exception:
-        shutil.copy(backupName, device.configFile)
-        raise

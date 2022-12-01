@@ -2,6 +2,9 @@
 Exceptions raised when interacting with a recording device.
 """
 
+__all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
+           'DeviceError', 'DeviceTimeout', 'UnsupportedFeature')
+
 
 class DeviceError(Exception):
     """ Base class for device-related exceptions. """
@@ -48,3 +51,9 @@ class UnsupportedFeature(DeviceError):
             pass
 
         return super().__str__()
+
+
+class CRCError(ValueError):
+    """ Exception raised if a packet's CRC16 check fails. """
+
+

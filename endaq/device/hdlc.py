@@ -1,18 +1,20 @@
 """
 HDLC encoding and checksum-related code.
 
+In this application, 'HDLC encoding' amounts to using HDLC escaping and
+break characters.
+
 :var HDLC_BREAK: The byte that indicates the end of an HDLC encoded packet.
 :var HDLC_ESCAPE: The byte that indicates the next character (i.e. a
     reserved value, like `HDLC_BREAK` or `HDLC_ESCAPE`) is escaped. Escaped
     bytes are XORed with 0x20.
 """
+from typing import Union
 
 from logging import getLogger
-logger = getLogger()
+logger = getLogger('endaq.device')
 
-
-class CRCError(ValueError):
-    """ Exception raised if a packet's CRC16 check fails. """
+from .exceptions import CRCError
 
 
 # ==============================================================================
@@ -56,8 +58,8 @@ CRC16_TABLE = (
     )
 
 
-def generateCRC16(packet, finish=False):
-    """ Generate a CRC16 from a HDLC packet.
+def generateCRC16(packet: bytearray, finish: bool = False) -> int:
+    """ Generate a CRC16 from an HDLC packet.
 
         :param packet: The packet (a `bytearray`). A string or a list of
             integers (between 0 and 255) will also work.
@@ -80,8 +82,8 @@ def generateCRC16(packet, finish=False):
             raise
 
 
-def checkCRC16(crc):
-    """ Check a HDLC CRC16.
+def checkCRC16(crc: int) -> bool:
+    """ Check an HDLC CRC16.
 
         @see http://www.ntcip.org/forum/NTCIP/msg00017.html
     """
@@ -92,14 +94,17 @@ def checkCRC16(crc):
 # HDLC escaping/encoding
 # ==============================================================================
 
+# Numeric versions, for use with `bytearray`, etc.
 HDLC_BREAK = 0x7e
 HDLC_ESCAPE = 0x7d
 
+# Character versions, for use with `bytes`, etc.
 HDLC_BREAK_CHAR = b"\x7e"
 HDLC_ESCAPE_CHAR = b"\x7d"
 
 
-def hdlc_encode(in_payload, crc=True):
+def hdlc_encode(in_payload: Union[bytearray, bytes, str],
+                crc: bool = True) -> bytearray:
     """ Encode a raw packet into HDLC escaped format with (optional) CRC.
 
         :param in_payload: The raw packet payload.
@@ -140,27 +145,28 @@ def hdlc_encode(in_payload, crc=True):
     return out_payload
 
 
-def hdlc_decode(in_payload, ignore_crc=False):
-    """ Decode a HDLC-encoded packet into raw data.
+def hdlc_decode(in_payload: Union[bytearray, bytes],
+                ignore_crc: bool = False) -> bytearray:
+    """ Decode an HDLC-encoded packet into raw data.
 
         :param in_payload: The HDLC-encoded packet payload.
-        :param ignore_crc: If `True`, do no perform a CRC check.
+        :param ignore_crc: If `True`, do not perform a CRC check.
         :returns: The decoded data (including the CRC, if any).
     """
-    # TODO: Do we need fragment handling too?
+    # FUTURE: Do we need fragment handling too?
     out_payload = bytearray()
     escaped = False
 
     # there is definitely a better way to do this...
     for i in in_payload:
-        if i == 0x7D:
+        if i == HDLC_ESCAPE:
             escaped = True
             # do not add to output payload
         else:
             if escaped:
                 out_payload.append(i ^ 0x20)
                 escaped = False
-            elif i != 0x7E:
+            elif i != HDLC_BREAK:
                 out_payload.append(i)
     if ignore_crc:
         logger.debug("HDLC: Ignoring CRC...")
