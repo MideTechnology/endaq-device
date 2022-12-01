@@ -1,30 +1,20 @@
 """
-MacOS-specific functions; primarily filesystem-related.
+MacOS-specific functions; primarily filesystem-related. The parent package
+imports the appropriate version for the host OS.
 
 TODO: THIS NEEDS TO BE REFACTORED. BASE ON NEXT RELEASE VERSION OF `linux.py`
 """
 
+__all__ = ('deviceChanged', 'getDeviceList', 'getBlockSize', 'getFreeSpace',
+           'getDriveInfo', 'readRecorderClock', 'readUncachedFile')
+
 import os
 
-from .linux import getDriveInfo, readUncachedFile, readRecorderClock
+from .linux import getBlockSize, getDriveInfo, readUncachedFile, readRecorderClock
 
 #===============================================================================
 #
 #===============================================================================
-
-
-# def getDriveInfo(dev):
-#     # XXX: Total hack.
-#     return Drive(dev, os.path.basename(dev), None, 'fat', None)
-#
-#
-# def readRecorderClock(clockfile):
-#     t0 = time.time()
-#     f = open(clockfile, 'rb', 0)
-#     t = f.read(8)
-#     t1 = (time.time() + t0) / 2
-#     f.close()
-#     return t1, t
 
 
 def getDeviceList(types, paths=None):
@@ -86,12 +76,3 @@ def getFreeSpace(path):
     # TODO: Make sure this actually works. Should work on all POSIX OSes.
     st = os.statvfs(path)
     return st.f_bavail * st.f_frsize
-
-
-def getBlockSize(path):
-    """ Return the bytes per sector and sectors per cluster of a drive.
-
-        :param path: The path to the drive to check. Can be a subdirectory.
-        :return: A tuple containing the bytes/sector and sectors/cluster.
-    """
-    raise NotImplementedError("XXX: IMPLEMENT macos.getBlockSize()!")

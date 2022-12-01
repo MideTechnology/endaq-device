@@ -145,8 +145,8 @@ def getDevices(paths: Optional[List[Filename]] = None,
             have changed (e.g., their drive letter or mount point changed
             after a device reset).
         :param strict: If `False`, only the directory structure is used
-            to identify a recorder. If `True`, non-FAT file systems will
-            be automatically rejected.
+            to identify a recorder. If `True`, non-FAT file systems and
+            non-removable media will be automatically rejected.
         :return: A list of instances of `Recorder` subclasses.
     """
     global RECORDERS

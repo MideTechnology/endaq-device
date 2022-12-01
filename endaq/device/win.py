@@ -1,19 +1,27 @@
 """
-Windows-specific functions; primarily filesystem-related.
+Windows-specific functions; primarily filesystem-related. The parent package
+imports the appropriate version for the host OS.
 """
 
 __author__ = "dstokes"
 __copyright__ = "Copyright 2022 Mide Technology Corporation"
 
+__all__ = ('deviceChanged', 'getDeviceList', 'getBlockSize', 'getFreeSpace',
+           'getDriveInfo', 'readRecorderClock', 'readUncachedFile')
+
 import ctypes
 import errno
+import logging
 import os
 from pathlib import Path
 import sys
 from time import time
 from typing import ByteString, List, Optional, Tuple
+import warnings
 
 from .types import Drive, Epoch, Filename
+
+logger = logging.getLogger('endaq.device')
 
 # ==============================================================================
 #
@@ -28,6 +36,10 @@ if 'win' in sys.platform and sys.platform != 'darwin':
 else:
     kernel32 = None
 
+
+# ==============================================================================
+#
+# ==============================================================================
 
 def getDriveInfo(dev: Filename) -> Drive:
     """ Get general device information. Not currently used.
@@ -161,16 +173,24 @@ def getDeviceList(types: dict, strict: bool = True) -> List[Drive]:
     drivebits = kernel32.GetLogicalDrives()
     result = []
     for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
-        if drivebits & 1:
-            driveLetter = '%s:\\' % letter
-            devtype = win32file.GetDriveType(driveLetter)
-            # First cut: only consider removable drives
-            if devtype == win32file.DRIVE_REMOVABLE or not strict:
-                info = getDriveInfo(driveLetter)
-                for t in types:
-                    if t.isRecorder(info, strict=strict):
-                        result.append(info)
-                        break
+        try:
+            if drivebits & 1:
+                driveLetter = '%s:\\' % letter
+                devtype = win32file.GetDriveType(driveLetter)
+                # First cut: only consider removable drives
+                if devtype == win32file.DRIVE_REMOVABLE or not strict:
+                    info = getDriveInfo(driveLetter)
+                    for t in types:
+                        if t.isRecorder(info, strict=strict):
+                            result.append(info)
+                            break
+        except IOError as err:
+            # Rare error, may be caused by flaky device or USB.
+            msg = ("getDeviceList(): Could not access {}:/ ({}); "
+                   "ignoring error and continuing".format(letter, err))
+            warnings.warn(msg)
+            logger.error(msg)
+
         drivebits >>= 1
     return result
 
