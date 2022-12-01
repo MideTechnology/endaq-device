@@ -1,5 +1,6 @@
 """
-Proof-of-concept implementation of basic serial command interface.
+Command interfaces: the mechanisms that communicate with
+and control the recording device.
 """
 
 import calendar
@@ -42,8 +43,8 @@ if TYPE_CHECKING:
 
 class CommandInterface:
     """
-    Base class for command interfaces, the mechanism that sends the command
-    to the device.
+    Base class for command interfaces, the mechanism that communicates with
+    and controls the recording device.
 
     :ivar timeout: The default response timeout.
     :ivar status: The last reported device status. Not available on all
@@ -90,21 +91,25 @@ class CommandInterface:
     def __init__(self,
                  device: "Recorder",
                  timeout: Union[int, float] = 1):
-        """
-        Constructor.
+        """ `CommandInterface` instances are rarely (if ever) explicitly
+            created; the parent `Recorder` object will create an instance of
+            the appropriate `CommandInterface` subclass when its `command`
+            property is first accessed.
 
-        :param device: The Recorder to which to interface.
-        :param timeout: Default time to wait (in seconds) for commands
-            to process.
+            :param device: The Recorder to which to interface.
+            :param timeout: Default time to wait (in seconds) for commands
+                to process.
         """
         self.schema = loadSchema('command-response.xml')
 
         self.device = device
-        self.timeout = timeout
-        self.index = 0
+        self.index: int = 0
+
+        # The default response timeout (in seconds).
+        self.timeout: Union[int, float] = timeout
 
         # Last reported device status. Not available on all interfaces.
-        self.status = None, None
+        self.status: Tuple[int, Optional[str]] = (None, None)
 
         # Some interfaces (i.e. serial) have a maximum packet size.
         self.maxCommandSize = self.DEFAULT_MAX_COMMAND_SIZE
@@ -1560,8 +1565,12 @@ class SerialCommandInterface(CommandInterface):
                          'too many APs? Falling back to FileCommandInterface.')
 
         if not hasattr(self, '_fileinterface'):
-            self._fileinterface = FileCommandInterface(self.device)
-
+            if FileCommandInterface.hasInterface(self.device):
+                self._fileinterface = FileCommandInterface(self.device)
+            else:
+                raise IOError('SerialCommandInterface.scanWifi() failed, and '
+                              'device does not support alternative '
+                              'FileCommandInterface')
 
         return self._fileinterface.scanWifi(timeout, interval, callback)
 
