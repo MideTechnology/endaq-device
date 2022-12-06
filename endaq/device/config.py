@@ -671,7 +671,7 @@ class ConfigInterface:
 
         dump = config.dump()
 
-        root = dump.get('RecorderConfigurationList', None)
+        root = dump.get('RecorderConfigurationList', dump)
         if root:
             for item in root.get('RecorderConfigurationItem', []):
                 k = item['ConfigID']

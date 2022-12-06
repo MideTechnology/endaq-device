@@ -276,6 +276,7 @@ class Recorder:
                 self.commandFile = os.path.join(path, self._COMMAND_FILE)
                 self._volumeName = None
             else:
+                path = None
                 self._volumeName = ''
                 self.configFile = self.infoFile = None
                 self.clockFile = self.userCalFile = self.configUIFile = None
@@ -1363,8 +1364,9 @@ class Recorder:
                 # https://github.com/MideTechnology/idelib/issues/112
                 dev._config = el
             elif el.name == 'ConfigUI':
-                # Proposed, but not yet in IDE files
-                dev._configUi = el
+                # Proposed, but not yet in IDE files.
+                # No longer strictly required due to `ui_defaults`.
+                dev._configUi = loadSchema('mide_config_ui.xml').loads(el.value)
 
         # Datasets merge calibration info into recorderInfo; separate them.
         dev._calibration = {}
