@@ -208,7 +208,7 @@ class ConfigItem:
 
         self.configValue = value
 
-        self._fromFile = False  # Indicates value was read from file, set during load
+        self._fromFile = None  # Indicates value was read from file, set during load
         self._changed = False  # Overrides item value change detection
         self._originalValue = self.value  # Part of change detection
 
@@ -371,10 +371,18 @@ class ConfigItem:
         self._changed = changed
 
 
-    def reset(self):
-        """ Change the item's value to the default. """
-        if self.configValue != self._default:
-            self.configValue = self._default
+    def revert(self) -> bool:
+        """ Reset the item to the value read from the config file, or `None`
+            if the item's value was not from a config file.
+
+            :return: `True` if the value was reverted, `False` if the value was
+                unchanged.
+        """
+        if self.configValue != self._fromFile:
+            self.configValue = self._fromFile
+            self.changed = False
+            return True
+        return False
 
 
     def dump(self) -> Union[None, dict]:
@@ -530,6 +538,16 @@ class ConfigInterface:
         return [item for item in self.items.values() if item.changed]
 
 
+    def revert(self):
+        """ Reset all configuration values to what was originally read from
+            the configuration file, or `None` if the value was never read
+            from the file.
+        """
+        for item in self.items.values():
+            if item.revert():
+                logger.debug('Reverted {!r}'.format(item))
+
+
     def _parseConfig(self,
                      origConfig: dict,
                      default: Optional[dict] = None) -> Dict[int, Any]:
@@ -679,7 +697,7 @@ class ConfigInterface:
                 if k in self._items:
                     self._items[k].configValue = v[1]
                     self._items[k].changed = False
-                    self._items[k]._fromFile = True
+                    self._items[k]._fromFile = v[1]
                 else:
                     self.unknownConfig[k] = v
 
@@ -1141,6 +1159,13 @@ class VirtualConfigInterface(ConfigInterface):
             therefore recommended.
 
             :param item: The config ID or label of a configuration item.
+        """
+        raise UnsupportedFeature("Virtual devices cannot be configured")
+
+
+    def revert(self):
+        """ Reset all configuration values to what was originally read from
+            the configuration file. Not supported on virtual devices!
         """
         raise UnsupportedFeature("Virtual devices cannot be configured")
 

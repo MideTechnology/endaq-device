@@ -1,6 +1,13 @@
 """
 Import and export of configuration data.
+
+Note: User calibration and Wi-Fi setting are *not* included in the standard
+import or export of configuration data. Calibration is specific to one
+device, and for security reasons, Wi-Fi settings cannot be extracted from
+the device.
 """
+
+__all__ = ('exportConfig', 'importConfig')
 
 from pathlib import Path
 from typing import Union
