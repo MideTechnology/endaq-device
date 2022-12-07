@@ -55,5 +55,3 @@ class UnsupportedFeature(DeviceError):
 
 class CRCError(ValueError):
     """ Exception raised if a packet's CRC16 check fails. """
-
-

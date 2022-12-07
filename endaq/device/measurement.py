@@ -13,7 +13,7 @@ from fnmatch import fnmatch
 from shlex import shlex
 from typing import List, Dict, Tuple, Union
 
-from idelib.dataset import Dataset, Channel, SubChannel
+from idelib.dataset import Channel, SubChannel
 
 # ============================================================================
 #
@@ -112,7 +112,7 @@ class MeasurementType:
         """ Does the given object match this measurement type?
 
             :param channel: The object to test. Can be an `idelib.dataset.Channel`,
-                `idelib.dataset.SubChannel`, or a or a string of a measurement
+                `idelib.dataset.SubChannel`, or a string of a measurement
                 type name.
             :return: `True` if the given object uses this measurement type.
                 In the case of `idelib.dataset.Channel`, `True` is returned

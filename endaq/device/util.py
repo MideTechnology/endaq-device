@@ -43,3 +43,24 @@ def restoreBackup(filename: typing.Union[str, pathlib.Path],
         logger.error(f'Failed to restore backup of {filename} '
                      f'({errno.errorcode.get(err.errno, "?")}: {err.strerror}), ignoring')
     return False
+
+
+def cleanProps(el: dict):
+    """ Recursively remove unknown elements (``"UnknownElement"`` keys) from
+        a dictionary of device properties. The original data may contain
+        nested dictionaries and lists. For preparing data dumped from EBML
+        for re-encoding.
+
+        Nested dictionaries and lists are deep-copied. Note: the contents of
+        `bytearray` objects are not duplicated; the copy of the dictionary
+        will reference the same ones as the original.
+
+        :return: A deep copy of the original dictionary, minus unknown
+            elements.
+    """
+    if isinstance(el, list):
+        return [cleanProps(x) for x in el]
+    elif not isinstance(el, dict):
+        return el
+
+    return {k: cleanProps(v) for k, v in el.items() if k != "UnknownElement"}

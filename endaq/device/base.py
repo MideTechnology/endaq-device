@@ -98,7 +98,7 @@ class Recorder:
     _NAME_PATTERN = re.compile(r'')
 
 
-    def __init__(self, path: Optional[Filename], strict=True, **kwargs):
+    def __init__(self, path: Optional[Filename], strict=True):
         """ Constructor. Typically, instantiation should be done indirectly,
             using functions such as `endaq.device.getDevices()` or
             `endaq.device.fromRecording()`. Explicitly instantiating a
@@ -637,6 +637,8 @@ class Recorder:
 
             :param subchannel: An `idelib.dataset.SubChannel` instance,
                 e.g., from the recorder's `channels` dictionary.
+            :param rounded: If `True`, round the results to two significant
+                digits (to remove floating point rounding errors).
         """
         # XXX: WIP
         key = (subchannel.parent.id, subchannel.id)
@@ -1043,8 +1045,8 @@ class Recorder:
             typically has no date.
 
             :param user: If `False` (default), only return the factory-set
-                calibration date. If `True`, return the date of the user-
-                applied calibration (if any).
+                calibration date. If `True`, return the date of the
+                user-applied calibration (if any).
             :param epoch: If `False` (default), return the calibration date
                 as a Python `datetime.datetime` object. If `False`, return
                 the calibration date as epoch time (i.e., a \*NIX timestamp).

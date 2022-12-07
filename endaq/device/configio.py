@@ -8,18 +8,7 @@ from typing import Union
 from ebmlite import loadSchema, MasterElement
 
 from .base import Recorder
-
-
-def cleanProps(el: dict):
-    """ Recursively emove unknown elements from a dictionary of device
-        properties.
-    """
-    if isinstance(el, list):
-        return [cleanProps(x) for x in el]
-    elif not isinstance(el, dict):
-        return el
-
-    return {k: cleanProps(v) for k, v in el.items() if k != "UnknownElement"}
+from .util import cleanProps
 
 
 def deviceFromExport(export: Union[str, Path, MasterElement]) -> Recorder:
@@ -53,8 +42,13 @@ def deviceFromExport(export: Union[str, Path, MasterElement]) -> Recorder:
 
 
 def exportConfig(device: Recorder, filename: Union[str, Path]) -> dict:
-    """ Generate a configuration export file. Writes the device's current
-        information and configuration data by default.
+    """ Generate a configuration export file (``.cfx``). Writes the device's
+        current information and configuration data by default.
+
+        Note: User calibration and Wi-Fi setting are *not* included in
+        exported configuration data. Calibration is specific to one
+        device, and for security reasons, Wi-Fi settings cannot be
+        extracted from the device.
 
         :param device: The device from which to export the config.
         :param filename: The name of the file to write.
@@ -80,13 +74,18 @@ def exportConfig(device: Recorder, filename: Union[str, Path]) -> dict:
 
 def importConfig(device: Recorder,
                  filename: Union[str, Path],
-                 merge: bool = False) -> dict:
-    """
+                 merge: bool = False):
+    """ Import configuration data from a ``.cfx`` file.
+
+        Note: User calibration and Wi-Fi setting are *not* included in
+        imported configuration data. Calibration is specific to one
+        device, and for security reasons, Wi-Fi settings cannot be
+        extracted from the device.
 
         :param device: The device to which to import the configuration data.
         :param filename: The name of an exported config file (``.cfx``).
         :param merge: If `True`, keep any device config values not
-            explicitly overwritten in the
+            explicitly set in the imported configuration data.
         :return:
     """
     imported = deviceFromExport(filename)

@@ -7,7 +7,6 @@ __copyright__ = "Copyright 2022 Mide Technology Corporation"
 
 import os.path
 import re
-from typing import Optional
 
 from .base import Recorder
 from .endaq import EndaqS
@@ -89,4 +88,3 @@ class SlamStickS(SlamStickX):
     SN_FORMAT = "SSS%07d"
     _POST_CONFIG_MSG = SlamStickX._POST_CONFIG_MSG.replace(' "X" ', ' "S" ')
     _NAME_PATTERN = re.compile("^Slam Stick S.*")
-

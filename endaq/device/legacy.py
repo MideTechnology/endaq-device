@@ -6,10 +6,7 @@ file formats. These get used automatically for older SlamStick devices.
 __author__ = "dstokes"
 __copyright__ = "Copyright 2022 Mide Technology Corporation"
 
-
-import os.path
-import shutil
-from typing import Any, AnyStr, Dict, Optional, TYPE_CHECKING, Union
+from typing import Any, AnyStr, Dict, TYPE_CHECKING, Union
 
 from ebmlite import loadSchema, Document, MasterElement
 
@@ -270,4 +267,3 @@ def generateLegacyConfig(configData: dict, device: "Recorder") -> dict:
         legacyConfigData['SSXChannelConfiguration'] = channelConfig
 
     return {'RecorderConfiguration': legacyConfigData}
-
