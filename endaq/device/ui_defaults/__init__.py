@@ -1,5 +1,8 @@
 """
 Default CONFIG.UI data, for devices (mostly virtual) that do not have it.
+CONFIG.UI data defines the configuration GUI layout, as well as provides
+information for converting values when reading and writing configuration
+data.
 """
 
 from importlib import import_module

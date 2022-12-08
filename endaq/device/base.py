@@ -98,7 +98,7 @@ class Recorder:
     _NAME_PATTERN = re.compile(r'')
 
 
-    def __init__(self, path: Optional[Filename], strict=True, **kwargs):
+    def __init__(self, path: Optional[Filename], strict=True):
         """ Constructor. Typically, instantiation should be done indirectly,
             using functions such as `endaq.device.getDevices()` or
             `endaq.device.fromRecording()`. Explicitly instantiating a
@@ -276,6 +276,7 @@ class Recorder:
                 self.commandFile = os.path.join(path, self._COMMAND_FILE)
                 self._volumeName = None
             else:
+                path = None
                 self._volumeName = ''
                 self.configFile = self.infoFile = None
                 self.clockFile = self.userCalFile = self.configUIFile = None
@@ -636,6 +637,8 @@ class Recorder:
 
             :param subchannel: An `idelib.dataset.SubChannel` instance,
                 e.g., from the recorder's `channels` dictionary.
+            :param rounded: If `True`, round the results to two significant
+                digits (to remove floating point rounding errors).
         """
         # XXX: WIP
         key = (subchannel.parent.id, subchannel.id)
@@ -1042,8 +1045,8 @@ class Recorder:
             typically has no date.
 
             :param user: If `False` (default), only return the factory-set
-                calibration date. If `True`, return the date of the user-
-                applied calibration (if any).
+                calibration date. If `True`, return the date of the
+                user-applied calibration (if any).
             :param epoch: If `False` (default), return the calibration date
                 as a Python `datetime.datetime` object. If `False`, return
                 the calibration date as epoch time (i.e., a \*NIX timestamp).
@@ -1363,8 +1366,9 @@ class Recorder:
                 # https://github.com/MideTechnology/idelib/issues/112
                 dev._config = el
             elif el.name == 'ConfigUI':
-                # Proposed, but not yet in IDE files
-                dev._configUi = el
+                # Proposed, but not yet in IDE files.
+                # No longer strictly required due to `ui_defaults`.
+                dev._configUi = loadSchema('mide_config_ui.xml').loads(el.value)
 
         # Datasets merge calibration info into recorderInfo; separate them.
         dev._calibration = {}

@@ -1052,7 +1052,7 @@ class SerialCommandInterface(CommandInterface):
 
         if not portname:
             self.port = None
-            raise DeviceError('No serial port found for {}'.format(self.device))
+            raise CommandError('No serial port found for {}'.format(self.device))
 
         kwargs.setdefault('timeout', self.timeout)
         params = self.SERIAL_PARAMS.copy()

@@ -3,11 +3,6 @@ HDLC encoding and checksum-related code.
 
 In this application, 'HDLC encoding' amounts to using HDLC escaping and
 break characters.
-
-:var HDLC_BREAK: The byte that indicates the end of an HDLC encoded packet.
-:var HDLC_ESCAPE: The byte that indicates the next character (i.e. a
-    reserved value, like `HDLC_BREAK` or `HDLC_ESCAPE`) is escaped. Escaped
-    bytes are XORed with 0x20.
 """
 from typing import Union
 
@@ -17,10 +12,10 @@ logger = getLogger('endaq.device')
 from .exceptions import CRCError
 
 
-# ==============================================================================
+# ===========================================================================
 # --- CRC generation
 # Inspired by Crc16.py by Pere Tuset-Peiro (peretuset@openmote.com)
-# ==============================================================================
+# ===========================================================================
 
 CRC16_TABLE = (
         0x0000, 0x1189, 0x2312, 0x329B, 0x4624, 0x57AD, 0x6536, 0x74BF,
@@ -84,18 +79,21 @@ def generateCRC16(packet: bytearray, finish: bool = False) -> int:
 
 def checkCRC16(crc: int) -> bool:
     """ Check an HDLC CRC16.
-
-        @see http://www.ntcip.org/forum/NTCIP/msg00017.html
     """
     return crc == 0xF0B8
 
 
-# ==============================================================================
+# ===========================================================================
 # HDLC escaping/encoding
-# ==============================================================================
+# ===========================================================================
 
 # Numeric versions, for use with `bytearray`, etc.
+
+#: The byte that indicates the end of an HDLC encoded packet.
 HDLC_BREAK = 0x7e
+
+#: The byte that indicates the next character (i.e. a reserved value, like
+# `HDLC_BREAK` or `HDLC_ESCAPE`) is escaped. Escaped bytes are XORed with 0x20.
 HDLC_ESCAPE = 0x7d
 
 # Character versions, for use with `bytes`, etc.
