@@ -60,7 +60,7 @@ def exportConfig(device: Recorder, filename: Union[str, Path]) -> dict:
         :param device: The device from which to export the config.
         :param filename: The name of the file to write.
     """
-    configUi = device.config.getConfigUI().dump()
+    configUi = device.config.getConfigUI()
     config = device.config.getConfig().dump()
     props = device.getProperties()
 
