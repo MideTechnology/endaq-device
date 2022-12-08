@@ -23,7 +23,7 @@ def deviceFromExport(export: Union[str, Path, MasterElement]) -> Recorder:
         virtual `Recorder` will have only the data relevant to configuration:
         no channels, sensors, calibration, et cetera.
 
-        :param export: The name of an exported config file (``.cfx``), or
+        :param export: The name of an exported config file (``.xcg``), or
             EBML data containing an ``ExportedConfigurationData`` element.
         :return: A minimal 'virtual' `Recorder` instance.
     """
@@ -49,7 +49,7 @@ def deviceFromExport(export: Union[str, Path, MasterElement]) -> Recorder:
 
 
 def exportConfig(device: Recorder, filename: Union[str, Path]) -> dict:
-    """ Generate a configuration export file (``.cfx``). Writes the device's
+    """ Generate a configuration export file (``.xcg``). Writes the device's
         current information and configuration data by default.
 
         Note: User calibration and Wi-Fi setting are *not* included in
@@ -82,7 +82,7 @@ def exportConfig(device: Recorder, filename: Union[str, Path]) -> dict:
 def importConfig(device: Recorder,
                  filename: Union[str, Path],
                  merge: bool = False):
-    """ Import configuration data from a ``.cfx`` file.
+    """ Import configuration data from a ``.xcg`` file.
 
         Note: User calibration and Wi-Fi setting are *not* included in
         imported configuration data. Calibration is specific to one
@@ -90,7 +90,7 @@ def importConfig(device: Recorder,
         extracted from the device.
 
         :param device: The device to which to import the configuration data.
-        :param filename: The name of an exported config file (``.cfx``).
+        :param filename: The name of an exported config file (``.xcg``).
         :param merge: If `True`, keep any device config values not
             explicitly set in the imported configuration data.
         :return:
