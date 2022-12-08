@@ -720,8 +720,8 @@ class ConfigInterface:
             :param item: The config ID or label of a configuration item.
             :return: The indicated `ConfigItem`.
         """
-        if item in self.items:
-            return self.items[item]
+        if item in self._items:
+            return self._items[item]
 
         s = hex(item) if isinstance(item, int) else repr(item)
         raise KeyError(item, "Config item {} not in CONFIG.UI data"
