@@ -12,6 +12,7 @@ also takes effect immediately.
 import errno
 import logging
 import os.path
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 import warnings
 
@@ -674,6 +675,30 @@ class ConfigInterface:
         raise NotImplementedError("applyConfig() not implemented")
 
 
+    def saveAs(self,
+               filename: Union[str, Path],
+               unknown: bool = True,
+               version: Optional[int] = None):
+        """ Save the raw configuration data to a file (e.g., ``config.cfg``).
+            The file saved is the equivalent of the recorder's native config
+            data, and can only be applied to the original recorder (or one of
+            the same model). To export configuration data for use on another
+            device, use `endaq.device.configio.exportConfig()`.
+
+            :param filename: The name of the output file. By convention, the
+                extension is ``.cfg``, but this is not enforced.
+            :param unknown: If `True`, include values that do not correspond
+                to known configuration items (e.g., originally read from the
+                config file).
+            :param version: The version of configuration data to use, if the
+                device supports more than one. Defaults to the latest
+                version supported.
+        """
+        data = self._makeConfig(unknown=unknown, version=version)
+        with open(filename, 'wb') as f:
+            loadSchema('mide_ide.xml').encode(data)
+
+
     def loadConfig(self, config: Optional[MasterElement] = None):
         """ Process a device's configuration data.
 
@@ -1304,8 +1329,8 @@ class FileConfigInterface(ConfigInterface):
         config = config or self.config or self.getConfig()
 
         if config[0].name == "RecorderConfiguration":
-            logger.debug("Reading legacy config file data from {!r}"
-                         .format(self.device))
+            logger.debug("Reading legacy config file data from {}"
+                         .format(self.device.configFile))
             versionRead = 1
             self._originalConfig = config  # for testing
             config = legacy.convertConfigFile(config, self)

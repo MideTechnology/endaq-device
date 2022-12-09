@@ -1361,10 +1361,10 @@ class Recorder:
             if el.name.endswith('DataBlock'):
                 # End of the metadata
                 break
-            elif el.name.endswith('RecorderConfiguration'):
+            elif el.name.startswith('RecorderConfiguration'):
                 # This will eventually be unnecessary; see issue:
                 # https://github.com/MideTechnology/idelib/issues/112
-                dev._config = el
+                dev._config = dataset.ebmldoc.schema.loads(el.getRaw())
             elif el.name == 'ConfigUI':
                 # Proposed, but not yet in IDE files.
                 # No longer strictly required due to `ui_defaults`.
