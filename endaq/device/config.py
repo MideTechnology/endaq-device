@@ -475,7 +475,7 @@ class ConfigInterface:
             self.configUi = self.getConfigUI()
             self.parseConfigUI(self.configUi)
 
-        if not self.config:
+        if self.config is None:
             try:
                 self.loadConfig()
             except Exception as err:
@@ -685,6 +685,7 @@ class ConfigInterface:
             config = self.config or self.getConfig()
 
         if not config:
+            self.config = {}
             return
 
         dump = config.dump()
@@ -720,8 +721,8 @@ class ConfigInterface:
             :param item: The config ID or label of a configuration item.
             :return: The indicated `ConfigItem`.
         """
-        if item in self._items:
-            return self._items[item]
+        if item in self.items:
+            return self.items[item]
 
         s = hex(item) if isinstance(item, int) else repr(item)
         raise KeyError(item, "Config item {} not in CONFIG.UI data"
@@ -1281,10 +1282,16 @@ class FileConfigInterface(ConfigInterface):
             the contents of a real device's `config.cfg` file), if any.
         """
         try:
+            if not os.path.isfile(self.device.configFile):
+                return b''
+
             with open(self.device.configFile, 'rb') as f:
                 return loadSchema('mide_ide.xml').loads(f.read())
-        except IOError:
-            return None
+
+        except IOError as err:
+            warnings.warn("{}.getConfig(): ignoring possibly expected exception {!r}"
+                          .format(type(self).__name__, err))
+            return b''
 
 
     def loadConfig(self, config: Optional[MasterElement] = None):
