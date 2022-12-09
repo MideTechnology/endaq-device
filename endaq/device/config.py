@@ -696,7 +696,7 @@ class ConfigInterface:
         """
         data = self._makeConfig(unknown=unknown, version=version)
         with open(filename, 'wb') as f:
-            loadSchema('mide_ide.xml').encode(data)
+            loadSchema('mide_ide.xml').encode(f, data)
 
 
     def loadConfig(self, config: Optional[MasterElement] = None):
