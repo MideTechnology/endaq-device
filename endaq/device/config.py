@@ -1327,6 +1327,9 @@ class FileConfigInterface(ConfigInterface):
                 `getConfig()` will be used.
         """
         config = config or self.config or self.getConfig()
+        if not config:
+            self.config = {}
+            return
 
         if config[0].name == "RecorderConfiguration":
             logger.debug("Reading legacy config file data from {}"
