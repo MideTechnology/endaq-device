@@ -29,19 +29,25 @@ __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'SlamStickS')
 
 #===============================================================================
-# 
+# EBML schema path modification
 #===============================================================================
 
-# Add this package's schema to `ebmlite` schema search path.
 SCHEMA_PATH = "{endaq.device}/schemata"
-if SCHEMA_PATH not in ebmlite.core.SCHEMA_PATH:
-    ebmlite.core.SCHEMA_PATH.insert(0, SCHEMA_PATH)
 
 # Ensure the `idelib` schemata are in the schema path (for idelib <= 3.2.4)
-# (remove after next release and requirements updated)
 if "{idelib}/schemata" not in ebmlite.core.SCHEMA_PATH:
     ebmlite.core.SCHEMA_PATH.insert(0, "{idelib}/schemata")
 
+# Add this package's schema to `ebmlite` schema search path, after
+# `idelib`'s. This is a workaround for issue with legacy schema installed by
+# earlier versions (can probably be removed after beta).
+if SCHEMA_PATH not in ebmlite.core.SCHEMA_PATH:
+    _idx = ebmlite.core.SCHEMA_PATH.index("{idelib}/schemata") + 1
+    ebmlite.core.SCHEMA_PATH.insert(_idx, SCHEMA_PATH)
+
+#===============================================================================
+#
+#===============================================================================
 
 # Known classes or recorder. Checks are performed in the specified order, so
 # put the ones with more general `isRecorder()` methods (i.e. superclasses)
