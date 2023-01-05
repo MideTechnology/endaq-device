@@ -5,4 +5,3 @@ psutil>=5.5.0; sys_platform == "linux" or sys_platform=="darwin"
 pyserial>=3.5
 pytest>=7.2
 pywin32>=228; sys_platform == "win32"
-setuptools~=45.2.0
