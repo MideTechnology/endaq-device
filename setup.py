@@ -5,9 +5,9 @@ with open('README.md', 'r') as fh:
 
 
 INSTALL_REQUIRES = [
+    'ebmlite>=3.3.0',
     'idelib>=3.2',
     'numpy>=1.19.4',
-    'ebmlite>=3.1.0',
     'psutil>=5.5.0; sys_platform == "linux" or sys_platform=="darwin"',
     'pyserial>=3.5',
     'pywin32>=228; sys_platform == "win32"'
