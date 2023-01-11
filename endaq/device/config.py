@@ -913,6 +913,13 @@ class ConfigInterface:
                       enabled: bool = True):
         """ Enable or disable a `Channel` or `SubChannel`.
 
+            Due to the way in which they operate, some sensor's `SubChannels`
+            cannot be individually configured, and changes must be made to
+            the parent `Channel`. The opposite is true for other sensors -
+            primarily the analog ones - which can only be configured at the
+            `SubChannel` level. Attempting to configure at the wrong 'level'
+            will raise a ``ConfigError``.
+
             :param channel: The channel or subchannel to enable/disable.
             :param enabled: `True` to enable the channel/subchannel recording.
         """
@@ -956,11 +963,17 @@ class ConfigInterface:
 
     def isEnabled(self,
                   channel: Union[Channel, SubChannel]) -> bool:
-        """
-        Is the `Channel` or `SubChannel` enabled?
+        """ Is the `Channel` or `SubChannel` enabled?
 
-        :param channel: The `Channel` or `SubChannel` to check.
-        :return: `True` if configured to record.
+            Due to the way in which they operate, some sensor's `SubChannels`
+            cannot be individually configured, and changes must be made to
+            the parent `Channel`. The opposite is true for other sensors -
+            primarily the analog ones - which can only be configured at the
+            `SubChannel` level. Attempting to configure at the wrong 'level'
+            will raise a ``ConfigError``.
+
+            :param channel: The `Channel` or `SubChannel` to check.
+            :return: `True` if configured to record.
         """
         configId = self._getChannelConfigId(0x010000, channel)
         enItem = self._getitem(configId)
@@ -1106,11 +1119,12 @@ class ConfigInterface:
                       channel: Channel) -> float:
         """ Get the sample rate of a `Channel`.
 
-            :param channel: The `Channel` or `SubChannel` to get.
+            :param channel: The `Channel` to get.
             :return: The sampling rate, in hertz.
         """
         configId = self._encodeChannel(channel) | 0x020000
-        return self._getitem(configId).value
+        item = self._getitem(configId)
+        return item.value if item.value is not None else item.default
 
 
     def getTriggers(self) -> List[ConfigItem]:

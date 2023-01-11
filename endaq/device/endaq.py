@@ -75,26 +75,29 @@ class EndaqW(EndaqS):
                 timeout: int = 10,
                 interval: float = 1.25,
                 callback: Optional[Callable] = None):
-        """ Gives the commands to set the devices Wi-Fi (if present).
+        """ Configure all known Wi-Fi access points. Applicable only
+            to devices with Wi-Fi hardware. The data is in the form of a
+            list of dictionaries with the following keys:
+
+            * ``"SSID"``: The Wi-Fi access point name (string)
+            * ``"Password"``: The access point's password (string, optional)
+            * ``"Selected"``: 1 if the device should use this AP, 0 if not
+
+            Note that devices may not support configuring multiple Wi-Fi AP.
+            In most cases, only one should be specified, and it should be
+            marked as selected.
+
+            Note: This method is deprecated. Use `recorder.command.setWiFi()`
+            instead.
 
             :param wifi_data: The information about the Wi-Fi networks to be
-                set on the device.  Specifically, it's a list of dictionaries,
-                where each element in the list corresponds to one of the Wi-Fi
-                networks to be set.  The following are two examples of this:
-                [{'SSID': 'office_wifi', 'Selected': 1, 'Password': 'pass123'}]
-                or
-                [{'SSID': 'ssid_1', 'Selected': 1, 'Password': 'pass_1'},
-                 {'SSID': 'ssid_2', 'Selected': 0},
-                 {'SSID': 'ssid_1', 'Selected': 0, 'Password': 'pass_3'}]
+                set on the device.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will be
-                cancelled. The callback function should require no arguments.
-
-            :raise DeviceTimeout: Raised if 'timeout' seconds have gone by
-                without getting a response
+                cancelled. The callback function should take no arguments.
         """
         # FUTURE: Remove EndaqW.setWiFi()
         warnings.warn("Direct control moved to `command` attribute; use "
@@ -123,6 +126,9 @@ class EndaqW(EndaqS):
                   callback: Optional[Callable] = None) -> Union[None, dict]:
         """ Check the current state of the Wi-Fi (if present).
 
+            Note: This method is deprecated. Use `recorder.command.queryWiFi()`
+            instead.
+
             :param timeout: Time (in seconds) to wait for a response before
                 raising a `DeviceTimeout` exception.
             :param interval: Time (in seconds) between checks for a response.
@@ -132,9 +138,6 @@ class EndaqW(EndaqS):
             :return: None if no information was recieved, else it will return
                 the information from the ``QueryWiFiResponse`` command (this
                 return statement is not used anywhere)
-
-            :raise DeviceTimeout: Raised if 'timeout' seconds have gone by
-                without getting a response
         """
         # FUTURE: Remove EndaqW.queryWifi()
         warnings.warn("Direct control moved to `command` attribute; use "
@@ -151,28 +154,31 @@ class EndaqW(EndaqS):
     def scanWifi(self, timeout: int = 10,
                  interval: float = .25,
                  callback: Optional[Callable] = None) -> Union[None, list]:
-        """ Initiate a scan for Wi-Fi access points (APs).
+        """ Initiate a scan for Wi-Fi access points (APs). Applicable only
+            to devices with Wi-Fi hardware.
+
+            The resluts are returned as a list of dictionaries, one for each
+            access point, with keys:
+
+            * ``SSID`` (str): The access point name.
+            * ``RSSI`` (int): The AP's signal strength.
+            * ``AuthType`` (int): The authentication (security) type.
+              Currently, this is either 0 (no authentication) or 1
+              (any authentication).
+            * ``Known`` (bool): Is this access point known (i.e. has
+              a stored password on the device)?
+            * ``Selected`` (bool): Is this the currently selected AP?
+
+            Note: This method is deprecated. Use `recorder.command.scanWiFi()`
+            instead.
 
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will
                 be cancelled. The callback function should take no arguments.
-
-            :return: A list of dictionaries, one for each access point,
-                with keys:
-                - ``SSID`` (str): The access point name.
-                - ``RSSI`` (int): The AP's signal strength.
-                - ``AuthType`` (int): The authentication (security) type.
-                    Currently, this is either 0 (no authentication) or 1
-                    (any authentication).
-                - ``Known`` (bool): Is this access point known (i.e. has
-                    a stored password on the device)?
-                - ``Selected`` (bool): Is this the currently selected AP?
-
-            :raise DeviceTimeout: Raised if 'timeout' seconds have gone by
-                without getting a response
+            :return: A list of dictionaries, described above.
         """
         # FUTURE: Remove EndaqW.scanWifi()
         warnings.warn("Direct control moved to `command` attribute; use "
@@ -192,6 +198,9 @@ class EndaqW(EndaqS):
                     timeout: float = 10,
                     callback: Optional[Callable] = None):
         """ Update the ESP32 firmware.
+
+            Note: This method is deprecated. Use `recorder.command.updateESP32()`
+            instead.
 
             :param firmware: The name of the ESP32 firmware package (.bin).
             :param destination: The name of the firmware package after being
