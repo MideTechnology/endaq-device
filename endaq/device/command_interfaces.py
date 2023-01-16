@@ -848,7 +848,7 @@ class CommandInterface:
 
         cmd = {'EBMLCommand': {'WiFiScan': None}}
 
-        response = self._sendCommand(cmd, True, timeout, interval, callback)
+        response = self._sendCommand(cmd, response=True, timeout=timeout, interval=interval, callback=callback)
 
         if response is None:
             return None
