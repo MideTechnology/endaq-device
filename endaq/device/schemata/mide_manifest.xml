@@ -142,8 +142,8 @@
         <MasterElement name="DigitalSensorMS8607" id="0x4DA1" mandatory="0" multiple="0" minver="1">Indicates the presence of an MS8607 P/T/H sensor on the I2C1 bus.</MasterElement>
         <MasterElement name="DigitalSensorMS5637" id="0x4DA2" mandatory="0" multiple="0" minver="1">Indicates the presence of an MS5637 pressure sensor on the I2C1 bus.</MasterElement>
         <MasterElement name="DigitalSensorHTU21D" id="0x4DA3" mandatory="0" multiple="0" minver="1">Indicates the presence of an HTU21D humidity sensor on the I2C1 bus.</MasterElement>
-		<MasterElement name="DigitalSensorSHT41" id="0x4DA4" mandatory="0" multiple="0" minver="1">Indicates the presence of a SHT41 temp/hum sensor on an I2C bus. Note software-compatible SHT4x variants provide no way of distinguishing them via the bus, so SHT41, 42, etc. need their own IDs if FW needs to differentiate them.</MasterElement>
-		<MasterElement name="DigitalSensorTMP116_117" id="0x4DA5" mandatory="0" multiple="0" minver="1">Indicates the presence of a TMP116/7 temperature sensor on an I2C bus. Variant (116, 117) can be distinguished via register read.</MasterElement>
+        <MasterElement name="DigitalSensorSHT41" id="0x4DA4" mandatory="0" multiple="0" minver="1">Indicates the presence of a SHT41 temp/hum sensor on an I2C bus. Note software-compatible SHT4x variants provide no way of distinguishing them via the bus, so SHT41, 42, etc. need their own IDs if FW needs to differentiate them.</MasterElement>
+        <MasterElement name="DigitalSensorTMP116_117" id="0x4DA5" mandatory="0" multiple="0" minver="1">Indicates the presence of a TMP116/7 temperature sensor on an I2C bus. Variant (116, 117) can be distinguished via register read.</MasterElement>
 
 
 
