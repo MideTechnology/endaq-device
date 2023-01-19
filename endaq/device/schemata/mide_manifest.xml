@@ -128,6 +128,9 @@
         <MasterElement name="DigitalSensorADXL357" id="0x4DD5" mandatory="0" multiple="0" minver="1">Indicates the presence of an ADXL357 accelerometer on the SPI bus.
             <UIntegerElement name="SensorConfig" id="0x4E00" mandatory="0" multiple="0" minver="1">Configuration data for digital sensors. Value varies by hardware.</UIntegerElement>
         </MasterElement>
+        <MasterElement name="DigitalSensorADXL359" id="0x4DD6" mandatory="0" multiple="0" minver="1">Indicates the presence of an ADXL359 accelerometer on the SPI bus.
+            <UIntegerElement name="SensorConfig" id="0x4E00" mandatory="0" multiple="0" minver="1">Configuration data for digital sensors. Value varies by hardware.</UIntegerElement>
+        </MasterElement>
         <MasterElement name="DigitalSensorADXL375" id="0x4D92" mandatory="0" multiple="0" minver="1">Indicates the presence of an ADXL375 accelerometer on the SPI bus.</MasterElement>
         <MasterElement name="DigitalSensorBNO055" id="0x4D93" mandatory="0" multiple="0" minver="1">Indicates the presence of a BNO055 IMU on the I2C0 bus.</MasterElement>
         <MasterElement name="DigitalSensorBHI160" id="0x4D94" mandatory="0" multiple="0" minver="1">Indicates the presence of a Bosch BHI160 IMU on the I2C0 bus.
