@@ -23,7 +23,7 @@ with open('docs/requirements.txt', 'r') as fh:
 
 setuptools.setup(
         name='endaq-device',
-        version='1.0.0b2',
+        version='1.0.0',
         author='Mide Technology',
         author_email='help@mide.com',
         description='Python API for enDAQ data recorders',
@@ -31,10 +31,9 @@ setuptools.setup(
         long_description_content_type='text/markdown',
         url='https://github.com/MideTechnology/endaq-device',
         license='MIT',
-        classifiers=['Development Status :: 4 - Beta',
+        classifiers=['Development Status :: 5 - Production/Stable',
                      'License :: OSI Approved :: MIT License',
                      'Natural Language :: English',
-                     'Programming Language :: Python :: 3.6',
                      'Programming Language :: Python :: 3.7',
                      'Programming Language :: Python :: 3.8',
                      'Programming Language :: Python :: 3.9',
