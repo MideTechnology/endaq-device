@@ -128,6 +128,9 @@
         <MasterElement name="DigitalSensorADXL357" id="0x4DD5" mandatory="0" multiple="0" minver="1">Indicates the presence of an ADXL357 accelerometer on the SPI bus.
             <UIntegerElement name="SensorConfig" id="0x4E00" mandatory="0" multiple="0" minver="1">Configuration data for digital sensors. Value varies by hardware.</UIntegerElement>
         </MasterElement>
+        <MasterElement name="DigitalSensorADXL359" id="0x4DD6" mandatory="0" multiple="0" minver="1">Indicates the presence of an ADXL359 accelerometer on the SPI bus.
+            <UIntegerElement name="SensorConfig" id="0x4E00" mandatory="0" multiple="0" minver="1">Configuration data for digital sensors. Value varies by hardware.</UIntegerElement>
+        </MasterElement>
         <MasterElement name="DigitalSensorADXL375" id="0x4D92" mandatory="0" multiple="0" minver="1">Indicates the presence of an ADXL375 accelerometer on the SPI bus.</MasterElement>
         <MasterElement name="DigitalSensorBNO055" id="0x4D93" mandatory="0" multiple="0" minver="1">Indicates the presence of a BNO055 IMU on the I2C0 bus.</MasterElement>
         <MasterElement name="DigitalSensorBHI160" id="0x4D94" mandatory="0" multiple="0" minver="1">Indicates the presence of a Bosch BHI160 IMU on the I2C0 bus.
@@ -142,13 +145,18 @@
         <MasterElement name="DigitalSensorMS8607" id="0x4DA1" mandatory="0" multiple="0" minver="1">Indicates the presence of an MS8607 P/T/H sensor on the I2C1 bus.</MasterElement>
         <MasterElement name="DigitalSensorMS5637" id="0x4DA2" mandatory="0" multiple="0" minver="1">Indicates the presence of an MS5637 pressure sensor on the I2C1 bus.</MasterElement>
         <MasterElement name="DigitalSensorHTU21D" id="0x4DA3" mandatory="0" multiple="0" minver="1">Indicates the presence of an HTU21D humidity sensor on the I2C1 bus.</MasterElement>
+        <MasterElement name="DigitalSensorSHT41" id="0x4DA4" mandatory="0" multiple="0" minver="1">Indicates the presence of a SHT41 temp/hum sensor on an I2C bus. Note software-compatible SHT4x variants provide no way of distinguishing them via the bus, so SHT41, 42, etc. need their own IDs if FW needs to differentiate them.</MasterElement>
+        <MasterElement name="DigitalSensorTMP116_117" id="0x4DA5" mandatory="0" multiple="0" minver="1">Indicates the presence of a TMP116/7 temperature sensor on an I2C bus. Variant (116, 117) can be distinguished via register read.</MasterElement>
+
+
+
 
         <!-- Timing/Sync inputs -->
         <MasterElement name="DigitalSensorIR" id="0x4DB0" mandatory="0" multiple="0" minver="1">Indicates the presence of a digital IR sensor.</MasterElement>
 
         <!-- GPS/Sync inputs -->
         <MasterElement name="DigitalSensorGPS_UART" id="0x4DC0" mandatory="0" multiple="0" minver="1">Indicates the presence of a GPS with full data (location) broken out on UART.</MasterElement>
-        <MasterElement name="DigitalSensorGPS_CAMM8" id="0x4DC1" mandatory="0" multiple="0" minver="1">Indicates the presence of a GPS with full data (location) broken out on UART.
+        <MasterElement name="DigitalSensorGPS_CAMM8" id="0x4DC1" mandatory="0" multiple="0" minver="1">Indicates the presence of a GPS with full data (location) broken out on UART supporting the uBlox protocol.
             <UIntegerElement name="SensorConfig" id="0x4E00" mandatory="0" multiple="0" minver="1">Configuration data for digital sensors. Value varies by hardware.</UIntegerElement>
         </MasterElement>
 

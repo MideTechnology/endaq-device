@@ -848,7 +848,7 @@ class CommandInterface:
 
         cmd = {'EBMLCommand': {'WiFiScan': None}}
 
-        response = self._sendCommand(cmd, True, timeout, interval, callback)
+        response = self._sendCommand(cmd, response=True, timeout=timeout, interval=interval, callback=callback)
 
         if response is None:
             return None
@@ -989,6 +989,13 @@ class SerialCommandInterface(CommandInterface):
         if device.isVirtual:
             return False
 
+        # If the DEVINFO explicitly indicates a serial command interface,
+        # trust it.
+        if device.getInfo('SerialCommandInterface') is not None:
+            return True
+
+        # Some older released FW that supports the serial command interface
+        # does not indicate so in the DEVINFO; find the port instead.
         return bool(cls.findSerialPort(device))
 
 
@@ -1616,9 +1623,11 @@ class FileCommandInterface(CommandInterface):
         if 'SlamStick' in type(device).__name__ and not device.canRecord:
             return False
 
-        # All current, 'real' devices should support the COMMAND file
-        # (but don't check; a user could have deleted it accidentally)
-        return True
+        # Newer firmware will explicitly indicate in DEVINFO if the device
+        # supports the COMMAND file interface. All EFM32 devices should
+        # support it, but their FW may not report it in DEVINFO, so assume
+        # the absence of the `FileCommandInterface` element means 'yes'.
+        return bool(device.getInfo('FileCommandInterface', 1))
 
 
     def _readResponse(self,
