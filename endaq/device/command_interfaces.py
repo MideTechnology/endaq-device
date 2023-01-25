@@ -932,7 +932,8 @@ class SerialCommandInterface(CommandInterface):
     """
 
     # USB serial port vendor and product IDs, for finding the right device
-    VID, PID = 0x10C4, 0x0004  # SiLabs USB Serial, e.g. enDAQ recorders
+    USB_IDS = ((0x10C4, 0x0004),  # SiLabs USB Serial, e.g. enDAQ recorders
+               (0x0483, 0x4003))  # STM32 USB Serial, e.g. newer enDAQs
 
     # Default serial port parameters
     SERIAL_PARAMS = dict(baudrate=115200,
@@ -1012,13 +1013,15 @@ class SerialCommandInterface(CommandInterface):
             return None
 
         for p in serial.tools.list_ports.comports():
-            if not (p.vid == cls.VID and p.pid == cls.PID):
+            # Find valid USB/serial device by vendor/product ID
+            if (p.vid, p.pid) not in cls.USB_IDS:
                 continue
             try:
                 sn = int(p.serial_number)
                 if sn == device.serialInt:
                     return p.device
             except ValueError as err:
+                # Probably text in serial number, ignore if so
                 if 'invalid literal' not in str(err).lower():
                     raise
 
