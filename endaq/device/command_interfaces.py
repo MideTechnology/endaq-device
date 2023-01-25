@@ -1014,8 +1014,8 @@ class SerialCommandInterface(CommandInterface):
 
         for p in serial.tools.list_ports.comports():
             # Find valid USB/serial device by vendor/product ID
-            if (p.vid, p.pid) not in cls.USB_IDS:
-                continue
+            # if (p.vid, p.pid) not in cls.USB_IDS:
+            #     continue
             try:
                 sn = int(p.serial_number)
                 if sn == device.serialInt:
