@@ -324,7 +324,8 @@ class Recorder:
             of a data recorder.
 
             :param dev: The path to the possible recording device (e.g. a
-                mount point under \*NIX, or a drive letter under Windows)
+                mount point under Linux/BSD/etc., or a drive letter under
+                Windows)
             :param strict: If `False`, only the directory structure is used
                 to identify a recorder. If `True`, non-FAT file systems will
                 be automatically rejected.
@@ -1049,7 +1050,7 @@ class Recorder:
                 user-applied calibration (if any).
             :param epoch: If `False` (default), return the calibration date
                 as a Python `datetime.datetime` object. If `False`, return
-                the calibration date as epoch time (i.e., a \*NIX timestamp).
+                the calibration date as epoch time (i.e., a UNIX timestamp).
                 For backwards compatibility with earlier software.
         """
         data = self.getCalibration(user=user)
@@ -1088,7 +1089,7 @@ class Recorder:
                 date of the user-applied calibration (if any).
             :param epoch: If `False` (default), return the expiration date as
                 a Python `datetime.datetime` object. If `False`, return the
-                expiration date as epoch time (i.e., a \*NIX timestamp). For
+                expiration date as epoch time (i.e., a UNIX timestamp). For
                 backwards compatibility with earlier software.
         """
         ce = self._getCalExpiration(self.getCalibration(user=user))
