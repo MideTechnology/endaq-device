@@ -651,16 +651,23 @@ class CommandInterface:
             :returns: `True` if the device rebooted. Note: this does
                 not indicate that the updates were successfully applied.
         """
+        fw_basename = self.device._FW_UPDATE_FILE
+        up_basename = self.device._USERPAGE_UPDATE_FILE
+
         if isinstance(firmware, str) and firmware.lower().endswith('.bin'):
             if self.device.getInfo('KeyRev', 0):
                 raise ValueError(
                     'Cannot apply unencrypted firmware (*.bin) to device '
                     'with encryption; use *.pkg version if available.')
 
+            # HACK: Unencrypted STM32-based firmware has `STM_` prefix
+            if self.device.mcuType.upper().startswith('STM'):
+                fw_update_file = 'STM_' + fw_basename
+
         with self.device._busy:
             # Update filenames on device
-            fw = os.path.join(self.device.path, self.device._FW_UPDATE_FILE)
-            up = os.path.join(self.device.path, self.device._USERPAGE_UPDATE_FILE)
+            fw = os.path.join(self.device.path, fw_basename)
+            up = os.path.join(self.device.path, up_basename)
             sig = fw + ".sig"
 
             if firmware is not None:
