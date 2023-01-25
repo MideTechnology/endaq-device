@@ -263,7 +263,7 @@ class CommandInterface:
             to a second to run. Not applicable if a specific time is
             provided (i.e. `t` is not `None`).
         :return: The system time (float) and time that was set (integer).
-            Both are \*NIX epoch time (seconds since 1970-01-01T00:00:00).
+            Both are UNIX epoch time (seconds since 1970-01-01T00:00:00).
         """
         raise NotImplementedError
 
@@ -307,7 +307,7 @@ class CommandInterface:
                 fail. Although rare, random filesystem things can potentially
                 cause hiccups.
             :return: The system time (float) and time that was set (integer).
-                Both are \*NIX epoch time (seconds since 1970-01-01T00:00:00).
+                Both are UNIX epoch time (seconds since 1970-01-01T00:00:00).
         """
         if t is not None:
             pause = False
@@ -651,16 +651,23 @@ class CommandInterface:
             :returns: `True` if the device rebooted. Note: this does
                 not indicate that the updates were successfully applied.
         """
+        fw_basename = self.device._FW_UPDATE_FILE
+        up_basename = self.device._USERPAGE_UPDATE_FILE
+
         if isinstance(firmware, str) and firmware.lower().endswith('.bin'):
             if self.device.getInfo('KeyRev', 0):
                 raise ValueError(
                     'Cannot apply unencrypted firmware (*.bin) to device '
                     'with encryption; use *.pkg version if available.')
 
+            # HACK: Unencrypted STM32-based firmware has `STM_` prefix
+            if self.device.mcuType.upper().startswith('STM'):
+                fw_update_file = 'STM_' + fw_basename
+
         with self.device._busy:
             # Update filenames on device
-            fw = os.path.join(self.device.path, self.device._FW_UPDATE_FILE)
-            up = os.path.join(self.device.path, self.device._USERPAGE_UPDATE_FILE)
+            fw = os.path.join(self.device.path, fw_basename)
+            up = os.path.join(self.device.path, up_basename)
             sig = fw + ".sig"
 
             if firmware is not None:
@@ -932,7 +939,8 @@ class SerialCommandInterface(CommandInterface):
     """
 
     # USB serial port vendor and product IDs, for finding the right device
-    VID, PID = 0x10C4, 0x0004  # SiLabs USB Serial, e.g. enDAQ recorders
+    USB_IDS = ((0x10C4, 0x0004),  # SiLabs USB Serial, e.g. enDAQ recorders
+               (0x0483, 0x4003))  # STM32 USB Serial, e.g. newer enDAQs
 
     # Default serial port parameters
     SERIAL_PARAMS = dict(baudrate=115200,
@@ -1012,13 +1020,17 @@ class SerialCommandInterface(CommandInterface):
             return None
 
         for p in serial.tools.list_ports.comports():
-            if not (p.vid == cls.VID and p.pid == cls.PID):
-                continue
+            # Find valid USB/serial device by vendor/product ID
+            # if (p.vid, p.pid) not in cls.USB_IDS:
+            #     continue
             try:
+                if not p.serial_number:
+                    continue
                 sn = int(p.serial_number)
                 if sn == device.serialInt:
                     return p.device
             except ValueError as err:
+                # Probably text in serial number, ignore if so
                 if 'invalid literal' not in str(err).lower():
                     raise
 
@@ -1358,7 +1370,7 @@ class SerialCommandInterface(CommandInterface):
             to a second to run. Not applicable if a specific time is
             provided (i.e. `t` is not `None`).
         :return: The system time (float) and time that was set (integer).
-            Both are \*NIX epoch time (seconds since 1970-01-01T00:00:00).
+            Both are UNIX epoch time (seconds since 1970-01-01T00:00:00).
         """
         if t is None:
             t = time()
@@ -1707,7 +1719,7 @@ class FileCommandInterface(CommandInterface):
             to a second to run. Not applicable if a specific time is
             provided (i.e. `t` is not `None`).
         :return: The system time (float) and time that was set (integer).
-            Both are \*NIX epoch time (seconds since 1970-01-01T00:00:00).
+            Both are UNIX epoch time (seconds since 1970-01-01T00:00:00).
         """
         if t is None:
             t = time()
