@@ -661,7 +661,7 @@ class CommandInterface:
                     'with encryption; use *.pkg version if available.')
 
             # HACK: Unencrypted STM32-based firmware has `STM_` prefix
-            if self.device.mcuType.upper().startswith('STM'):
+            if str(self.device.mcuType).upper().startswith('STM'):
                 fw_update_file = 'STM_' + fw_basename
 
         with self.device._busy:
