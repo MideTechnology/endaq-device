@@ -115,6 +115,10 @@ class CommandInterface:
         self.maxCommandSize = self.DEFAULT_MAX_COMMAND_SIZE
 
 
+    def __del__(self):
+        self.close()
+
+
     @classmethod
     def hasInterface(cls, device: "Recorder") -> bool:
         """
@@ -1256,64 +1260,69 @@ class SerialCommandInterface(CommandInterface):
         deadline = now + timeout
 
         with self.device._busy:
-            while True:
-                if 'EBMLCommand' in cmd and index:
-                    self.index += 1
-                    cmd['EBMLCommand']['CommandIdx'] = self.index
+            self.getSerialPort()
+            try:
+                while True:
+                    if 'EBMLCommand' in cmd and index:
+                        self.index += 1
+                        cmd['EBMLCommand']['CommandIdx'] = self.index
 
-                packet = self._encode(cmd)
-                self._writeCommand(packet)
+                    packet = self._encode(cmd)
+                    self._writeCommand(packet)
 
-                try:
-                    resp = self._readResponse(timeout, callback=callback)
-                except (IOError, serial.SerialException) as err:
-                    # Commands that reset can cause the device to close the
-                    # port faster than the response can be read. Fail
-                    # gracefully if no response is required.
-                    if (not isinstance(err, serial.SerialException)
-                            and getattr(err, 'errno') != errno.EIO):
-                        # Linux (possibly other POSIX) raises IOError EIO (5)
-                        # if the port is gone. Raise if other errno.
-                        raise
-                    if not response:
-                        logger.debug('Ignoring anticipated exception because '
-                                     'response not required: {!r}'.format(err))
-                        self.status = None, None
-                        return None
-                    else:
-                        raise
-
-                if resp:
-                    code = resp.get('DeviceStatusCode', 0)
-                    msg = resp.get('DeviceStatusMessage')
-                    queueDepth = resp.get('CMDQueueDepth', 1)
-                    self.status = code, msg
-
-                    if code < 0:
-                        # Raise a CommandError or DeviceError. -20 and -30 refer
-                        # to bad commands sent by the user.
-                        EXC = CommandError if -30 <= code <= -20 else DeviceError
-                        desc = self.STATUS_CODES.get(code, "Unknown")
-                        raise EXC(code, desc, msg)
-
-                    if queueDepth == 0:
-                        logger.debug('Command queue full, retrying.')
-                    else:
-                        respIdx = resp.get('ResponseIdx')
-                        if respIdx == self.index:
-                            return resp if response else None
+                    try:
+                        resp = self._readResponse(timeout, callback=callback)
+                    except (IOError, serial.SerialException) as err:
+                        # Commands that reset can cause the device to close the
+                        # port faster than the response can be read. Fail
+                        # gracefully if no response is required.
+                        if (not isinstance(err, serial.SerialException)
+                                and getattr(err, 'errno') != errno.EIO):
+                            # Linux (possibly other POSIX) raises IOError EIO (5)
+                            # if the port is gone. Raise if other errno.
+                            raise
+                        if not response:
+                            logger.debug('Ignoring anticipated exception because '
+                                         'response not required: {!r}'.format(err))
+                            self.status = None, None
+                            return None
                         else:
-                            logger.debug('Bad ResponseIdx; expected {}, got {}. '
-                                         'Retrying.'.format(self.index, respIdx))
-                else:
-                    queueDepth = 1
+                            raise
 
-                # Failure!
-                if time() >= deadline:
-                    if queueDepth == 0:
-                        raise DeviceTimeout('Timed out waiting for opening in command queue')
+                    if resp:
+                        code = resp.get('DeviceStatusCode', 0)
+                        msg = resp.get('DeviceStatusMessage')
+                        queueDepth = resp.get('CMDQueueDepth', 1)
+                        self.status = code, msg
+
+                        if code < 0:
+                            # Raise a CommandError or DeviceError. -20 and -30 refer
+                            # to bad commands sent by the user.
+                            EXC = CommandError if -30 <= code <= -20 else DeviceError
+                            desc = self.STATUS_CODES.get(code, "Unknown")
+                            raise EXC(code, desc, msg)
+
+                        if queueDepth == 0:
+                            logger.debug('Command queue full, retrying.')
+                        else:
+                            respIdx = resp.get('ResponseIdx')
+                            if respIdx == self.index:
+                                return resp if response else None
+                            else:
+                                logger.debug('Bad ResponseIdx; expected {}, got {}. '
+                                             'Retrying.'.format(self.index, respIdx))
                     else:
-                        raise DeviceTimeout('Timed out waiting for command response')
+                        queueDepth = 1
+
+                    # Failure!
+                    if time() >= deadline:
+                        if queueDepth == 0:
+                            raise DeviceTimeout('Timed out waiting for opening in command queue')
+                        else:
+                            raise DeviceTimeout('Timed out waiting for command response')
+                        
+            finally:
+                self.port.close()
 
 
     def _getTime(self,
