@@ -4,6 +4,7 @@ and control the recording device.
 """
 
 import calendar
+from copy import deepcopy
 from datetime import datetime
 import errno
 import os.path
@@ -116,6 +117,7 @@ class CommandInterface:
 
 
     def __del__(self):
+        # Destructor; does a bit of cleanup. Just in case.
         self.close()
 
 
@@ -381,7 +383,7 @@ class CommandInterface:
                 response will be cancelled. The callback function
                 requires no arguments.
 
-            @raise DeviceTimeout
+            :raise DeviceTimeout
         """
         raise NotImplementedError
 
@@ -688,6 +690,7 @@ class CommandInterface:
             hasUp = self._copyUpdateFile(userpage, up, clean)
 
             isPkg = hasFw and fw.lower().endswith('pkg')
+            isBin = hasFw and fw.lower().endswith('bin')
             signature = None if firmware is None or not isPkg else firmware + ".sig"
 
             if isPkg and not self._copyUpdateFile(signature, sig, clean):
@@ -700,7 +703,10 @@ class CommandInterface:
                                         "Device has no update files",
                                         os.path.dirname(fw))
 
-            return self._updateAll(secure=isPkg, timeout=timeout, callback=callback)
+            # Use 'secure' unless there's an unencrypted FW update (.bin)
+            secure = not isBin
+
+            return self._updateAll(secure=secure, timeout=timeout, callback=callback)
 
 
     def setKeys(self, keys: Union[bytearray, bytes],
@@ -1254,7 +1260,7 @@ class SerialCommandInterface(CommandInterface):
             :return: The response dictionary, or `None` if `response` is
                 `False`.
 
-            @raise DeviceTimeout
+            :raise DeviceTimeout
         """
         now = time()
         deadline = now + timeout
@@ -1300,7 +1306,7 @@ class SerialCommandInterface(CommandInterface):
                             # to bad commands sent by the user.
                             EXC = CommandError if -30 <= code <= -20 else DeviceError
                             desc = self.STATUS_CODES.get(code, "Unknown")
-                            raise EXC(code, desc, msg)
+                            raise EXC(code, desc, msg, deepcopy(cmd))
 
                         if queueDepth == 0:
                             logger.debug('Command queue full, retrying.')
@@ -1771,7 +1777,7 @@ class FileCommandInterface(CommandInterface):
                 will be cancelled. The callback function should take no
                 arguments.
 
-            @raise DeviceTimeout
+            :raise DeviceTimeout
         """
         if 'EBMLCommand' in cmd and index:
             self.index += 1
