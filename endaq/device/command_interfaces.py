@@ -4,6 +4,7 @@ and control the recording device.
 """
 
 import calendar
+from copy import deepcopy
 from datetime import datetime
 import errno
 import os.path
@@ -108,6 +109,9 @@ class CommandInterface:
         # The default response timeout (in seconds).
         self.timeout: Union[int, float] = timeout
 
+        # Last command sent: timestamp and a copy of the command (dict)
+        self.lastCommand: Tuple[Optional[float], Optional[dict]] = (None, None)
+
         # Last reported device status. Not available on all interfaces.
         self.status: Tuple[int, Optional[str]] = (None, None)
 
@@ -116,6 +120,7 @@ class CommandInterface:
 
 
     def __del__(self):
+        # Destructor; does a bit of cleanup. Just in case.
         self.close()
 
 
@@ -381,7 +386,7 @@ class CommandInterface:
                 response will be cancelled. The callback function
                 requires no arguments.
 
-            @raise DeviceTimeout
+            :raise DeviceTimeout
         """
         raise NotImplementedError
 
@@ -655,39 +660,45 @@ class CommandInterface:
             :returns: `True` if the device rebooted. Note: this does
                 not indicate that the updates were successfully applied.
         """
-        fw_basename = self.device._FW_UPDATE_FILE
-        up_basename = self.device._USERPAGE_UPDATE_FILE
+        # Update filenames on device
+        fw = os.path.join(self.device.path, self.device._FW_UPDATE_FILE)
+        up = os.path.join(self.device.path, self.device._USERPAGE_UPDATE_FILE)
+        sig = fw + ".sig"
 
-        if isinstance(firmware, str) and firmware.lower().endswith('.bin'):
-            if self.device.getInfo('KeyRev', 0):
-                raise ValueError(
-                    'Cannot apply unencrypted firmware (*.bin) to device '
-                    'with encryption; use *.pkg version if available.')
+        fw_ext = os.path.splitext(str(firmware))[-1].lower()
+        up_ext = os.path.splitext(str(userpage))[-1].lower()
 
-            # HACK: Unencrypted STM32-based firmware has `STM_` prefix
-            if str(self.device.mcuType).upper().startswith('STM'):
-                fw_update_file = 'STM_' + fw_basename
+        if firmware:
+            if fw_ext not in ('.pkg', '.bin'):
+                raise TypeError("Firmware update file must be type .pkg or .bin")
 
-        with self.device._busy:
-            # Update filenames on device
-            fw = os.path.join(self.device.path, fw_basename)
-            up = os.path.join(self.device.path, up_basename)
-            sig = fw + ".sig"
+            if fw_ext == '.bin':
+                if self.device.getInfo('KeyRev', 0):
+                    raise ValueError(
+                            'Cannot apply unencrypted firmware (*.bin) to device '
+                            'with encryption; use *.pkg version if available.')
 
-            if firmware is not None:
-                ext = os.path.splitext(firmware)[-1].lower()
-                if ext not in ('.pkg', '.bin'):
-                    raise TypeError("Firmware update file must be type .pkg or .bin")
-
-                # Special case: non-PKG firmware
+                # HACK: Unencrypted STM32-based firmware has `STM_` prefix
                 # FUTURE: Handle in Recorder subclass instead?
-                if ext == '.bin':
+                if str(self.device.mcuType).upper().startswith('STM'):
+                    fw = os.path.join(os.path.dirname(fw), 'stm_firmware.bin')
+                else:
                     fw = os.path.join(os.path.dirname(fw), 'firmware.bin')
 
+        if userpage and up_ext != '.bin':
+            raise ValueError("Userpage update file must be type .bin")
+
+        with self.device._busy:
             hasFw = self._copyUpdateFile(firmware, fw, clean)
             hasUp = self._copyUpdateFile(userpage, up, clean)
 
-            isPkg = hasFw and fw.lower().endswith('pkg')
+            if not (hasFw or hasUp):
+                raise FileNotFoundError(errno.ENOENT,
+                                        "Device has no update files",
+                                        os.path.dirname(fw))
+
+            isPkg = hasFw and fw_ext == ".pkg"
+            isBin = hasFw and fw_ext == ".bin"
             signature = None if firmware is None or not isPkg else firmware + ".sig"
 
             if isPkg and not self._copyUpdateFile(signature, sig, clean):
@@ -695,12 +706,10 @@ class CommandInterface:
                                         "Firmware signature file not found",
                                         (signature or sig))
 
-            if not hasFw and not hasUp:
-                raise FileNotFoundError(errno.ENOENT,
-                                        "Device has no update files",
-                                        os.path.dirname(fw))
+            # Use 'secure' unless there's an unencrypted FW update (.bin)
+            secure = not isBin
 
-            return self._updateAll(secure=isPkg, timeout=timeout, callback=callback)
+            return self._updateAll(secure=secure, timeout=timeout, callback=callback)
 
 
     def setKeys(self, keys: Union[bytearray, bytes],
@@ -1254,7 +1263,7 @@ class SerialCommandInterface(CommandInterface):
             :return: The response dictionary, or `None` if `response` is
                 `False`.
 
-            @raise DeviceTimeout
+            :raise DeviceTimeout
         """
         now = time()
         deadline = now + timeout
@@ -1268,6 +1277,7 @@ class SerialCommandInterface(CommandInterface):
                         cmd['EBMLCommand']['CommandIdx'] = self.index
 
                     packet = self._encode(cmd)
+                    self.lastCommand = time(), deepcopy(cmd)
                     self._writeCommand(packet)
 
                     try:
@@ -1300,7 +1310,7 @@ class SerialCommandInterface(CommandInterface):
                             # to bad commands sent by the user.
                             EXC = CommandError if -30 <= code <= -20 else DeviceError
                             desc = self.STATUS_CODES.get(code, "Unknown")
-                            raise EXC(code, desc, msg)
+                            raise EXC(code, desc, msg, self.lastCommand[1])
 
                         if queueDepth == 0:
                             logger.debug('Command queue full, retrying.')
@@ -1771,7 +1781,7 @@ class FileCommandInterface(CommandInterface):
                 will be cancelled. The callback function should take no
                 arguments.
 
-            @raise DeviceTimeout
+            :raise DeviceTimeout
         """
         if 'EBMLCommand' in cmd and index:
             self.index += 1
@@ -1782,9 +1792,11 @@ class FileCommandInterface(CommandInterface):
         now = time()
         deadline = now + timeout
 
-        # Wait until the command queue is empty.
-        # The file interface does this first.
         with self.device._busy:
+            self.lastCommand = (now, deepcopy(cmd))
+
+            # Wait until the command queue is empty.
+            # The file interface does this first.
             while response:  # a `while True` infinite loop
                 data = self._readResponse()
                 if data:
