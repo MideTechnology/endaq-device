@@ -925,9 +925,8 @@ class Recorder:
         try:
             with loadSchema("mide_ide.xml").load(calFile) as doc:
                 self._calData = doc.schema.loads(doc.getRaw())
-                calDict = self._calData.dump()
-            self._calibration = calDict.get('CalibrationList')
-        except (FileNotFoundError, AttributeError, KeyError) as err:
+                self._calibration = self._calData[0].dump()
+        except (FileNotFoundError, AttributeError, IndexError) as err:
             logger.debug(f"Possibly-allowed exception when reading {calFile}: {err!r}")
 
         try:
