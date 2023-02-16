@@ -3,7 +3,7 @@ Type definitions, primarily for type hinting.
 """
 
 from pathlib import Path
-from typing import AnyStr, Optional, NamedTuple, TypeVar, Union
+from typing import AnyStr, Optional, NamedTuple, Union
 
 
 # ==============================================================================
@@ -28,7 +28,7 @@ class Drive(NamedTuple):
 # Type hinting definitions
 # ==============================================================================
 
-Epoch = TypeVar('Epoch', float, int)
-Filename = TypeVar('Filename', str, Path, Drive)
+Epoch = Union[float, int]
+Filename = Union[AnyStr, Path, Drive]
 
 
