@@ -1,7 +1,21 @@
+import codecs
+import os.path
 import setuptools
 
-with open('README.md', 'r') as fh:
-    long_description = fh.read()
+
+def read(rel_path):
+    here = os.path.abspath(os.path.dirname(__file__))
+    with codecs.open(os.path.join(here, rel_path), 'r') as fp:
+        return fp.read()
+
+
+def get_version(rel_path):
+    for line in read(rel_path).splitlines():
+        if line.startswith('__version__'):
+            delim = '"' if '"' in line else "'"
+            return line.split(delim)[1]
+    else:
+        raise RuntimeError("Unable to find version string.")
 
 
 INSTALL_REQUIRES = [
@@ -23,11 +37,11 @@ with open('docs/requirements.txt', 'r') as fh:
 
 setuptools.setup(
         name='endaq-device',
-        version='1.0.1',
+        version=get_version('endaq/device/__init__.py'),
         author='Mide Technology',
         author_email='help@mide.com',
         description='Python API for enDAQ data recorders',
-        long_description=long_description,
+        long_description=read('README.md'),
         long_description_content_type='text/markdown',
         url='https://github.com/MideTechnology/endaq-device',
         license='MIT',
