@@ -773,29 +773,28 @@ class Recorder:
     def getTime(self, epoch=True) -> Union[Tuple[datetime, datetime], Tuple[Epoch, Epoch]]:
         """ Read the date/time from the device.
 
-            Deprecated; use `command.getTime()` instead.
-
             :param epoch: If `True`, return the date/time as integer seconds
                 since the epoch ('Unix time'). If `False`, return a Python
                 `datetime.datetime` object.
             :return: The system time and the device time. Both are UTC.
         """
-        # FUTURE: Remove Recorder.getTime()
-        warnings.warn("Direct control moved to `command` attribute; use "
-                      "recorder.command.getTime()",
-                      DeprecationWarning)
+        if self.isVirtual or not self.path:
+            raise UnsupportedFeature('Virtual devices do not have clocks')
 
-        return self.command.getTime(epoch=epoch)
+        if self.command:
+            return self.command.getTime(epoch=epoch)
+        else:
+            logger.debug('')
+            ci = command_interfaces.FileCommandInterface(self)
+            return ci.getTime(epoch=epoch)
 
 
     def setTime(self,
                 t: Union[Epoch, datetime, struct_time, tuple, None] = None,
-                pause=True,
-                retries=1) -> Epoch:
+                pause: bool = True,
+                retries: int = 1) -> Epoch:
         """ Set a recorder's date/time. A variety of standard time types are
             accepted. Note that the minimum unit of time is the whole second.
-
-            Deprecated; use `command.setTime()` instead.
 
             :param t: The time to write, as either seconds since the epoch
                 (i.e. 'Unix time'), `datetime.datetime` or a UTC
@@ -810,19 +809,21 @@ class Recorder:
                 fail. Random filesystem things can potentially cause hiccups.
             :return: The time that was set, as integer seconds since the epoch.
         """
-        # FUTURE: Remove Recorder.setTime()
-        warnings.warn("Direct control moved to `command` attribute; use "
-                      "recorder.command.setTime()",
-                      DeprecationWarning)
+        if self.isVirtual or not self.path:
+            raise UnsupportedFeature('Virtual devices do not have clocks')
 
-        return self.command.setTime(t=t, pause=pause, retries=retries)
+        if self.command:
+            return self.command.setTime(t=t, pause=pause, retries=retries)
+        else:
+            ci = command_interfaces.FileCommandInterface(self)
+            return ci.setTime(t=t, pause=pause, retries=retries)
 
 
-    def getClockDrift(self, pause=True, retries=1) -> float:
+    def getClockDrift(self,
+                      pause: bool = True,
+                      retries: int =1 ) -> float:
         """ Calculate how far the recorder's clock has drifted from the system
             time.
-
-            Deprecated; use `command.getClockDrift()` instead.
 
             :param pause: If `True` (default), the system waits until a
                 whole-numbered second before reading the device's clock. This
@@ -832,12 +833,14 @@ class Recorder:
                 fail. Random filesystem things can potentially cause hiccups.
             :return: The length of the drift, in seconds.
         """
-        # FUTURE: Remove Recorder.getClockDrift()
-        warnings.warn("Direct control moved to `command` attribute; use "
-                      "recorder.command.getClockDrift()",
-                      DeprecationWarning)
+        if self.isVirtual or not self.path:
+            raise UnsupportedFeature('Virtual devices do not have clocks')
 
-        return self.command.getClockDrift(pause=pause, retries=retries)
+        if self.command:
+            return self.command.getClockDrift(pause=pause, retries=retries)
+        else:
+            ci = command_interfaces.FileCommandInterface(self)
+            return ci.getClockDrift(pause=pause, retries=retries)
 
 
     def _parsePolynomials(self, cal: MasterElement) -> Dict[int, Transform]:
