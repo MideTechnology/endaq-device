@@ -1294,9 +1294,7 @@ class FileConfigInterface(ConfigInterface):
 
         logger.debug('Writing legacy config file for {!r}'.format(self.device))
         vals = self.getConfigValues(original=False, unknown=unknown)
-        config = legacy.generateLegacyConfig(vals, self.device)
-        return {'RecorderConfigurationList':
-                    {'RecorderConfigurationItem': config}}
+        return legacy.generateLegacyConfig(vals, self.device)
 
 
     def getConfigUI(self) -> Union[Document, MasterElement]:

@@ -1298,8 +1298,7 @@ class Recorder:
         warnings.warn("Direct control should be done through the 'command' attribute",
                       DeprecationWarning)
 
-        return self.command.startRecording(timeout=timeout,
-                                                     callback=callback)
+        return self.command.startRecording(timeout=timeout, callback=callback)
 
 
     # ===========================================================================
