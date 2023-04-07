@@ -1068,7 +1068,7 @@ class SerialCommandInterface(CommandInterface):
                 if reset:
                     self.port.close()
                 else:
-                    if self.port.closed:
+                    if not self.port.is_open:
                         self.port.open()
 
                     # Sanity check. Will fail if the device reset the port
@@ -1114,9 +1114,9 @@ class SerialCommandInterface(CommandInterface):
                 already closed.
         """
         try:
-            if self.port and not self.port.closed:
+            if self.port and self.port.is_open:
                 self.port.close()
-                return self.port.closed
+                return not self.port.is_open
         except (IOError, OSError, serial.SerialException) as err:
             # Disconnected device can cause this.
             logger.debug("Ignoring exception when closing {} (probably okay): "
