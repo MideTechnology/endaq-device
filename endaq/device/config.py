@@ -1294,9 +1294,7 @@ class FileConfigInterface(ConfigInterface):
 
         logger.debug('Writing legacy config file for {!r}'.format(self.device))
         vals = self.getConfigValues(original=False, unknown=unknown)
-        config = legacy.generateLegacyConfig(vals, self.device)
-        return {'RecorderConfigurationList':
-                    {'RecorderConfigurationItem': config}}
+        return legacy.generateLegacyConfig(vals, self.device)
 
 
     def getConfigUI(self) -> Union[Document, MasterElement]:
@@ -1379,7 +1377,7 @@ class FileConfigInterface(ConfigInterface):
         # Do encoding before opening the file, so it can fail safely and not
         # affect any existing config file.
         config = self._makeConfig(unknown, version=version)
-        configEbml = self._schema.encodes(config, headers=False)
+        configEbml = loadSchema('mide_ide.xml').encodes(config, headers=False)
 
         try:
             util.makeBackup(self.device.configFile)

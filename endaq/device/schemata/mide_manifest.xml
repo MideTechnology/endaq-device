@@ -163,9 +163,11 @@
         <!-- Battery charger ICs -->
         <MasterElement name="ChargerMCP73837" id="0x4D60" mandatory="0" multiple="0" minver="1">Indicates the presence of a MCP73837 battery charger.</MasterElement>
         <MasterElement name="ChargerMAX14747" id="0x4D61" mandatory="0" multiple="0" minver="1">Indicates the presence of a MAX14747 battery charger.</MasterElement>
+        <MasterElement name="ChargerBQ25611D" id="0x4D62" mandatory="0" multiple="0" minver="1">Indicates the presence of a BQ25611D battery charger.</MasterElement>
 
         <!-- Communication -->
         <MasterElement name="CommunicationWiFi_ESP32" id="0x4D70" mandatory="0" multiple="0" minver="1">Indicates the presence of an ESP32 Wi-Fi module.</MasterElement>
+        <MasterElement name="CommunicationNoSerial" id="0x4D71" mandatory="0" multiple="0" minver="1">Indicates device should not appear as a USB serial communication device, and accept file commands instead. </MasterElement>
 
         <!-- Misc. -->
         <MasterElement name="DigitalSensorReset" id="0x4DD0" mandatory="0" multiple="0" minver="1">Indicates the presence of a hardware pushbutton reset controller.</MasterElement>
