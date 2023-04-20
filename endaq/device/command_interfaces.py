@@ -668,12 +668,14 @@ class CommandInterface:
         fw_ext = os.path.splitext(str(firmware))[-1].lower()
         up_ext = os.path.splitext(str(userpage))[-1].lower()
 
+        keyRev = self.device.getInfo('KeyRev', 0)
+
         if firmware:
             if fw_ext not in ('.pkg', '.bin'):
                 raise TypeError("Firmware update file must be type .pkg or .bin")
 
             if fw_ext == '.bin':
-                if self.device.getInfo('KeyRev', 0):
+                if keyRev:
                     raise ValueError(
                             'Cannot apply unencrypted firmware (*.bin) to device '
                             'with encryption; use *.pkg version if available.')
@@ -698,7 +700,6 @@ class CommandInterface:
                                         os.path.dirname(fw))
 
             isPkg = hasFw and fw_ext == ".pkg"
-            isBin = hasFw and fw_ext == ".bin"
             signature = None if firmware is None or not isPkg else firmware + ".sig"
 
             if isPkg and not self._copyUpdateFile(signature, sig, clean):
@@ -706,8 +707,8 @@ class CommandInterface:
                                         "Firmware signature file not found",
                                         (signature or sig))
 
-            # Use 'secure' unless there's an unencrypted FW update (.bin)
-            secure = not isBin
+            # Use 'secure' if the device FW update is a .pkg, or it has keys installed.
+            secure = bool(isPkg or keyRev)
 
             return self._updateAll(secure=secure, timeout=timeout, callback=callback)
 
@@ -1884,6 +1885,7 @@ class FileCommandInterface(CommandInterface):
             :return:
         """
         cmd = "SecureUpdateAll" if secure else "LegacyAll"
+        logger.debug(f'Sending command {cmd!r}')
         return self._runSimpleCommand({cmd: {}},
                                       timeoutMsg="Timed out waiting for update to begin",
                                       wait=wait,
