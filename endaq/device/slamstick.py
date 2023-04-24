@@ -95,13 +95,14 @@ class SlamStickC(SlamStickX):
     def path(self, dev: Union[Filename, None]):
         """ The recorder's filesystem path (e.g., drive letter or mount point).
         """
-        # HACK: New STM32-based Sx-D16 devices mostly emulate the earlier
-        #  EFM32 series 0 SlamStick C, but update with the new firmware
-        #  packages (i.e., `update.pkg`).
         with self._busy:
             Recorder.path.fset(self, dev)
             if self._path:
                 if self.getInfo('McuType', '').startswith("STM32"):
+                    # HACK: New STM32-based Sx-D16 devices mostly emulate the
+                    #  earlier EFM32 series 0 SlamStick C, but update with
+                    #  the new firmware packages (i.e., `update.pkg`). This
+                    #  is a convenient place to set it.
                     self._FW_UPDATE_FILE = Recorder._FW_UPDATE_FILE
 
 
