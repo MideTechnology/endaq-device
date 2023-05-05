@@ -35,7 +35,7 @@ def test_command_ping(dev):
     """
     mock_io = MockCommandSerialIO(dev)
     mock_io.response = mock_io.encodeResponse({'EBMLResponse':
-                                               {'ResponseIdx': 1,
+                                               {'ResponseIdx': dev.command.index + 1,
                                                 'CMDQueueDepth': 1,
                                                 'DeviceStatusCode': 0,
                                                 'PingReply': bytearray(b'hello')}},
