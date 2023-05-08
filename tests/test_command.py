@@ -81,7 +81,7 @@ def test_command_ping(dev):
     assert dev.command.ping() == bytearray(b'hello')
 
 
-@pytest.mark.parametrize("dev", WIFI_DEVICES)
+@pytest.mark.parametrize("dev", SERIAL_DEVICES)
 def test_command_scanWifi(dev):
     """ Test the `scanWifi()` command on devices that support it.
     """
