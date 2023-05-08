@@ -73,6 +73,12 @@ class MockCommandFileIO:
         and RESPONSE file reading methods of the device's `FileCommandInterface`
         instance. It also provides a method for encoding responses as returned
         via the serial command interface.
+
+        Usage (`dev` is an instance of an `endaq.device.Recorder` subclass with
+        a `FileCommandInterface`):
+
+            mock_io = MockCommandFileIO(dev)
+            mock_io.response = mock_io.encodeResponse(<EBMLResponse dict>)
     """
 
     def __init__(self, device: endaq.device.Recorder):
@@ -126,9 +132,10 @@ class MockCommandSerialIO:
         `MockPort`, and provides a utility method for encoding responses as
         returned via the serial command interface.
 
-        Usage (`dev` is an instance of an `endaq.device.Recorder` subclass):
+        Usage (`dev` is an instance of an `endaq.device.Recorder` subclass with
+        a `SerialCommandInterface`):
 
-            mock_io = MockCommandIO(dev)
+            mock_io = MockCommandSerialIO(dev)
             mock_io.response = mock_io.encodeResponse({'EBMLResponse':
                                                        {'ResponseIdx': dev.command.index + 1,
                                                         'CMDQueueDepth': 1,
