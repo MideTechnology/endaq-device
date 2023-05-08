@@ -19,7 +19,9 @@ endaq.device.RECORDERS.clear()
 # Create parameters, mainly to provide an ID, making the results readable
 DEVICES = [pytest.param(getRecorder(path, strict=False), id=os.path.basename(path)) for path in RECORDER_PATHS]
 SERIAL_DEVICES = [param for param in DEVICES if not isinstance(param[0][0].command, FileCommandInterface)]
-WIFI_DEVICES = [param for param in DEVICES if param[0][0].hasWifi]
+
+# NOTE: This should be changed to get devices from DEVICES - see note in fake_recorders.py
+WIFI_DEVICES = [param for param in SERIAL_DEVICES if param[0][0].hasWifi]
 
 # Response to a `scanWifi()` command
 WIFI_SCAN = {'EBMLResponse': {'CMDQueueDepth': 1,
@@ -85,9 +87,7 @@ def test_command_ping(dev):
 def test_command_scanWifi(dev):
     """ Test the `scanWifi()` command on devices that support it.
     """
-    # assert isinstance(dev.command, SerialCommandInterface)
-    # mock_io = applyMockCommandIO(dev)
-    mock_io = MockCommandSerialIO(dev)
+    mock_io = applyMockCommandIO(dev)
     response = deepcopy(WIFI_SCAN)
     response['EBMLResponse']['ResponseIdx'] = dev.command.index + 1
     mock_io.response = mock_io.encodeResponse(response, resultcode=0)

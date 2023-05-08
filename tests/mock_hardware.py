@@ -1,6 +1,10 @@
 """
 Components for replacing hardware-dependent functionality, for testing purely
 in software.
+
+TODO: BUG: There is an issue reading responses when using MockCommandFileIO,
+    but it only seems to happen when running tests on GitHub. The test
+    `test_command_scanWifi()` has been modified to exclude the serial W8.
 """
 
 import endaq.device
