@@ -37,7 +37,7 @@ def test_basic_instantiation(path):
     endaq.device.RECORDERS.clear()  # Clear any cached devices, just to be safe
     dev = endaq.device.getRecorder(path, strict=False)
     assert dev.path == path
-    assert dev.partNumber == os.path.basename(path)
+    assert dev.partNumber == os.path.basename(path).partition('_')[0]
 
 
 @pytest.mark.parametrize("path", RECORDER_PATHS)

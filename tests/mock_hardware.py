@@ -117,7 +117,7 @@ class MockCommandFileIO:
             :param response: The response dictionary.
             :return: The response as raw binary.
         """
-        return CommandInterface._encode(self.device.command, response)
+        return CommandInterface._encode(self.device.command, response, checkSize=False)
 
 
 
@@ -176,7 +176,7 @@ class MockCommandSerialIO:
                 `FileCommandInterface`. Non-zero is an error.
             :return: The response as raw binary.
         """
-        response = CommandInterface._encode(self.device.command, response)
+        response = CommandInterface._encode(self.device.command, response, checkSize=False)
         return hdlc_encode(bytearray([0x81, 0x00, resultcode]) + response)
 
 
@@ -187,3 +187,15 @@ class MockCommandSerialIO:
         """
         return self.port
 
+
+def applyMockCommandIO(device):
+    """ Apply the appropriate mock IO to the device's `command` object.
+    """
+    if not isinstance(device.command, CommandInterface):
+        raise TypeError(f'{device} had invalid command interface: '
+                        f'{device.command!r}')
+
+    if isinstance(device.command, FileCommandInterface):
+        return MockCommandFileIO(device)
+    else:
+        return MockCommandSerialIO(device)
