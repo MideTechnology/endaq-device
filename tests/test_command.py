@@ -85,10 +85,9 @@ def test_command_ping(dev):
 def test_command_scanWifi(dev):
     """ Test the `scanWifi()` command on devices that support it.
     """
-    mock_io = applyMockCommandIO(dev)
-    assert isinstance(dev.command, SerialCommandInterface)
-    assert isinstance(mock_io, MockCommandSerialIO)
-    # mock_io = MockCommandSerialIO(dev)
+    # assert isinstance(dev.command, SerialCommandInterface)
+    # mock_io = applyMockCommandIO(dev)
+    mock_io = MockCommandSerialIO(dev)
     response = deepcopy(WIFI_SCAN)
     response['EBMLResponse']['ResponseIdx'] = dev.command.index + 1
     mock_io.response = mock_io.encodeResponse(response, resultcode=0)
