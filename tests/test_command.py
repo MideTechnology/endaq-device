@@ -8,7 +8,7 @@ import pytest
 
 import endaq.device
 from endaq.device import getRecorder
-from endaq.device.command_interfaces import CommandInterface, FileCommandInterface
+from endaq.device.command_interfaces import CommandInterface, FileCommandInterface, SerialCommandInterface
 
 from .fake_recorders import RECORDER_PATHS
 from .mock_hardware import applyMockCommandIO, MockCommandSerialIO
@@ -86,6 +86,7 @@ def test_command_scanWifi(dev):
     """ Test the `scanWifi()` command on devices that support it.
     """
     mock_io = applyMockCommandIO(dev)
+    assert isinstance(dev.command, SerialCommandInterface)
     assert isinstance(mock_io, MockCommandSerialIO)
     # mock_io = MockCommandSerialIO(dev)
     response = deepcopy(WIFI_SCAN)
