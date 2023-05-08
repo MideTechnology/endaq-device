@@ -11,7 +11,7 @@ from endaq.device import getRecorder
 from endaq.device.command_interfaces import CommandInterface, FileCommandInterface
 
 from .fake_recorders import RECORDER_PATHS
-from .mock_hardware import applyMockCommandIO
+from .mock_hardware import applyMockCommandIO, MockCommandSerialIO
 
 # Clear any cached devices, just to be safe
 endaq.device.RECORDERS.clear()
@@ -85,7 +85,8 @@ def test_command_ping(dev):
 def test_command_scanWifi(dev):
     """ Test the `scanWifi()` command on devices that support it.
     """
-    mock_io = applyMockCommandIO(dev)
+    # mock_io = applyMockCommandIO(dev)
+    mock_io = MockCommandSerialIO(dev)
     response = deepcopy(WIFI_SCAN)
     response['EBMLResponse']['ResponseIdx'] = dev.command.index + 1
     mock_io.response = mock_io.encodeResponse(response)
