@@ -103,7 +103,7 @@ class ConfigItem:
     @classmethod
     def _generateLabel(cls, configId: int) -> Union[str, None]:
         """ Helper method to create a 'label' string from a ConfigID (using
-            the standard conventions) if the \*Field element does not contain
+            the standard conventions) if the \\*Field element does not contain
             one. Mainly works for standard channel/subchannel-specific fields.
         """
         if configId in cls.DEFAULT_LABELS:

@@ -1,5 +1,9 @@
 """
 Fake recorders for testing.
+
+Directory names should match the part number of the device their contents
+emulate. Additional information can be added to the directory name after
+an underscore (e.g., hardware revision differences, different MCU, etc.).
 """
 import os.path
 
