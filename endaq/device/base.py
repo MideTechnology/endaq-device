@@ -535,11 +535,11 @@ class Recorder:
                 bom = rev % 100
                 if bom == 0:
                     bom = ""
-                elif bom <= 26:
-                    bom = chr(bom+64)
+                elif bom < 26:
+                    bom = chr(bom+65)
                 else:
-                    bom = f"_{bom}"
-                rev = f"{major}.{minor}{bom}"
+                    bom = chr((bom % 25) + 64) * int((bom // 25 + 1))
+                rev = f"v{major}r{minor}{bom}"
         except TypeError:
             pass
         return str(rev)
