@@ -24,7 +24,8 @@ SERIAL_DEVICES = [param for param in DEVICES if not isinstance(param[0][0].comma
 WIFI_DEVICES = [param for param in SERIAL_DEVICES if param[0][0].hasWifi]
 
 # Response to a `scanWifi()` command
-WIFI_SCAN = {'EBMLResponse': {'CMDQueueDepth': 1,
+WIFI_SCAN = {'EBMLResponse': {
+                  'CMDQueueDepth': 1,
                   'DeviceStatusCode': 0,
                   'ResponseIdx': 1,
                   'WiFiScanResult': {'AP': [{'AuthType': 3,
@@ -46,16 +47,6 @@ WIFI_SCAN = {'EBMLResponse': {'CMDQueueDepth': 1,
                                              'Known': False,
                                              'RSSI': -83,
                                              'SSID': 'Example AP 3',
-                                             'Selected': False},
-                                            {'AuthType': 3,
-                                             'Known': False,
-                                             'RSSI': -90,
-                                             'SSID': 'Example AP 4',
-                                             'Selected': False},
-                                            {'AuthType': 3,
-                                             'Known': False,
-                                             'RSSI': -94,
-                                             'SSID': 'Example AP 5',
                                              'Selected': False}],
                                      'ScanVersion': 3}}}
 
