@@ -300,13 +300,16 @@ class ConfigItem:
 
     @property
     def value(self) -> Any:
-        """ The configuration item value, in standard engineering units. """
+        """ The configuration item value, in standard engineering units (Pa,
+            g, degrees, etc.) where applicable. """
         return self._value
 
 
     @value.setter
     def value(self, v: Any):
-        """ Set the configuration item value, in engineering units. """
+        """ Set the configuration item value, in engineering units (Pa,
+            g, degrees, etc.) where applicable.
+        """
         if v is None or (self.interface and not self.interface.validate):
             self._value = v
             return
@@ -654,7 +657,7 @@ class ConfigInterface:
                     (none or item.value is not None))}
 
         if unknown:
-            for k, v in self.unknownConfig:
+            for k, v in self.unknownConfig.items():
                 conf[k] = v[1]
 
         return conf
@@ -1266,7 +1269,8 @@ class FileConfigInterface(ConfigInterface):
         return vers
 
 
-    def _makeConfig(self, unknown: bool = True, version: Optional[int] = None) -> Dict[str, Any]:
+    def _makeConfig(self, unknown: bool = True, version: Optional[int] = None,
+                    defaults: bool = False) -> Dict[str, Any]:
         """ Generate a dictionary of configuration data, suitable for EBML
             encoding.
 
@@ -1293,7 +1297,7 @@ class FileConfigInterface(ConfigInterface):
             return super()._makeConfig(unknown=unknown)
 
         logger.debug('Writing legacy config file for {!r}'.format(self.device))
-        vals = self.getConfigValues(original=False, unknown=unknown)
+        vals = self.getConfigValues(defaults=defaults, original=False, unknown=unknown)
         return legacy.generateLegacyConfig(vals, self.device)
 
 

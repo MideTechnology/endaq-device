@@ -1891,7 +1891,6 @@ class FileCommandInterface(CommandInterface):
             :return:
         """
         cmd = "SecureUpdateAll" if secure else "LegacyAll"
-        logger.debug(f'Sending command {cmd!r}')
         return self._runSimpleCommand({cmd: {}},
                                       timeoutMsg="Timed out waiting for update to begin",
                                       wait=wait,
