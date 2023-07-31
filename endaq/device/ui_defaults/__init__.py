@@ -73,6 +73,7 @@ def getDefaultConfigUI(device) -> Union[str, None]:
         ui = _getConfigUI(_getGenericName(uiName))
 
     if not ui:
-        logger.warning("Could not find default ConfigUI for {}".format(device.partNumber))
+        logger.warning("Could not find default ConfigUI for {}, using default".format(device.partNumber))
+        ui = _getConfigUI('default')
 
     return ui

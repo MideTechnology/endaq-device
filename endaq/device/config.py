@@ -1173,7 +1173,7 @@ class VirtualConfigInterface(ConfigInterface):
 
         if not self.configUi:
             raise IOError(errno.ENOENT, "No default ConfigUI found for {}"
-                          .format(self.device))
+                          .format(self.device.partNumber))
 
         return self.configUi
 
