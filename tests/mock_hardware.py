@@ -26,8 +26,8 @@ class MockPort:
             can be set at any time.
 
             :param response: Data to be returned on `read()`.
-            :param chunksize: The number of bytes returned each read, to
-                simulate data arriving during the `read()`.
+            :param chunksize: The maximum number of `response` bytes returned
+                each read, to simulate data arriving during the `read()`.
         """
         self.is_open = False
         self.timeout = 0
@@ -48,7 +48,7 @@ class MockPort:
             size = min(size, self.chunkSize)
 
         result = self.response[:size]
-        self.data = self.response[size:]
+        self.response = self.response[size:]
         return result
 
     def write(self, data):
