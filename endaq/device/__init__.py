@@ -21,7 +21,7 @@ from .types import Filename, Epoch
 
 from . import schemata
 
-__version__ = "1.0.6b1"
+__version__ = "1.0.6"
 
 __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'DeviceError', 'DeviceTimeout', 'UnsupportedFeature',
