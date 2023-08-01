@@ -157,18 +157,21 @@ class CommandInterface:
         return True
 
 
-    def _encode(self, data: dict) -> Union[bytearray, bytes]:
+    def _encode(self, data: dict,
+                checkSize: bool = True) -> Union[bytearray, bytes]:
         """
         Prepare a packet of command data for transmission, doing any
         preparation required by the interface's medium.
 
         :param data: The unencoded command `dict`.
+        :param checkSize: If `False`, skip the check that the length of the
+            encoded command is not greater than the device's maximum.
         :return: The encoded command data, with any class-specific
             wrapping or other preparations.
         """
         ebml = self.schema.encodes(data, headers=False)
 
-        if self.maxCommandSize is not None and len(ebml) > self.maxCommandSize:
+        if checkSize and self.maxCommandSize is not None and len(ebml) > self.maxCommandSize:
             raise CommandError("Command too large ({}); max size is {}".format(
                     len(ebml), self.maxCommandSize))
 
@@ -1125,15 +1128,18 @@ class SerialCommandInterface(CommandInterface):
         return True
 
 
-    def _encode(self, data: dict) -> bytearray:
+    def _encode(self, data: dict,
+                checkSize: bool = True) -> bytearray:
         """
             Generate a serial packet containing EBMLCommand data. Separated from
             sending for use with time-critical functions to minimize latency.
 
             :param data: The unencoded command `dict`.
+            :param checkSize: If `False`, skip the check that the length of the
+                encoded command is not greater than the device's maximum.
             :return: A `bytearray` containing the packetized EBMLCommand data.
         """
-        ebml = super()._encode(data)
+        ebml = super()._encode(data, checkSize)
 
         # Header: address 0 (broadcast), EBML data, immediate write.
         packet = bytearray([0x80, 0x26, 0x00, 0x0A])
@@ -1885,7 +1891,6 @@ class FileCommandInterface(CommandInterface):
             :return:
         """
         cmd = "SecureUpdateAll" if secure else "LegacyAll"
-        logger.debug(f'Sending command {cmd!r}')
         return self._runSimpleCommand({cmd: {}},
                                       timeoutMsg="Timed out waiting for update to begin",
                                       wait=wait,

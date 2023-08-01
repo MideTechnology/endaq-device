@@ -7,9 +7,11 @@ __copyright__ = "Copyright 2022 Mide Technology Corporation"
 
 import os.path
 import re
+from typing import Union
 
 from .base import Recorder
 from .endaq import EndaqS
+from .types import Filename
 
 #===============================================================================
 #
@@ -42,9 +44,9 @@ class SlamStickX(Recorder):
         try:
             # Must have version of FW supporting the feature and also be a real
             # device (e.g. has a path).
-            if self.isVirtual:
+            if self.isVirtual or not os.path.isdir(self.path):
                 return False
-            return self.firmwareVersion >= 17 and self.path and os.path.isdir(self.path)
+            return self.firmwareVersion >= 17
         except TypeError:
             return False
 
@@ -73,9 +75,35 @@ class SlamStickC(SlamStickX):
         """ The recorder's manufacturer-issued serial number (as string). """
         # Hacky bit to provide Sx-D16 the enDAQ S serial number format.
         if self._sn is None:
-            if self.partNumber.endswith('-D16'):
+            if self.productName.endswith('-D16'):
                 self.SN_FORMAT = EndaqS.SN_FORMAT
         return super().serial
+
+
+    @property
+    def canRecord(self) -> bool:
+        return (self.getInfo('McuType', '').startswith("STM32")
+                or SlamStickX.canRecord.fget(self))
+
+
+    @property
+    def path(self) -> Union[str, None]:
+        return Recorder.path.fget(self)
+
+
+    @path.setter
+    def path(self, dev: Union[Filename, None]):
+        """ The recorder's filesystem path (e.g., drive letter or mount point).
+        """
+        with self._busy:
+            Recorder.path.fset(self, dev)
+            if self._path:
+                if self.getInfo('McuType', '').startswith("STM32"):
+                    # HACK: New STM32-based Sx-D16 devices mostly emulate the
+                    #  earlier EFM32 series 0 SlamStick C, but update with
+                    #  the new firmware packages (i.e., `update.pkg`). This
+                    #  is a convenient place to set it.
+                    self._FW_UPDATE_FILE = Recorder._FW_UPDATE_FILE
 
 
 # ===============================================================================
