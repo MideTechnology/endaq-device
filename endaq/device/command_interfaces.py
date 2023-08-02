@@ -11,7 +11,7 @@ import os.path
 import shutil
 import sys
 from time import sleep, time, struct_time
-from typing import Optional, Tuple, Union, Callable, TYPE_CHECKING
+from typing import AnyStr, ByteString, Optional, Tuple, Union, Callable, TYPE_CHECKING
 import warnings
 
 import logging
@@ -113,7 +113,7 @@ class CommandInterface:
         self.lastCommand: Tuple[Optional[float], Optional[dict]] = (None, None)
 
         # Last reported device status. Not available on all interfaces.
-        self.status: Tuple[int, Optional[str]] = (None, None)
+        self.status: Tuple[Optional[int], Optional[str]] = (None, None)
 
         # Some interfaces (i.e. serial) have a maximum packet size.
         self.maxCommandSize = self.DEFAULT_MAX_COMMAND_SIZE
@@ -178,7 +178,7 @@ class CommandInterface:
         return ebml
 
 
-    def _decode(self, packet: Union[bytearray, bytes]) -> dict:
+    def _decode(self, packet: ByteString) -> dict:
         """
         Translate a response packet (EBML) into a dictionary.
 
@@ -204,7 +204,7 @@ class CommandInterface:
     # The actual command sending and response receiving.
     # =======================================================================
 
-    def _writeCommand(self, packet: Union[bytearray, bytes]) -> int:
+    def _writeCommand(self, packet: ByteString) -> int:
         """
         Send an encoded EBMLCommand element. This is a low-level write; the
         data should include any transport-specific packaging. It generally
@@ -217,8 +217,8 @@ class CommandInterface:
 
 
     def _readResponse(self,
-                     timeout: Optional[Union[int, float]] = None,
-                     callback: Optional[Callable] = None) -> Union[None, dict]:
+                      timeout: Optional[Union[int, float]] = None,
+                      callback: Optional[Callable] = None) -> Union[None, dict]:
         """
         Wait for and retrieve the response to a serial command. Does not do any
         processing other than (attempting to) decode the EBML payload.
@@ -235,7 +235,7 @@ class CommandInterface:
 
 
     def _getTime(self,
-                pause: bool = True) -> Tuple[Epoch, Epoch]:
+                 pause: bool = True) -> Tuple[Epoch, Epoch]:
         """
         Read the date/time from the device. Implemented in the interface
         because the method differs significantly between file-based and other
@@ -302,7 +302,7 @@ class CommandInterface:
 
     def setTime(self, t: Union[Epoch, datetime, struct_time, tuple, None] = None,
                 pause: bool = True,
-                retries: int = 1) -> Epoch:
+                retries: int = 1) -> Tuple[Epoch, Epoch]:
         """ Set a recorder's date/time. A variety of standard time types are
             accepted. Note that the minimum unit of time is the whole second.
 
@@ -368,12 +368,12 @@ class CommandInterface:
 
 
     def _sendCommand(self,
-                    cmd: dict,
-                    response: bool = True,
-                    timeout: float = 10,
-                    interval: float = .25,
-                    index: bool = True,
-                    callback: Optional[Callable] = None) -> Union[None, dict]:
+                     cmd: dict,
+                     response: bool = True,
+                     timeout: float = 10,
+                     interval: float = .25,
+                     index: bool = True,
+                     callback: Optional[Callable] = None) -> Union[None, dict]:
         """ Send a raw command to the device and (optionally) retrieve the
             response.
 
@@ -389,7 +389,7 @@ class CommandInterface:
                 response will be cancelled. The callback function
                 requires no arguments.
 
-            :raise DeviceTimeout
+            :raise: DeviceTimeout
         """
         raise NotImplementedError
 
@@ -500,7 +500,7 @@ class CommandInterface:
 
 
     def ping(self,
-             data: Optional[Union[bytearray, bytes]] = None,
+             data: Optional[ByteString] = None,
              timeout: float = 5,
              callback: Optional[Callable] = None) -> bytes:
         """ Verify the recorder is present and responding. Not supported on
@@ -716,7 +716,7 @@ class CommandInterface:
             return self._updateAll(secure=secure, timeout=timeout, callback=callback)
 
 
-    def setKeys(self, keys: Union[bytearray, bytes],
+    def setKeys(self, keys: ByteString,
                 timeout: float = 5,
                 callback: Optional[Callable] = None):
         """ Update the device's key bundle
@@ -789,10 +789,10 @@ class CommandInterface:
         cmd = {'EBMLCommand': {'SetWiFi': {"AP": wifi_data}}}
 
         self._sendCommand(cmd,
-                         response=False,
-                         timeout=timeout,
-                         interval=interval,
-                         callback=callback)
+                          response=False,
+                          timeout=timeout,
+                          interval=interval,
+                          callback=callback)
 
 
     def queryWifi(self,
@@ -973,7 +973,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def __init__(self,
-                 device,
+                 device: 'Recorder',
                  timeout: Union[int, float] = 1,
                  make_crc: bool = True,
                  ignore_crc: bool = False,
@@ -1149,7 +1149,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def _decode(self,
-               packet: Union[bytearray, bytes]) -> dict:
+                packet: ByteString) -> dict:
         """
             Translate a response packet into a dictionary. Removes additional
             header data and checks the CRC (if the interface's `ignore_crc`
@@ -1177,7 +1177,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def _writeCommand(self,
-                     packet: Union[bytearray, bytes]) -> int:
+                      packet: ByteString) -> int:
         """ Transmit a fully formed packet (addressed, HDLC encoded, etc.)
             via serial. This is a low-level write to the medium and does not
             do the additional housekeeping that `sendCommand()` does;
@@ -1197,8 +1197,8 @@ class SerialCommandInterface(CommandInterface):
 
 
     def _readResponse(self,
-                     timeout: Optional[float] = None,
-                     callback: Optional[Callable] = None) -> Union[None, dict]:
+                      timeout: Optional[float] = None,
+                      callback: Optional[Callable] = None) -> Union[None, dict]:
         """
         Wait for and retrieve the response to a serial command. Does not do any
         processing other than (attempting to) decode the EBML payload.
@@ -1242,12 +1242,12 @@ class SerialCommandInterface(CommandInterface):
 
 
     def _sendCommand(self,
-                    cmd: dict,
-                    response: bool = True,
-                    timeout: float = 10,
-                    interval: float = .25,
-                    index: bool = True,
-                    callback: Optional[Callable] = None) -> Union[None, dict]:
+                     cmd: dict,
+                     response: bool = True,
+                     timeout: float = 10,
+                     interval: float = .25,
+                     index: bool = True,
+                     callback: Optional[Callable] = None) -> Union[None, dict]:
         """ Send a command to the device and (optionally) retrieve the
             response.
 
@@ -1270,7 +1270,7 @@ class SerialCommandInterface(CommandInterface):
             :return: The response dictionary, or `None` if `response` is
                 `False`.
 
-            :raise DeviceTimeout
+            :raise: DeviceTimeout
         """
         now = time()
         deadline = now + timeout
@@ -1343,8 +1343,8 @@ class SerialCommandInterface(CommandInterface):
 
 
     def _getTime(self,
-                pause: bool = True,
-                timeout: Union[int, float] = 1) -> Tuple[Epoch, Epoch]:
+                 pause: bool = True,
+                 timeout: Union[int, float] = 1) -> Tuple[Epoch, Epoch]:
         """
         Called by `Recorder.getTime()` and `Recorder.getClockDrift()`.
 
@@ -1420,7 +1420,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def ping(self,
-             data: Optional[Union[bytearray, bytes]] = None,
+             data: Optional[ByteString] = None,
              timeout: float = 10,
              interval: float = .25,
              callback: Optional[Callable] = None) -> dict:
@@ -1441,7 +1441,7 @@ class SerialCommandInterface(CommandInterface):
         """
         cmd = {'EBMLCommand': {'SendPing': b'' if data is None else data}}
         response = self._sendCommand(cmd, timeout=timeout, interval=interval,
-                                    callback=callback)
+                                     callback=callback)
 
         if 'PingReply' not in response:
             raise CommandError('Ping response did not contain a PingReply')
@@ -1477,7 +1477,7 @@ class SerialCommandInterface(CommandInterface):
         """
         cmd = {'EBMLCommand': {'GetBattery': {}}}
         response = self._sendCommand(cmd, timeout=timeout,
-                                    callback=callback)
+                                     callback=callback)
         if not response:
             return None
         response = response.get('BatteryState')
@@ -1630,7 +1630,7 @@ class FileCommandInterface(CommandInterface):
     """
 
     def _writeCommand(self,
-                     packet: Union[bytearray, bytes]) -> int:
+                      packet: Union[AnyStr, ByteString]) -> int:
         """
         Send an encoded EBMLCommand element. This is a low-level write; the
         data should include any transport-specific packaging. It generally
@@ -1669,8 +1669,8 @@ class FileCommandInterface(CommandInterface):
 
 
     def _readResponse(self,
-                     timeout: Optional[Union[int, float]] = None,
-                     callback: Optional[Callable] = None) -> dict:
+                      timeout: Optional[Union[int, float]] = None,
+                      callback: Optional[Callable] = None) -> Union[dict, None]:
         """
         Helper to retrieve an EBML response from the device's `RESPONSE` file.
 
@@ -1704,7 +1704,7 @@ class FileCommandInterface(CommandInterface):
 
 
     def _getTime(self,
-                pause=False) -> Tuple[Epoch, Epoch]:
+                 pause=False) -> Tuple[Epoch, Epoch]:
         """
         Called by `Recorder.getTime()` and `Recorder.getClockDrift()`.
 
@@ -1768,12 +1768,12 @@ class FileCommandInterface(CommandInterface):
 
 
     def _sendCommand(self,
-                    cmd: dict,
-                    response: bool = True,
-                    timeout: float = 10,
-                    interval: float = .25,
-                    index: bool = True,
-                    callback: Optional[Callable] = None) -> Union[None, dict]:
+                     cmd: dict,
+                     response: bool = True,
+                     timeout: float = 10,
+                     interval: float = .25,
+                     index: bool = True,
+                     callback: Optional[Callable] = None) -> Union[None, dict]:
         """ Send a raw command to the device and (optionally) retrieve the
             response.
 
@@ -1788,7 +1788,7 @@ class FileCommandInterface(CommandInterface):
                 will be cancelled. The callback function should take no
                 arguments.
 
-            :raise DeviceTimeout
+            :raise: DeviceTimeout
         """
         if 'EBMLCommand' in cmd and index:
             self.index += 1
