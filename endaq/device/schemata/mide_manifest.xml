@@ -168,6 +168,7 @@
         <!-- Communication -->
         <MasterElement name="CommunicationWiFi_ESP32" id="0x4D70" mandatory="0" multiple="0" minver="1">Indicates the presence of an ESP32 Wi-Fi module.</MasterElement>
         <MasterElement name="CommunicationNoSerial" id="0x4D71" mandatory="0" multiple="0" minver="1">Indicates device should not appear as a USB serial communication device, and accept file commands instead. </MasterElement>
+        <MasterElement name="CommunicationCorBus" id="0x4D72" mandatory="0" multiple="0" minver="1">Indicates device has a CorBus interface and will respond to/send CorBus commands. </MasterElement>
 
         <!-- Misc. -->
         <MasterElement name="DigitalSensorReset" id="0x4DD0" mandatory="0" multiple="0" minver="1">Indicates the presence of a hardware pushbutton reset controller.</MasterElement>
