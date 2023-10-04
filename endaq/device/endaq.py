@@ -26,7 +26,7 @@ class EndaqS(Recorder):
     manufacturer = "Midé Technology Corporation"
     homepage = "https://endaq.com/collections/endaq-shock-recorders-vibration-data-logger-sensors"
 
-    _NAME_PATTERN = re.compile(r'^S(\d|\d\d)-.*')
+    _NAME_PATTERN = re.compile(r'(^S(\d|\d\d)-.*)|(^SF-DR4-(02|04))')
 
 
 # ==============================================================================
@@ -39,7 +39,7 @@ class EndaqW(EndaqS):
     SN_FORMAT = "W%07d"
 
     # Part number starts with "W", a 1-2 digit number, and "-"
-    _NAME_PATTERN = re.compile(r'^W(\d|\d\d)-.*')
+    _NAME_PATTERN = re.compile(r'(^W(\d|\d\d)-.*)|(^SF-DR4-(01|03))')
 
     # These are now in CommandInterface, and will eventually be removed here
     WIFI_STATUS_IDLE = 0
