@@ -226,7 +226,7 @@ class CommandInterface:
         :param timeout: Time to wait for a valid response.
         :param callback: A function to call each response-checking
             cycle. If the callback returns `True`, the wait for a response
-            will be cancelled. The callback function should take no
+            will be cancelled. The callback function should require no
             arguments.
         :return: A `dict` of response data, or `None` if `callback` caused
             the process to cancel.
@@ -775,7 +775,7 @@ class CommandInterface:
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will be
-                cancelled. The callback function should take no arguments.
+                cancelled. The callback function should require no arguments.
 
             :raise UnsupportedFeature: Raised if the device does not
                 support Wi-Fi.
@@ -860,7 +860,7 @@ class CommandInterface:
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will
-                be cancelled. The callback function should take no arguments.
+                be cancelled. The callback function should require no arguments.
             :return: A list of dictionaries, described above.
 
             :raise UnsupportedFeature: Raised if the device does not
@@ -933,6 +933,103 @@ class CommandInterface:
 
         cmd = {'EBMLCommand': {'ESPFW': payload}}
         return self._sendCommand(cmd, timeout=timeout, callback=callback)
+
+
+    def getNetworkStatus(self,
+                         timeout: int = 10,
+                         interval: float = .25,
+                         callback: Optional[Callable] = None) -> Union[None, dict]:
+        """ Check the device's networking hardware. The response is less
+            specific to one interface type (i.e., the results of
+            `queryWiFi()`).
+
+            The resluts is a dictionary, with keys:
+
+            * ``MACAddress`` (bytes): The unique hardware address of the
+                device's network interface (does not change).
+            * ``IPV4Address`` (bytes): The device's IP address (typically
+                set by the router when the device connects). This will not
+                be present if the device is not connected.
+            * ``CurrentWiFiStatus`` (int): The Wi-Fi connection status.
+                Note: this is not the same as the ``WiFiConnectionStatus``
+                in the response returned by `queryWifi()`.
+
+            :raise DeviceTimeout: Raised if 'timeout' seconds have gone by
+                without getting a response
+
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+            :param interval: Time (in seconds) between checks for a response.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will
+                be cancelled. The callback function should require no arguments.
+            :return: A list of dictionaries, described above.
+
+            :raise UnsupportedFeature: Raised if the device does not
+                support Wi-Fi.
+        """
+        if not self.device.hasWifi:
+            raise UnsupportedFeature('{!r} has no network adapter'.format(self.device))
+
+
+        response = self._sendCommand({'EBMLCommand': {'NetworkStatus': None}},
+                                 response=True,
+                                 timeout=timeout,
+                                 interval=interval,
+                                 callback=callback)
+        return response.get('NetworkStatusResponse', None)
+
+
+    def getNetworkAddress(self,
+                          timeout: int = 10,
+                          interval: float = .25,
+                          callback: Optional[Callable] = None
+                          ) -> Tuple[Optional[str], Optional[str]]:
+        """ Get the device's unique MAC address and its assigned IPv4 address
+            as a tuple of human-readable strings (e.g.,
+            ``("89:ab:cd:ef", "192.168.1.10")``). If the device is not
+            connected, the IP (the second item in the tuple) will be `None`.
+            If the device does not have network hardware (Wi-Fi, etc.),
+            both the MAC and IP will be `None`; unlike the other network
+            related methods, it does not raise an exception if the device
+            does not have network hardware.
+
+            :raise DeviceTimeout: Raised if 'timeout' seconds have gone by
+                without getting a response
+
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+            :param interval: Time (in seconds) between checks for a response.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will
+                be cancelled. The callback function should require no arguments.
+            :return: A two-item tuple containing the device's MAC address
+                and IP address. One or both may be `None`, as described
+                above.
+        """
+        if not self.device.hasWifi:
+            return None, None
+
+        result = self.getNetworkStatus(timeout, interval, callback) or {}
+
+        mac = result.get('MACAddress', None)
+        if mac:
+            try:
+                mac = ':'.join(hex(b) for b in mac)
+            except (TypeError, ValueError) as err:
+                warnings.warn("{} parsing MAC address: {}"
+                              .format(type(err).__name__, err))
+
+        ip = result.get('IPV4Address', None)
+        if ip:
+            try:
+                ip = '.'.join(str(b) for b in ip)
+            except (TypeError, ValueError) as err:
+                warnings.warn("{} parsing IP address: {}"
+                              .format(type(err).__name__, err))
+
+        return mac, ip
+
 
 
 # Populate the STATUS_CODES dictionary, mapping code numbers back to names
@@ -1434,7 +1531,7 @@ class SerialCommandInterface(CommandInterface):
                 response.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
+                will be cancelled. The callback function should require no
                 arguments.
             :return: The received data, which should be identical to the
                 data sent.
@@ -1459,7 +1556,7 @@ class SerialCommandInterface(CommandInterface):
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
+                will be cancelled. The callback function should require no
                 arguments.
             :return: A dictionary with the parsed battery status. It will
                 always contain the key `"hasBattery"`, and if that is `True`,
@@ -1510,7 +1607,7 @@ class SerialCommandInterface(CommandInterface):
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
+                will be cancelled. The callback function should require no
                 arguments.
             :returns: `True` if the command was successful.
         """
@@ -1534,7 +1631,7 @@ class SerialCommandInterface(CommandInterface):
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
+                will be cancelled. The callback function should require no
                 arguments.
             :returns: `True` if the command was successful.
         """
@@ -1560,7 +1657,7 @@ class SerialCommandInterface(CommandInterface):
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
+                will be cancelled. The callback function should require no
                 arguments.
             :returns: `True` if the command was successful.
         """
@@ -1677,7 +1774,7 @@ class FileCommandInterface(CommandInterface):
         :param timeout: Time to wait for a valid response.
         :param callback: A function to call each response-checking
             cycle. If the callback returns `True`, the wait for a response
-            will be cancelled. The callback function should take no
+            will be cancelled. The callback function should require no
             arguments.
         :return: A `dict` of response data, or `None` if `callback` caused
             the process to cancel.
@@ -1785,7 +1882,7 @@ class FileCommandInterface(CommandInterface):
                 response.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
+                will be cancelled. The callback function should require no
                 arguments.
 
             :raise DeviceTimeout
@@ -1857,9 +1954,9 @@ class FileCommandInterface(CommandInterface):
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
-                cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
-                arguments.
+                cycle. If the callback returns `True`, the wait for a
+                response will be cancelled. The callback function should
+                require no arguments.
             :returns: `True` if the command was successful.
         """
         msg = self._encode(cmd)[:2]
@@ -1885,9 +1982,9 @@ class FileCommandInterface(CommandInterface):
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
-                cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
-                arguments.
+                cycle. If the callback returns `True`, the wait for a
+                response will be cancelled. The callback function should
+                require no arguments.
             :return:
         """
         cmd = "SecureUpdateAll" if secure else "LegacyAll"
@@ -1909,9 +2006,9 @@ class FileCommandInterface(CommandInterface):
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
-                cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
-                arguments.
+                cycle. If the callback returns `True`, the wait for a
+                response will be cancelled. The callback function should
+                require no arguments.
             :returns: `True` if the command was successful.
         """
         if not self.device.canRecord:
@@ -1936,9 +2033,9 @@ class FileCommandInterface(CommandInterface):
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
-                cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
-                arguments.
+                cycle. If the callback returns `True`, the wait for a
+                response will be cancelled. The callback function should
+                require no arguments.
             :returns: `True` if the command was successful.
         """
         # FUTURE: Write commands wrapped in a <EBMLCommand> element?
