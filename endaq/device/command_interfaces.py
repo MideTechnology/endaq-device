@@ -25,6 +25,7 @@ from .exceptions import DeviceError, CommandError, DeviceTimeout, UnsupportedFea
 from .hdlc import hdlc_decode, hdlc_encode, HDLC_BREAK_CHAR
 from .exceptions import CRCError
 from .types import Epoch
+from .response_codes import *
 
 if sys.platform == 'darwin':
     from . import macos as os_specific
@@ -52,37 +53,6 @@ class CommandInterface:
         interface types. A tuple containing the status code and a
         status message string (optional).
     """
-
-    # DeviceStatusCode responses. Note: not reported over all interfaces.
-    # "Okay" status codes:
-    STATUS_IDLE = 0
-    STATUS_RECORDING = 10
-    STATUS_RESET_PENDING = 20
-    STATUS_START_PENDING = 30
-
-    # Error status codes:
-    ERR_BUSY = -10
-    ERR_INVALID_COMMAND = -20
-    ERR_UNKNOWN_COMMAND = -30
-    ERR_BAD_PAYLOAD = -40
-    ERR_BAD_EBML = -50
-    ERR_BAD_CHECKSUM = -60
-    ERR_BAD_PACKET = -70
-
-    # For mapping status code numbers back to names. Populated later.
-    STATUS_CODES = {}
-
-    # Wi-Fi-related response codes.
-    # Values for `<CurrentWiFiStatus>` in `<NetworkStatusResponse>`
-    WIFI_STATUS_IDLE = 0
-    WIFI_STATUS_PENDING = 1
-    WIFI_STATUS_CONNECTED = 2
-
-    # Values for `<WiFiConnectionStatus>` in `<QueryWiFiResponse>`
-    WIFI_CONNECTION_FAILED = 0
-    WIFI_CONNECTING = 1
-    WIFI_CONNECTED = 2
-    WIFI_CONNECTED_CLOUD = 3
 
     # Default maximum encoded command length (bytes). Only applicable to
     # certain interfaces.
@@ -396,7 +366,7 @@ class CommandInterface:
 
     def _runSimpleCommand(self,
                           cmd: dict,
-                          statusCode: int = STATUS_RESET_PENDING,
+                          statusCode: int = DeviceStatusCode.RESET_PENDING,
                           timeoutMsg: Optional[str] = None,
                           wait: bool = True,
                           timeout: float = 5,
@@ -1031,13 +1001,6 @@ class CommandInterface:
         return mac, ip
 
 
-
-# Populate the STATUS_CODES dictionary, mapping code numbers back to names
-CommandInterface.STATUS_CODES = {v: k for k, v in CommandInterface.__dict__.items()
-                                 if k.startswith("ERR_") or k.startswith("STATUS_")
-                                 and k != "STATUS_CODES"}
-
-
 # ===========================================================================
 #
 # ===========================================================================
@@ -1407,14 +1370,19 @@ class SerialCommandInterface(CommandInterface):
                         code = resp.get('DeviceStatusCode', 0)
                         msg = resp.get('DeviceStatusMessage')
                         queueDepth = resp.get('CMDQueueDepth', 1)
+
+                        try:
+                            code = DeviceStatusCode(code)
+                        except ValueError:
+                            logger.debug('Received unknown DeviceStatusCode: {}'.format(code))
+
                         self.status = code, msg
 
                         if code < 0:
                             # Raise a CommandError or DeviceError. -20 and -30 refer
                             # to bad commands sent by the user.
                             EXC = CommandError if -30 <= code <= -20 else DeviceError
-                            desc = self.STATUS_CODES.get(code, "Unknown")
-                            raise EXC(code, desc, msg, self.lastCommand[1])
+                            raise EXC(code, msg, self.lastCommand[1])
 
                         if queueDepth == 0:
                             logger.debug('Command queue full, retrying.')
@@ -1612,7 +1580,7 @@ class SerialCommandInterface(CommandInterface):
             :returns: `True` if the command was successful.
         """
         return self._runSimpleCommand({'EBMLCommand': {'RecStart': {}}},
-                                      statusCode=self.STATUS_START_PENDING,
+                                      statusCode=DeviceStatusCode.START_PENDING,
                                       timeoutMsg="Timed out waiting for recording to start",
                                       wait=wait,
                                       timeout=timeout,
@@ -1636,7 +1604,7 @@ class SerialCommandInterface(CommandInterface):
             :returns: `True` if the command was successful.
         """
         return self._runSimpleCommand({'EBMLCommand': {'Reset': {}}},
-                                      statusCode=self.STATUS_RESET_PENDING,
+                                      statusCode=DeviceStatusCode.RESET_PENDING,
                                       timeoutMsg="Timed out waiting for device to reset",
                                       wait=wait,
                                       timeout=timeout,
@@ -1663,7 +1631,7 @@ class SerialCommandInterface(CommandInterface):
         """
         cmd = "SecureUpdateAll" if secure else "LegacyAll"
         return self._runSimpleCommand({'EBMLCommand': {cmd: {}}},
-                                      statusCode=self.STATUS_RESET_PENDING,
+                                      statusCode=DeviceStatusCode.RESET_PENDING,
                                       timeoutMsg="Timed out waiting for update to begin",
                                       wait=wait,
                                       timeout=timeout,
@@ -1938,7 +1906,7 @@ class FileCommandInterface(CommandInterface):
 
     def _runSimpleCommand(self,
                           cmd: dict,
-                          statusCode: int = CommandInterface.STATUS_RESET_PENDING,
+                          statusCode: int = DeviceStatusCode.RESET_PENDING,
                           timeoutMsg: Optional[str] = None,
                           wait: bool = True,
                           timeout: float = 5,
