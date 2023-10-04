@@ -226,7 +226,7 @@ class CommandInterface:
         :param timeout: Time to wait for a valid response.
         :param callback: A function to call each response-checking
             cycle. If the callback returns `True`, the wait for a response
-            will be cancelled. The callback function should take no
+            will be cancelled. The callback function should require no
             arguments.
         :return: A `dict` of response data, or `None` if `callback` caused
             the process to cancel.
@@ -775,7 +775,7 @@ class CommandInterface:
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will be
-                cancelled. The callback function should take no arguments.
+                cancelled. The callback function should require no arguments.
 
             :raise UnsupportedFeature: Raised if the device does not
                 support Wi-Fi.
@@ -860,7 +860,7 @@ class CommandInterface:
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will
-                be cancelled. The callback function should take no arguments.
+                be cancelled. The callback function should require no arguments.
             :return: A list of dictionaries, described above.
 
             :raise UnsupportedFeature: Raised if the device does not
@@ -962,7 +962,7 @@ class CommandInterface:
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will
-                be cancelled. The callback function should take no arguments.
+                be cancelled. The callback function should require no arguments.
             :return: A list of dictionaries, described above.
 
             :raise UnsupportedFeature: Raised if the device does not
@@ -1002,7 +1002,7 @@ class CommandInterface:
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will
-                be cancelled. The callback function should take no arguments.
+                be cancelled. The callback function should require no arguments.
             :return: A two-item tuple containing the device's MAC address
                 and IP address. One or both may be `None`, as described
                 above.
@@ -1531,7 +1531,7 @@ class SerialCommandInterface(CommandInterface):
                 response.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
+                will be cancelled. The callback function should require no
                 arguments.
             :return: The received data, which should be identical to the
                 data sent.
@@ -1556,7 +1556,7 @@ class SerialCommandInterface(CommandInterface):
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
+                will be cancelled. The callback function should require no
                 arguments.
             :return: A dictionary with the parsed battery status. It will
                 always contain the key `"hasBattery"`, and if that is `True`,
@@ -1607,7 +1607,7 @@ class SerialCommandInterface(CommandInterface):
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
+                will be cancelled. The callback function should require no
                 arguments.
             :returns: `True` if the command was successful.
         """
@@ -1631,7 +1631,7 @@ class SerialCommandInterface(CommandInterface):
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
+                will be cancelled. The callback function should require no
                 arguments.
             :returns: `True` if the command was successful.
         """
@@ -1657,7 +1657,7 @@ class SerialCommandInterface(CommandInterface):
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
+                will be cancelled. The callback function should require no
                 arguments.
             :returns: `True` if the command was successful.
         """
@@ -1774,7 +1774,7 @@ class FileCommandInterface(CommandInterface):
         :param timeout: Time to wait for a valid response.
         :param callback: A function to call each response-checking
             cycle. If the callback returns `True`, the wait for a response
-            will be cancelled. The callback function should take no
+            will be cancelled. The callback function should require no
             arguments.
         :return: A `dict` of response data, or `None` if `callback` caused
             the process to cancel.
@@ -1882,7 +1882,7 @@ class FileCommandInterface(CommandInterface):
                 response.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
+                will be cancelled. The callback function should require no
                 arguments.
 
             :raise DeviceTimeout
@@ -1954,9 +1954,9 @@ class FileCommandInterface(CommandInterface):
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
-                cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
-                arguments.
+                cycle. If the callback returns `True`, the wait for a
+                response will be cancelled. The callback function should
+                require no arguments.
             :returns: `True` if the command was successful.
         """
         msg = self._encode(cmd)[:2]
@@ -1982,9 +1982,9 @@ class FileCommandInterface(CommandInterface):
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
-                cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
-                arguments.
+                cycle. If the callback returns `True`, the wait for a
+                response will be cancelled. The callback function should
+                require no arguments.
             :return:
         """
         cmd = "SecureUpdateAll" if secure else "LegacyAll"
@@ -2006,9 +2006,9 @@ class FileCommandInterface(CommandInterface):
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
-                cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
-                arguments.
+                cycle. If the callback returns `True`, the wait for a
+                response will be cancelled. The callback function should
+                require no arguments.
             :returns: `True` if the command was successful.
         """
         if not self.device.canRecord:
@@ -2033,9 +2033,9 @@ class FileCommandInterface(CommandInterface):
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
-                cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should take no
-                arguments.
+                cycle. If the callback returns `True`, the wait for a
+                response will be cancelled. The callback function should
+                require no arguments.
             :returns: `True` if the command was successful.
         """
         # FUTURE: Write commands wrapped in a <EBMLCommand> element?
