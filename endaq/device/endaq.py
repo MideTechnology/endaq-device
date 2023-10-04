@@ -41,16 +41,6 @@ class EndaqW(EndaqS):
     # Part number starts with "W", a 1-2 digit number, and "-"
     _NAME_PATTERN = re.compile(r'^W(\d|\d\d)-.*')
 
-    # These are now in CommandInterface, and will eventually be removed here
-    WIFI_STATUS_IDLE = 0
-    WIFI_STATUS_PENDING = 1
-    WIFI_STATUS_CONNECTED = 2
-
-    WIFI_CONNECTION_FAILED = 0
-    WIFI_CONNECTING = 1
-    WIFI_CONNECTED = 2
-    WIFI_CONNECTED_CLOUD = 3
-
 
     def setAP(self, ssid: str, password: Optional[str] = None):
         """ Quickly set the Wi-Fi access point (router) and password.
