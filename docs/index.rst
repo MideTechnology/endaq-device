@@ -17,6 +17,15 @@ also supports legacy SlamStick™ devices (X, C, and S).
    endaq/config_control
    api_ref
 
+   packaging_with_pyinstaller
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Special Topics:
+
+   packaging_with_pyinstaller
+
+
 Installation
 ------------
 The ``endaq-device`` package is `available on PyPI <https://pypi.org/project/endaq-device/>`_, and can be installed via `pip`::
@@ -30,7 +39,6 @@ For the most recent features that are still under development, you can also use 
 Note: While ``endaq-device`` installs into the same ``endaq`` 'namespace' as `endaq-python <https://docs.endaq.com/en/latest/index.html>`_,
 it is otherwise separate; the two packages are not interdependent, and one can be installed without the other.
 The packages do distinctly different things, and have very different use-cases.
-
 
 Indices and tables
 ==================
