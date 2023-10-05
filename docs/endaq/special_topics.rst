@@ -1,6 +1,9 @@
-=======================================================
-Including ``endaq.device`` in a PyInstaller Application
-=======================================================
+==========================
+Special Topics and How-Tos
+==========================
+
+Including ``endaq.device`` in a PyInstaller application
+--------------------------------------------------------
 
 ``endaq.device`` contains several data files and indirectly imported modules. `PyInstaller <https://pyinstaller.org/en/stable/>`_
 does not automatically include these in packaged applications.
@@ -12,14 +15,17 @@ does not automatically include these in packaged applications.
   generated from IDE files. These submodules are dynamically imported, so PyInstaller does not 'see' them, leaving
   them excluded from the packaged application.
 
-Embedding these requires small changes to your main Python file and to the PyInstaller ``.spec`` file.
+Embedding the schemata and UI descriptions requires small changes to both your main Python file and to the
+PyInstaller ``.spec`` file.
+
 
 Python Changes
-==============
+^^^^^^^^^^^^^^
 
 Early in one of your first modules to run (e.g., ``your_app.py``), include something like the following:
 
 .. code-block:: python
+
     import os.path
     import sys
 
@@ -40,8 +46,9 @@ Early in one of your first modules to run (e.g., ``your_app.py``), include somet
     # doesn't actually need to exist in your project outside of PyInstaller;
     # changes to your `.spec` file will create it in your executable.
     ebmlite.SCHEMA_PATH.insert(0, os.path.join(APP_PATH, 'schemata'))
+
 ``.spec`` Changes
-=================
+^^^^^^^^^^^^^^^^^
 
 You should use PyInstaller with a `.spec <https://pyinstaller.org/en/v4.0/spec-files.html>`_ file,
 as some of the tricks for embedding the necessary files can't be done purely via the command line.
@@ -49,6 +56,7 @@ as some of the tricks for embedding the necessary files can't be done purely via
 Below shows the changes to make to a ``.spec`` file. It is *not* a complete ``.spec`` file.
 
 .. code-block:: python
+
     from PyInstaller.utils.hooks import collect_submodules
 
     # Load all the schemata used by your project and its dependencies.
