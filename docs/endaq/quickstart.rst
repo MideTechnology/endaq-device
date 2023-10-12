@@ -37,7 +37,7 @@ Most common properties are read-only attributes of :py:class:`endaq.device.Recor
    '2.0'
 
 Some :py:class:`endaq.device.Recorder` properties are identical to those of an
-`idelib.Dataset <https://mide-technology-idelib.readthedocs-hosted.com/en/latest/idelib/dataset.html#idelib.dataset.Dataset>`_
+`idelib.Dataset <https://mide-technology-idelib.readthedocs-hosted.com/en/feature-update-docs/idelib/dataset.html#idelib.dataset.Dataset>`_
 (an imported recording file). These include:
 
 * ``sensors``: The device's sensors, a dictionary of `idelib.Sensor` objects.

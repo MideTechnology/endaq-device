@@ -15,7 +15,9 @@ also supports legacy SlamStick™ devices (X, C, and S).
 
    endaq/quickstart
    endaq/config_control
+   endaq/special_topics
    api_ref
+
 
 Installation
 ------------
