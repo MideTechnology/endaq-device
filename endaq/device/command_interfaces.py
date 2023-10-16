@@ -1015,7 +1015,10 @@ class CommandInterface:
         mac = result.get('MACAddress', None)
         if mac:
             try:
-                mac = ':'.join(hex(b) for b in mac)
+                if any(mac):
+                    mac = ':'.join('{:02X}'.format(b) for b in mac)
+                else:
+                    mac = None
             except (TypeError, ValueError) as err:
                 warnings.warn("{} parsing MAC address: {}"
                               .format(type(err).__name__, err))
@@ -1023,7 +1026,10 @@ class CommandInterface:
         ip = result.get('IPV4Address', None)
         if ip:
             try:
-                ip = '.'.join(str(b) for b in ip)
+                if any(ip):
+                    ip = '.'.join(str(b) for b in ip)
+                else:
+                    ip = None
             except (TypeError, ValueError) as err:
                 warnings.warn("{} parsing IP address: {}"
                               .format(type(err).__name__, err))
