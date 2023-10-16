@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Schema type="mide.ss.cmd" version="1" readversion="1">
+<Schema type="mide.ss.cmd" version="2" readversion="1">
     <SchemaInfo>
         <Author>Derek Witt</Author>
         <Author>David Randall Stokes</Author>
@@ -109,8 +109,6 @@
                 2: CONNECTED, error fields will all be 0, RSSI tag is present in this data structure and represents the strength of the connected net</UIntegerElement>
             <UIntegerElement name="WiFiConnectionError" id="0x5304" multiple="0" mandatory="0">Integer enum. Holds ESP32 error codes, found in https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/wifi.html#wi-fi-reason-code</UIntegerElement>
             <IntegerElement name="RSSI" id="0x5205" multiple="0" mandatory="0">Signal Strength, 0-100, where 100 is perfect. Only present if CONNECTED</IntegerElement>
-            <BinaryElement name="IPV4Address" id="0x5401" multiple="0" mandatory="0"> Network IP address; absent if not connected. </BinaryElement>
-            <BinaryElement name="MACAddress" id="0x5402" multiple="0" mandatory="1"> Network MAC address </BinaryElement>
         </MasterElement>
         <MasterElement name="NetworkStatusResponse" id="0x5400" multiple="0" mandatory="0">
             <BinaryElement name="IPV4Address" id="0x5401" multiple="0" mandatory="0"> Network IP address; absent if not connected. </BinaryElement>
