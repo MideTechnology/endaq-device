@@ -95,10 +95,10 @@ class ConfigItem:
 
 
     _tagsDisplay = compile("[t.strip() for t in x.split(',')]",
-                          "<ConfigItem._tagDisplay>", "eval")
+                           "<ConfigItem._tagDisplay>", "eval")
 
     _tagsValue = compile("','.join(str(x).strip()) if x else ''",
-                          "<ConfigItem._tagValue>", "eval")
+                         "<ConfigItem._tagValue>", "eval")
 
     @classmethod
     def _generateLabel(cls, configId: int) -> Union[str, None]:
@@ -369,7 +369,7 @@ class ConfigItem:
 
 
     @changed.setter
-    def changed(self, changed: bool) -> bool:
+    def changed(self, changed: bool):
         if not changed:
             self._originalValue = self._value
         self._changed = changed
@@ -506,6 +506,20 @@ class ConfigInterface:
         return ui_defaults.getDefaultConfigUI(device) is not None
 
 
+    @property
+    def available(self) -> bool:
+        """ Is the device currently ready for configuration?
+
+            Note: This is intended for future configuration systems. Since
+            configuration is currently applied via the filesystem, it is
+            functionally the same as `Recorder.available`.
+        """
+        # For now, this is basically the same as the device availability,
+        # but allows for future config interfaces (e.g., remote and/or
+        # wireless, etc.)
+        return self.device.available
+
+
     def parseConfigUI(self,
                       configUi: Union[Document, Element]):
         """ Recursively process CONFIG.UI data to populate the interface's
@@ -554,7 +568,7 @@ class ConfigInterface:
 
     def _parseConfig(self,
                      origConfig: dict,
-                     default: Optional[dict] = None) -> Dict[int, Any]:
+                     default: Optional[dict] = None) -> Union[Dict[int, Any], None]:
         """ Helper method to parse a dictionary of dumped EBML
             ``RecorderConfigurationList`` data into a simple dictionary of
             values keyed by ConfigID. Used internally.
@@ -1007,7 +1021,7 @@ class ConfigInterface:
         return configId
 
 
-    def _getChannel(self, configId: int) -> Union[Channel, SubChannel]:
+    def _getChannel(self, configId: int) -> Union[Channel, SubChannel, None]:
         """ Get the Channel/SubChannel corresponding to a configuration ID.
         """
         ch = configId & 0xFF
@@ -1158,6 +1172,14 @@ class VirtualConfigInterface(ConfigInterface):
         :return: `True` if the device supports the interface.
         """
         return device.isVirtual and super().hasInterface(device)
+
+
+    @property
+    def available(self) -> bool:
+        """ Is the device currently ready for configuration?
+        """
+        # Never!
+        return False
 
 
     def getConfigUI(self) -> Union[Document, MasterElement]:
@@ -1374,7 +1396,7 @@ class FileConfigInterface(ConfigInterface):
                 device supports more than one. Defaults to the latest
                 version supported.
         """
-        if not os.path.exists(self.device.path):
+        if not self.available:
             raise IOError(errno.ENOENT, "Could not find {}; is it connected?"
                           .format(self.device))
 

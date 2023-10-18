@@ -176,6 +176,19 @@ class Recorder:
             return False
 
 
+    @property
+    def available(self) -> bool:
+        """ Is the device mounted and available as a drive?
+        """
+        if self.isVirtual or not self.path:
+            return False
+
+        # Two checks, since former is a property that sets latter
+        # and path itself isn't a reliable test in Linux
+        return (os.path.exists(self.path)
+                and os.path.isfile(self.infoFile))
+
+
     def __repr__(self):
         path = self._path or "virtual"
         if self.name:
