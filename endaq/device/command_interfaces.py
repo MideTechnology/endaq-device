@@ -864,16 +864,12 @@ class CommandInterface:
 
     def updateESP32(self,
                     firmware: str,
-                    destination: Optional[str] = None,
                     timeout: float = 10,
                     callback: Optional[Callable] = None):
         """ Update the ESP32 firmware. Applicable only to devices with
             ESP32 Wi-Fi hardware.
 
             :param firmware: The name of the ESP32 firmware package (.bin).
-            :param destination: The name of the firmware package after being
-                copied to the device, an alternative to the default.
-                Optional; typically left `None`.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
@@ -892,16 +888,15 @@ class CommandInterface:
 
         firmware = os.path.abspath(firmware)
 
-        if not destination:
-            destination = os.path.abspath(os.path.join(self.device.path,
-                                                       self.device._ESP_UPDATE_FILE))
-            payload = {}
-        else:
-            payload = {'PackagePath': destination}
-
+        destination = os.path.abspath(os.path.join(self.device.path,
+                                                   self.device._ESP_UPDATE_FILE))
         self._copyUpdateFile(firmware, destination)
 
-        cmd = {'EBMLCommand': {'ESPFW': payload}}
+        # FUTURE (maybe): Restore `ESPFW` command and destination filename in
+        #  payload (in versions <=1.0.7). Not currently implemented in FW.
+        payload = {}
+
+        cmd = {'EBMLCommand': {'LegacyESP': payload}}
         return self._sendCommand(cmd, timeout=timeout, callback=callback)
 
 
