@@ -20,7 +20,7 @@ def get_version(rel_path):
 
 INSTALL_REQUIRES = [
     'ebmlite>=3.3.0',
-    'idelib>=3.2',
+    'idelib>=3.2.9',
     'numpy>=1.19.4',
     'psutil>=5.5.0; sys_platform == "linux" or sys_platform=="darwin"',
     'pyserial>=3.5',
