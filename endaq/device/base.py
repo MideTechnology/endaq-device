@@ -609,8 +609,12 @@ class Recorder:
         """ Can the device record on command? """
         if not self.hasCommandInterface:
             return False
+
         # All 'real' GG11-based and newer devices can (ostensibly) do this.
-        return self.getInfo('McuType', '').startswith(("EFM32GG11", "STM32"))
+        if self.getInfo('McuType', '').startswith(("EFM32GG11", "STM32")):
+            return True
+
+        return self.firmwareVersion >= 17
 
 
     @property
@@ -618,8 +622,12 @@ class Recorder:
         """ Can the device get new firmware/userpage from a file? """
         if not self.hasCommandInterface:
             return False
+
         # All 'real' GG11-based and newer devices can (ostensibly) do this.
-        return self.getInfo('McuType', '').startswith(("EFM32GG11", "STM32"))
+        if self.getInfo('McuType', '').startswith(("EFM32GG11", "STM32")):
+            return True
+
+        return self.firmwareVersion > 19
 
 
     @property

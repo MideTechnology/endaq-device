@@ -54,8 +54,14 @@ class SlamStickX(Recorder):
     @property
     def canCopyFirmware(self) -> bool:
         """ Can the device get new firmware/bootloader/userpage from a file? """
-        # Criteria is the same as `canRecord` (FW version, actual device)
-        return self.canRecord
+        try:
+            # Must have version of FW supporting the feature and also be a real
+            # device (e.g. has a path).
+            if self.isVirtual or not os.path.isdir(self.path):
+                return False
+            return self.firmwareVersion > 19
+        except TypeError:
+            return False
 
 
 #===============================================================================
