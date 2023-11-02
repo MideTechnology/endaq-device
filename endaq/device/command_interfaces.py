@@ -1806,8 +1806,9 @@ class FileCommandInterface(CommandInterface):
         if device.isVirtual or not device.path:
             return False
 
-        # Old SlamStick devices may not support COMMAND. Use `canRecord`,
-        # which checks the firmware version. Hack.
+        # Old SlamStick devices may not support COMMAND. They should get
+        # the `LegacyFileCommandInterface` because it is checked first,
+        # but check anyway, just to make sure.
         if (not device.getInfo('McuType', '').startswith(('EFM32GG11', 'STM32'))
                 and device.firmwareVersion <= 19):
             return False
@@ -2133,7 +2134,7 @@ class LegacyFileCommandInterface(FileCommandInterface):
         if not FileCommandInterface.hasInterface(device):
             return False
 
-        if device.mcuType != "EFM32GG330":
+        if device.mcuType and device.mcuType != "EFM32GG330":
             return False
 
         return 17 <= device.firmwareVersion <= 19
