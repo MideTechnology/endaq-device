@@ -3,7 +3,7 @@ Classes representing older Mide SlamStick data recorders.
 """
 
 __author__ = "dstokes"
-__copyright__ = "Copyright 2022 Mide Technology Corporation"
+__copyright__ = "Copyright 2023 Mide Technology Corporation"
 
 import os.path
 import re
@@ -38,32 +38,6 @@ class SlamStickX(Recorder):
     homepage = "https://endaq.com/collections/endaq-shock-recorders-vibration-data-logger-sensors"
 
 
-    @property
-    def canRecord(self) -> bool:
-        """ Can the device record on command? """
-        try:
-            # Must have version of FW supporting the feature and also be a real
-            # device (e.g. has a path).
-            if self.isVirtual or not os.path.isdir(self.path):
-                return False
-            return self.firmwareVersion >= 17
-        except TypeError:
-            return False
-
-
-    @property
-    def canCopyFirmware(self) -> bool:
-        """ Can the device get new firmware/bootloader/userpage from a file? """
-        try:
-            # Must have version of FW supporting the feature and also be a real
-            # device (e.g. has a path).
-            if self.isVirtual or not os.path.isdir(self.path):
-                return False
-            return self.firmwareVersion > 19
-        except TypeError:
-            return False
-
-
 #===============================================================================
 #
 #===============================================================================
@@ -84,12 +58,6 @@ class SlamStickC(SlamStickX):
             if self.productName.endswith('-D16'):
                 self.SN_FORMAT = EndaqS.SN_FORMAT
         return super().serial
-
-
-    @property
-    def canRecord(self) -> bool:
-        return (self.getInfo('McuType', '').startswith("STM32")
-                or SlamStickX.canRecord.fget(self))
 
 
     @property

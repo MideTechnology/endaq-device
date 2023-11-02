@@ -4,7 +4,7 @@ eliminate circular dependencies.
 """
 
 __author__ = "dstokes"
-__copyright__ = "Copyright 2022 Mide Technology Corporation"
+__copyright__ = "Copyright 2023 Mide Technology Corporation"
 
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -610,11 +610,7 @@ class Recorder:
         if not self.hasCommandInterface:
             return False
 
-        # All 'real' GG11-based and newer devices can (ostensibly) do this.
-        if self.getInfo('McuType', '').startswith(("EFM32GG11", "STM32")):
-            return True
-
-        return self.firmwareVersion >= 17
+        return self.command.canRecord
 
 
     @property
@@ -623,11 +619,7 @@ class Recorder:
         if not self.hasCommandInterface:
             return False
 
-        # All 'real' GG11-based and newer devices can (ostensibly) do this.
-        if self.getInfo('McuType', '').startswith(("EFM32GG11", "STM32")):
-            return True
-
-        return self.firmwareVersion > 19
+        return self.command.canCopyFirmware
 
 
     @property

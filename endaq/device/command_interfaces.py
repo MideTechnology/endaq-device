@@ -109,7 +109,21 @@ class CommandInterface:
     def available(self) -> bool:
         """ Is the command interface available and able to accept commands?
         """
-        return self.device.available
+        return self.device and self.device.available
+
+
+    @property
+    def canCopyFirmware(self) -> bool:
+        """ Can the device get new firmware/userpage from a file? """
+        # Modern devices can update firmware via files, assume True as default.
+        return self.device and self.device.available
+
+
+    @property
+    def canRecord(self) -> bool:
+        """ Can the device record on command? """
+        # Modern devices can record on command, assume True as default
+        return self.device and not self.device.isVirtual
 
 
     def resetConnection(self) -> bool:
@@ -1794,7 +1808,8 @@ class FileCommandInterface(CommandInterface):
 
         # Old SlamStick devices may not support COMMAND. Use `canRecord`,
         # which checks the firmware version. Hack.
-        if 'SlamStick' in type(device).__name__ and not device.canRecord:
+        if (not device.getInfo('McuType', '').startswith(('EFM32GG11', 'STM32'))
+                and device.firmwareVersion <= 19):
             return False
 
         # Newer firmware will explicitly indicate in DEVINFO if the device
@@ -2060,7 +2075,7 @@ class FileCommandInterface(CommandInterface):
                 require no arguments.
             :returns: `True` if the command was successful.
         """
-        if not self.device.canRecord:
+        if not self.canRecord:
             return False
 
         # FUTURE: Write commands wrapped in a <EBMLCommand> element?
@@ -2122,6 +2137,18 @@ class LegacyFileCommandInterface(FileCommandInterface):
             return False
 
         return 17 <= device.firmwareVersion <= 19
+
+
+    @property
+    def canCopyFirmware(self) -> bool:
+        """ Can the device get new firmware/userpage from a file? """
+        return False
+
+
+    @property
+    def canRecord(self) -> bool:
+        """ Can the device record on command? """
+        return not (self.device.isVirtual or self.device.path is None)
 
 
     def setKeys(self, *args, **kwargs):
