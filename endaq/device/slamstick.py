@@ -57,7 +57,7 @@ class SlamStickC(SlamStickX):
         if self._sn is None:
             if self.productName.endswith('-D16'):
                 self.SN_FORMAT = EndaqS.SN_FORMAT
-        return super().serial
+        return Recorder.serial.fget(self)
 
 
     @property

@@ -7,8 +7,8 @@ import os.path
 import pytest
 
 import endaq.device
-from endaq.device import getRecorder
-from endaq.device.command_interfaces import CommandInterface, FileCommandInterface, SerialCommandInterface
+from endaq.device import getRecorder, UnsupportedFeature
+from endaq.device.command_interfaces import CommandInterface, FileCommandInterface, SerialCommandInterface, LegacyFileCommandInterface
 
 from .fake_recorders import RECORDER_PATHS
 from .mock_hardware import applyMockCommandIO, MockCommandSerialIO
@@ -18,10 +18,13 @@ endaq.device.RECORDERS.clear()
 
 # Create parameters, mainly to provide an ID, making the results readable
 DEVICES = [pytest.param(getRecorder(path, strict=False), id=os.path.basename(path)) for path in RECORDER_PATHS]
-SERIAL_DEVICES = [param for param in DEVICES if not isinstance(param[0][0].command, FileCommandInterface)]
+FILE_DEVICES = [param for param in DEVICES if param[0][0].hasCommandInterface and isinstance(param[0][0].command, FileCommandInterface)]
+SERIAL_DEVICES = [param for param in DEVICES if param[0][0].hasCommandInterface and isinstance(param[0][0].command, SerialCommandInterface)]
+NO_COMMAND_DEVICES = [param for param in DEVICES if not param[0][0].hasCommandInterface]
 
 # NOTE: This should be changed to get devices from DEVICES - see note in fake_recorders.py
 WIFI_DEVICES = [param for param in SERIAL_DEVICES if param[0][0].hasWifi]
+
 
 # Response to a `scanWifi()` command
 WIFI_SCAN = {'EBMLResponse': {
@@ -51,12 +54,27 @@ WIFI_SCAN = {'EBMLResponse': {
                                      'ScanVersion': 3}}}
 
 
+def test_devices():
+    """ Setup test: verify there are devices in each list.
+    """
+    assert len(DEVICES) > 0
+    assert len(FILE_DEVICES) > 0
+    assert len(SERIAL_DEVICES) > 0
+    assert len(NO_COMMAND_DEVICES) > 0
+    assert len(WIFI_DEVICES) > 0
+
+
 @pytest.mark.parametrize("dev", DEVICES)
 def test_command_basics(dev):
     """ Initial 'sanity test' to verify `CommandInterface` instances are
-        being instantiated.
+        being instantiated in the devices that should have them, and
+        not instantiated in the devices that do not.
     """
-    assert isinstance(dev.command, CommandInterface)
+    if dev.hasCommandInterface:
+        assert isinstance(dev.command, CommandInterface)
+    else:
+        with pytest.raises(UnsupportedFeature):
+            _ = dev.command
 
 
 @pytest.mark.parametrize("dev", SERIAL_DEVICES)
