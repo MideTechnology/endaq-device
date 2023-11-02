@@ -794,10 +794,9 @@ class Recorder:
         if self.isVirtual or not self.path:
             raise UnsupportedFeature('Virtual devices do not have clocks')
 
-        if self.command:
+        if self.hasCommandInterface:
             return self.command.getTime(epoch=epoch)
         else:
-            logger.debug('')
             ci = command_interfaces.FileCommandInterface(self)
             return ci.getTime(epoch=epoch)
 
@@ -825,7 +824,7 @@ class Recorder:
         if self.isVirtual or not self.path:
             raise UnsupportedFeature('Virtual devices do not have clocks')
 
-        if self.command:
+        if self.hasCommandInterface:
             return self.command.setTime(t=t, pause=pause, retries=retries)
         else:
             ci = command_interfaces.FileCommandInterface(self)
@@ -849,7 +848,7 @@ class Recorder:
         if self.isVirtual or not self.path:
             raise UnsupportedFeature('Virtual devices do not have clocks')
 
-        if self.command:
+        if self.hasCommandInterface:
             return self.command.getClockDrift(pause=pause, retries=retries)
         else:
             ci = command_interfaces.FileCommandInterface(self)
