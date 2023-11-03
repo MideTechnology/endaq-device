@@ -109,7 +109,21 @@ class CommandInterface:
     def available(self) -> bool:
         """ Is the command interface available and able to accept commands?
         """
-        return self.device.available
+        return self.device and self.device.available
+
+
+    @property
+    def canCopyFirmware(self) -> bool:
+        """ Can the device get new firmware/userpage from a file? """
+        # Modern devices can update firmware via files, assume True as default.
+        return self.device and self.device.available
+
+
+    @property
+    def canRecord(self) -> bool:
+        """ Can the device record on command? """
+        # Modern devices can record on command, assume True as default
+        return self.device and not self.device.isVirtual
 
 
     def resetConnection(self) -> bool:
@@ -1792,9 +1806,11 @@ class FileCommandInterface(CommandInterface):
         if device.isVirtual or not device.path:
             return False
 
-        # Old SlamStick devices may not support COMMAND. Use `canRecord`,
-        # which checks the firmware version. Hack.
-        if 'SlamStick' in type(device).__name__ and not device.canRecord:
+        # Old SlamStick devices may not support COMMAND. They should get
+        # the `LegacyFileCommandInterface` because it is checked first,
+        # but check anyway, just to make sure.
+        if (not device.getInfo('McuType', '').startswith(('EFM32GG11', 'STM32'))
+                and device.firmwareVersion <= 19):
             return False
 
         # Newer firmware will explicitly indicate in DEVINFO if the device
@@ -1993,7 +2009,9 @@ class FileCommandInterface(CommandInterface):
         """ Send a command that will cause the device to reset/dismount. No
             response is expected/required.
 
-            :param cmd: The command to execute.
+            :param cmd: The command to execute. It is assumed to be a
+                legacy command, with no outer `<EBMLCommand>` wrapper.
+                Only the first 2 bytes will be sent.
             :param statusCode: The ``<DeviceStatusCode>`` expected in the
                 acknowledgement (if the interface supports one).
             :param wait: If `True`, wait for the recorer to respond and/or
@@ -2058,10 +2076,11 @@ class FileCommandInterface(CommandInterface):
                 require no arguments.
             :returns: `True` if the command was successful.
         """
-        if not self.device.canRecord:
+        if not self.canRecord:
             return False
 
         # FUTURE: Write commands wrapped in a <EBMLCommand> element?
+        #  Exclude LegacyFileCommandInterface.
         return self._runSimpleCommand({'RecStart': {}},
                                       timeoutMsg="Timed out waiting for recording to start",
                                       wait=wait,
@@ -2086,6 +2105,7 @@ class FileCommandInterface(CommandInterface):
             :returns: `True` if the command was successful.
         """
         # FUTURE: Write commands wrapped in a <EBMLCommand> element?
+        #  Exclude LegacyFileCommandInterface.
         return self._runSimpleCommand({'Reset': {}},
                                       timeoutMsg="Timed out waiting for device to reset",
                                       wait=wait,
@@ -2097,8 +2117,63 @@ class FileCommandInterface(CommandInterface):
 #
 # ===========================================================================
 
+class LegacyFileCommandInterface(FileCommandInterface):
+    """
+    A mechanism for sending commands to a recorder via the `COMMAND` file.
+    For devices using old firmware that supports only a subset of
+    commands.
+    """
+
+    @classmethod
+    def hasInterface(cls, device) -> bool:
+        """ Determine if a device supports this `CommandInterface` type.
+
+            :param device: The recorder to check.
+            :return: `True` if the device supports the interface.
+        """
+        if not FileCommandInterface.hasInterface(device):
+            return False
+
+        if device.mcuType and device.mcuType != "EFM32GG330":
+            return False
+
+        return 17 <= device.firmwareVersion <= 19
+
+
+    @property
+    def canCopyFirmware(self) -> bool:
+        """ Can the device get new firmware/userpage from a file? """
+        return False
+
+
+    @property
+    def canRecord(self) -> bool:
+        """ Can the device record on command? """
+        return not (self.device.isVirtual or self.device.path is None)
+
+
+    def setKeys(self, *args, **kwargs):
+        """ Update the device's key bundle. Not supported on this device.
+        """
+        raise UnsupportedFeature(self, self.setKeys)
+
+
+    def updateDevice(self, *args, **kwargs) -> bool:
+        """ Apply a firmware package and/or device description data update.
+            Not supported on this device; serial bootloader connection
+            required.
+        """
+        raise UnsupportedFeature(self, self.updateDevice)
+
+
+# ===========================================================================
+#
+# ===========================================================================
+
 #: A list of all `CommandInterface` types, used when finding a device's
 #   interface. `FileCommandInterface` should go last, since devices with
 #   "better" interfaces may support it as a fallback. New interface types
 #   defined elsewhere should append/insert themselves into this list.
-INTERFACES = [SerialCommandInterface, FileCommandInterface]
+INTERFACES = [SerialCommandInterface,
+              LegacyFileCommandInterface,
+              FileCommandInterface]
