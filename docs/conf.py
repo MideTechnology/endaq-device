@@ -20,7 +20,7 @@ import endaq
 # -- Project information -----------------------------------------------------
 
 project = 'endaq.device'
-copyright = '2022, Mide Technology Corp.'
+copyright = '2023, Mide Technology Corp.'
 author = ''
 
 # The full version, including alpha/beta/rc tags

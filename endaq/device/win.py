@@ -4,7 +4,7 @@ imports the appropriate version for the host OS.
 """
 
 __author__ = "dstokes"
-__copyright__ = "Copyright 2022 Mide Technology Corporation"
+__copyright__ = "Copyright 2023 Mide Technology Corporation"
 
 __all__ = ('deviceChanged', 'getDeviceList', 'getBlockSize', 'getFreeSpace',
            'getDriveInfo', 'readRecorderClock', 'readUncachedFile')

@@ -3,7 +3,7 @@ Classes for representing specific models of enDAQ data recoreder.
 """
 
 __author__ = "dstokes"
-__copyright__ = "Copyright 2022 Mide Technology Corporation"
+__copyright__ = "Copyright 2023 Mide Technology Corporation"
 
 import re
 from typing import Callable, Optional, Union
