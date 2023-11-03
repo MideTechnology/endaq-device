@@ -245,7 +245,7 @@ def getFreeSpace(path: Filename):
         :rtype: int
     """
     if isinstance(path, Path):
-        filename = str(path)
+        path = str(path)
 
     free_bytes = ctypes.c_ulonglong(0)
     kernel32.GetDiskFreeSpaceExW(ctypes.c_wchar_p(path), None, None, 
@@ -260,7 +260,7 @@ def getBlockSize(path: Filename):
         :return: A tuple containing the bytes/sector and sectors/cluster.
     """
     if isinstance(path, Path):
-        filename = str(path)
+        path = str(path)
 
     sectorsPerCluster = ctypes.c_ulonglong(0)
     bytesPerSector = ctypes.c_ulonglong(0)
