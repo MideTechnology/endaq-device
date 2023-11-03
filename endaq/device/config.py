@@ -1280,12 +1280,12 @@ class FileConfigInterface(ConfigInterface):
 
         mcu = self.device.getInfo('McuType', 'EFM32GG330')
         if not mcu.startswith("EFM32GG330"):
-            return super().supportedConfigVersions
+            return ConfigInterface.supportedConfigVersions.fget(self)
 
         vers = (1,)
 
         if self.device.firmwareVersion > 14:
-            vers += super().supportedConfigVersions
+            vers += ConfigInterface.supportedConfigVersions.fget(self)
 
         self._supportedConfigVersions = vers
         return vers
