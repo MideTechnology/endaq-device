@@ -61,8 +61,14 @@ setuptools.setup(
                      'Programming Language :: Python :: 3.8',
                      'Programming Language :: Python :: 3.9',
                      'Programming Language :: Python :: 3.10',
+                     'Programming Language :: Python :: 3.11',
                      ],
         keywords='endaq configure recorder hardware',
+        project_urls={
+            "Bug Tracker": "https://github.com/MideTechnology/endaq-device/issues",
+            "Documentation": "https://mide-technology-endaq-device.readthedocs-hosted.com/en/latest/",
+            "Source Code": "https://github.com/MideTechnology/endaq-device",
+            },
         packages=[
             'endaq.device',
             'endaq.device.ui_defaults',
