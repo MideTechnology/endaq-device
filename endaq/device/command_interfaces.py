@@ -2062,7 +2062,7 @@ class FileCommandInterface(CommandInterface):
 
     def startRecording(self,
                        wait: bool = True,
-                       timeout: float = 1,
+                       timeout: float = 10,
                        callback: Optional[Callable] = None) -> bool:
         """ Start the device recording, if supported.
 
@@ -2131,10 +2131,7 @@ class LegacyFileCommandInterface(FileCommandInterface):
             :param device: The recorder to check.
             :return: `True` if the device supports the interface.
         """
-        if not FileCommandInterface.hasInterface(device):
-            return False
-
-        if device.mcuType and device.mcuType != "EFM32GG330":
+        if device.getInfo('McuType', "EFM32GG330") != "EFM32GG330":
             return False
 
         return 17 <= device.firmwareVersion <= 19
