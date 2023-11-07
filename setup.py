@@ -9,6 +9,12 @@ def read(rel_path):
         return fp.read()
 
 
+def readlines(rel_path):
+    here = os.path.abspath(os.path.dirname(__file__))
+    with codecs.open(os.path.join(here, rel_path), 'r') as fp:
+        return fp.readlines()
+
+
 def get_version(rel_path):
     for line in read(rel_path).splitlines():
         if line.startswith('__version__'):
@@ -31,8 +37,7 @@ TEST_REQUIRES = [
     'pytest>=7.2',
 ]
 
-with open('docs/requirements.txt', 'r') as fh:
-    DOCS_REQUIRES = fh.readlines()
+DOCS_REQUIRES = readlines('docs/requirements.txt')
 
 
 setuptools.setup(
