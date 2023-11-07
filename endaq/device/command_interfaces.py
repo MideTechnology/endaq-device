@@ -11,7 +11,7 @@ import os.path
 import shutil
 import sys
 from time import sleep, time, struct_time
-from typing import Optional, Tuple, Union, Callable, TYPE_CHECKING
+from typing import AnyStr, ByteString, Optional, Tuple, Union, Callable, TYPE_CHECKING
 import warnings
 
 import logging
@@ -25,6 +25,7 @@ from .exceptions import DeviceError, CommandError, DeviceTimeout, UnsupportedFea
 from .hdlc import hdlc_decode, hdlc_encode, HDLC_BREAK_CHAR
 from .exceptions import CRCError
 from .types import Epoch
+from .response_codes import *
 
 if sys.platform == 'darwin':
     from . import macos as os_specific
@@ -52,37 +53,6 @@ class CommandInterface:
         interface types. A tuple containing the status code and a
         status message string (optional).
     """
-
-    # DeviceStatusCode responses. Note: not reported over all interfaces.
-    # "Okay" status codes:
-    STATUS_IDLE = 0
-    STATUS_RECORDING = 10
-    STATUS_RESET_PENDING = 20
-    STATUS_START_PENDING = 30
-
-    # Error status codes:
-    ERR_BUSY = -10
-    ERR_INVALID_COMMAND = -20
-    ERR_UNKNOWN_COMMAND = -30
-    ERR_BAD_PAYLOAD = -40
-    ERR_BAD_EBML = -50
-    ERR_BAD_CHECKSUM = -60
-    ERR_BAD_PACKET = -70
-
-    # For mapping status code numbers back to names. Populated later.
-    STATUS_CODES = {}
-
-    # Wi-Fi-related response codes.
-    # Values for `<CurrentWiFiStatus>` in `<NetworkStatusResponse>`
-    WIFI_STATUS_IDLE = 0
-    WIFI_STATUS_PENDING = 1
-    WIFI_STATUS_CONNECTED = 2
-
-    # Values for `<WiFiConnectionStatus>` in `<QueryWiFiResponse>`
-    WIFI_CONNECTION_FAILED = 0
-    WIFI_CONNECTING = 1
-    WIFI_CONNECTED = 2
-    WIFI_CONNECTED_CLOUD = 3
 
     # Default maximum encoded command length (bytes). Only applicable to
     # certain interfaces.
@@ -113,7 +83,7 @@ class CommandInterface:
         self.lastCommand: Tuple[Optional[float], Optional[dict]] = (None, None)
 
         # Last reported device status. Not available on all interfaces.
-        self.status: Tuple[int, Optional[str]] = (None, None)
+        self.status: Tuple[Optional[int], Optional[str]] = (None, None)
 
         # Some interfaces (i.e. serial) have a maximum packet size.
         self.maxCommandSize = self.DEFAULT_MAX_COMMAND_SIZE
@@ -133,6 +103,27 @@ class CommandInterface:
         :return: `True` if the device supports the interface.
         """
         raise NotImplementedError
+
+
+    @property
+    def available(self) -> bool:
+        """ Is the command interface available and able to accept commands?
+        """
+        return self.device and self.device.available
+
+
+    @property
+    def canCopyFirmware(self) -> bool:
+        """ Can the device get new firmware/userpage from a file? """
+        # Modern devices can update firmware via files, assume True as default.
+        return self.device and self.device.available
+
+
+    @property
+    def canRecord(self) -> bool:
+        """ Can the device record on command? """
+        # Modern devices can record on command, assume True as default
+        return self.device and not self.device.isVirtual
 
 
     def resetConnection(self) -> bool:
@@ -178,7 +169,7 @@ class CommandInterface:
         return ebml
 
 
-    def _decode(self, packet: Union[bytearray, bytes]) -> dict:
+    def _decode(self, packet: ByteString) -> dict:
         """
         Translate a response packet (EBML) into a dictionary.
 
@@ -204,7 +195,7 @@ class CommandInterface:
     # The actual command sending and response receiving.
     # =======================================================================
 
-    def _writeCommand(self, packet: Union[bytearray, bytes]) -> int:
+    def _writeCommand(self, packet: ByteString) -> int:
         """
         Send an encoded EBMLCommand element. This is a low-level write; the
         data should include any transport-specific packaging. It generally
@@ -217,8 +208,8 @@ class CommandInterface:
 
 
     def _readResponse(self,
-                     timeout: Optional[Union[int, float]] = None,
-                     callback: Optional[Callable] = None) -> Union[None, dict]:
+                      timeout: Optional[Union[int, float]] = None,
+                      callback: Optional[Callable] = None) -> Union[None, dict]:
         """
         Wait for and retrieve the response to a serial command. Does not do any
         processing other than (attempting to) decode the EBML payload.
@@ -235,7 +226,7 @@ class CommandInterface:
 
 
     def _getTime(self,
-                pause: bool = True) -> Tuple[Epoch, Epoch]:
+                 pause: bool = True) -> Tuple[Epoch, Epoch]:
         """
         Read the date/time from the device. Implemented in the interface
         because the method differs significantly between file-based and other
@@ -302,7 +293,7 @@ class CommandInterface:
 
     def setTime(self, t: Union[Epoch, datetime, struct_time, tuple, None] = None,
                 pause: bool = True,
-                retries: int = 1) -> Epoch:
+                retries: int = 1) -> Tuple[Epoch, Epoch]:
         """ Set a recorder's date/time. A variety of standard time types are
             accepted. Note that the minimum unit of time is the whole second.
 
@@ -368,12 +359,12 @@ class CommandInterface:
 
 
     def _sendCommand(self,
-                    cmd: dict,
-                    response: bool = True,
-                    timeout: float = 10,
-                    interval: float = .25,
-                    index: bool = True,
-                    callback: Optional[Callable] = None) -> Union[None, dict]:
+                     cmd: dict,
+                     response: bool = True,
+                     timeout: float = 10,
+                     interval: float = .25,
+                     index: bool = True,
+                     callback: Optional[Callable] = None) -> Union[None, dict]:
         """ Send a raw command to the device and (optionally) retrieve the
             response.
 
@@ -389,14 +380,14 @@ class CommandInterface:
                 response will be cancelled. The callback function
                 requires no arguments.
 
-            :raise DeviceTimeout
+            :raise: DeviceTimeout
         """
         raise NotImplementedError
 
 
     def _runSimpleCommand(self,
                           cmd: dict,
-                          statusCode: int = STATUS_RESET_PENDING,
+                          statusCode: int = DeviceStatusCode.RESET_PENDING,
                           timeoutMsg: Optional[str] = None,
                           wait: bool = True,
                           timeout: float = 5,
@@ -500,7 +491,7 @@ class CommandInterface:
 
 
     def ping(self,
-             data: Optional[Union[bytearray, bytes]] = None,
+             data: Optional[ByteString] = None,
              timeout: float = 5,
              callback: Optional[Callable] = None) -> bytes:
         """ Verify the recorder is present and responding. Not supported on
@@ -540,7 +531,8 @@ class CommandInterface:
             rebooted, started recording, started firmware application, etc.
 
             :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+                respond. 0 will return immediately; `None` will wait
+                indefinitely.
             :param timeoutMsg: A command-specific message to use when raising
                 a `DeviceTimeout` exception.
             :param callback: A function to call each response-checking
@@ -550,22 +542,67 @@ class CommandInterface:
             :return: `True` if the device unmounted. `False` if it is a
                 virtual device, or the wait was cancelled by the callback.
         """
-        if not timeout:
-            return True
+        if self.device.isVirtual or self.device.path is None:
+            return False
+
+        if timeout == 0:
+            return not self.device.available
 
         with self.device._busy:
-            deadline = time() + timeout
-            while time() < deadline:
+            if timeout is None or timeout < 0:
+                deadline = -1
+            else:
+                deadline = time() + timeout
+            while time() < deadline or deadline < 0:
                 if callback and callback():
                     return False
-                # Two checks, since former is a property that sets latter
-                # and path itself isn't a reliable test in Linux
-                if not (os.path.exists(self.device.path)
-                        and os.path.isfile(self.device.infoFile)):
+                elif not self.device.available:
                     return True
                 sleep(0.1)
 
-            timeoutMsg = timeoutMsg or "Timed out waiting for device to dismount"
+            timeoutMsg = timeoutMsg or "Timed out waiting for device to disconnect"
+            raise DeviceTimeout(timeoutMsg)
+
+
+    def awaitRemount(self,
+                     timeout: Optional[Union[int, float]] = None,
+                     timeoutMsg: Optional[str] = None,
+                     callback: Optional[Callable] = None) -> bool:
+        """ Wait for the device to reappear as a drive, indicating it has
+            been reconnected, completed a recording, finished firmware
+            application, etc.
+
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately; `None` will wait
+                indefinitely.
+            :param timeoutMsg: A command-specific message to use when raising
+                a `DeviceTimeout` exception.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a
+                response will be cancelled. The callback function should
+                require no arguments.
+            :return: `True` if the device reappeared. `False` if it is a
+                virtual device, or the wait was cancelled by the callback.
+        """
+        if self.device.isVirtual or self.device.path is None:
+            return False
+
+        if timeout == 0:
+            return self.device.available
+
+        with self.device._busy:
+            if timeout is None:
+                deadline = -1
+            else:
+                deadline = time() + timeout
+            while time() < deadline or deadline < 0:
+                if callback and callback():
+                    return False
+                elif self.device.available:
+                    return True
+                sleep(0.1)
+
+            timeoutMsg = timeoutMsg or "Timed out waiting for device to remount"
             raise DeviceTimeout(timeoutMsg)
 
 
@@ -716,7 +753,7 @@ class CommandInterface:
             return self._updateAll(secure=secure, timeout=timeout, callback=callback)
 
 
-    def setKeys(self, keys: Union[bytearray, bytes],
+    def setKeys(self, keys: ByteString,
                 timeout: float = 5,
                 callback: Optional[Callable] = None):
         """ Update the device's key bundle
@@ -789,10 +826,10 @@ class CommandInterface:
         cmd = {'EBMLCommand': {'SetWiFi': {"AP": wifi_data}}}
 
         self._sendCommand(cmd,
-                         response=False,
-                         timeout=timeout,
-                         interval=interval,
-                         callback=callback)
+                          response=False,
+                          timeout=timeout,
+                          interval=interval,
+                          callback=callback)
 
 
     def queryWifi(self,
@@ -894,16 +931,12 @@ class CommandInterface:
 
     def updateESP32(self,
                     firmware: str,
-                    destination: Optional[str] = None,
                     timeout: float = 10,
                     callback: Optional[Callable] = None):
         """ Update the ESP32 firmware. Applicable only to devices with
             ESP32 Wi-Fi hardware.
 
             :param firmware: The name of the ESP32 firmware package (.bin).
-            :param destination: The name of the firmware package after being
-                copied to the device, an alternative to the default.
-                Optional; typically left `None`.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
@@ -922,16 +955,15 @@ class CommandInterface:
 
         firmware = os.path.abspath(firmware)
 
-        if not destination:
-            destination = os.path.abspath(os.path.join(self.device.path,
-                                                       self.device._ESP_UPDATE_FILE))
-            payload = {}
-        else:
-            payload = {'PackagePath': destination}
-
+        destination = os.path.abspath(os.path.join(self.device.path,
+                                                   self.device._ESP_UPDATE_FILE))
         self._copyUpdateFile(firmware, destination)
 
-        cmd = {'EBMLCommand': {'ESPFW': payload}}
+        # FUTURE (maybe): Restore `ESPFW` command and destination filename in
+        #  payload (in versions <=1.0.7). Not currently implemented in FW.
+        payload = {}
+
+        cmd = {'EBMLCommand': {'LegacyESP': payload}}
         return self._sendCommand(cmd, timeout=timeout, callback=callback)
 
 
@@ -1015,7 +1047,10 @@ class CommandInterface:
         mac = result.get('MACAddress', None)
         if mac:
             try:
-                mac = ':'.join(hex(b) for b in mac)
+                if any(mac):
+                    mac = ':'.join('{:02X}'.format(b) for b in mac)
+                else:
+                    mac = None
             except (TypeError, ValueError) as err:
                 warnings.warn("{} parsing MAC address: {}"
                               .format(type(err).__name__, err))
@@ -1023,19 +1058,15 @@ class CommandInterface:
         ip = result.get('IPV4Address', None)
         if ip:
             try:
-                ip = '.'.join(str(b) for b in ip)
+                if any(ip):
+                    ip = '.'.join(str(b) for b in ip)
+                else:
+                    ip = None
             except (TypeError, ValueError) as err:
                 warnings.warn("{} parsing IP address: {}"
                               .format(type(err).__name__, err))
 
         return mac, ip
-
-
-
-# Populate the STATUS_CODES dictionary, mapping code numbers back to names
-CommandInterface.STATUS_CODES = {v: k for k, v in CommandInterface.__dict__.items()
-                                 if k.startswith("ERR_") or k.startswith("STATUS_")
-                                 and k != "STATUS_CODES"}
 
 
 # ===========================================================================
@@ -1070,7 +1101,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def __init__(self,
-                 device,
+                 device: 'Recorder',
                  timeout: Union[int, float] = 1,
                  make_crc: bool = True,
                  ignore_crc: bool = False,
@@ -1119,6 +1150,23 @@ class SerialCommandInterface(CommandInterface):
         # Some older released FW that supports the serial command interface
         # does not indicate so in the DEVINFO; find the port instead.
         return bool(cls.findSerialPort(device))
+
+
+    @property
+    def available(self) -> bool:
+        """ Is the command interface available and able to accept commands?
+        """
+        if self.device.isVirtual:
+            return False
+
+        # Availability determined by the presence of the serial port.
+        try:
+            self.getSerialPort()
+            return True
+        except CommandError as err:
+            if 'No serial port found' in str(err):
+                return False
+            raise
 
 
     @classmethod
@@ -1246,7 +1294,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def _decode(self,
-               packet: Union[bytearray, bytes]) -> dict:
+                packet: ByteString) -> dict:
         """
             Translate a response packet into a dictionary. Removes additional
             header data and checks the CRC (if the interface's `ignore_crc`
@@ -1274,7 +1322,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def _writeCommand(self,
-                     packet: Union[bytearray, bytes]) -> int:
+                      packet: ByteString) -> int:
         """ Transmit a fully formed packet (addressed, HDLC encoded, etc.)
             via serial. This is a low-level write to the medium and does not
             do the additional housekeeping that `sendCommand()` does;
@@ -1294,8 +1342,8 @@ class SerialCommandInterface(CommandInterface):
 
 
     def _readResponse(self,
-                     timeout: Optional[float] = None,
-                     callback: Optional[Callable] = None) -> Union[None, dict]:
+                      timeout: Optional[float] = None,
+                      callback: Optional[Callable] = None) -> Union[None, dict]:
         """
         Wait for and retrieve the response to a serial command. Does not do any
         processing other than (attempting to) decode the EBML payload.
@@ -1339,12 +1387,12 @@ class SerialCommandInterface(CommandInterface):
 
 
     def _sendCommand(self,
-                    cmd: dict,
-                    response: bool = True,
-                    timeout: float = 10,
-                    interval: float = .25,
-                    index: bool = True,
-                    callback: Optional[Callable] = None) -> Union[None, dict]:
+                     cmd: dict,
+                     response: bool = True,
+                     timeout: float = 10,
+                     interval: float = .25,
+                     index: bool = True,
+                     callback: Optional[Callable] = None) -> Union[None, dict]:
         """ Send a command to the device and (optionally) retrieve the
             response.
 
@@ -1367,7 +1415,7 @@ class SerialCommandInterface(CommandInterface):
             :return: The response dictionary, or `None` if `response` is
                 `False`.
 
-            :raise DeviceTimeout
+            :raise: DeviceTimeout
         """
         now = time()
         deadline = now + timeout
@@ -1407,14 +1455,19 @@ class SerialCommandInterface(CommandInterface):
                         code = resp.get('DeviceStatusCode', 0)
                         msg = resp.get('DeviceStatusMessage')
                         queueDepth = resp.get('CMDQueueDepth', 1)
+
+                        try:
+                            code = DeviceStatusCode(code)
+                        except ValueError:
+                            logger.debug('Received unknown DeviceStatusCode: {}'.format(code))
+
                         self.status = code, msg
 
                         if code < 0:
                             # Raise a CommandError or DeviceError. -20 and -30 refer
                             # to bad commands sent by the user.
                             EXC = CommandError if -30 <= code <= -20 else DeviceError
-                            desc = self.STATUS_CODES.get(code, "Unknown")
-                            raise EXC(code, desc, msg, self.lastCommand[1])
+                            raise EXC(code, msg, self.lastCommand[1])
 
                         if queueDepth == 0:
                             logger.debug('Command queue full, retrying.')
@@ -1440,8 +1493,8 @@ class SerialCommandInterface(CommandInterface):
 
 
     def _getTime(self,
-                pause: bool = True,
-                timeout: Union[int, float] = 1) -> Tuple[Epoch, Epoch]:
+                 pause: bool = True,
+                 timeout: Union[int, float] = 1) -> Tuple[Epoch, Epoch]:
         """
         Called by `Recorder.getTime()` and `Recorder.getClockDrift()`.
 
@@ -1517,7 +1570,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def ping(self,
-             data: Optional[Union[bytearray, bytes]] = None,
+             data: Optional[ByteString] = None,
              timeout: float = 10,
              interval: float = .25,
              callback: Optional[Callable] = None) -> dict:
@@ -1538,7 +1591,7 @@ class SerialCommandInterface(CommandInterface):
         """
         cmd = {'EBMLCommand': {'SendPing': b'' if data is None else data}}
         response = self._sendCommand(cmd, timeout=timeout, interval=interval,
-                                    callback=callback)
+                                     callback=callback)
 
         if 'PingReply' not in response:
             raise CommandError('Ping response did not contain a PingReply')
@@ -1574,7 +1627,7 @@ class SerialCommandInterface(CommandInterface):
         """
         cmd = {'EBMLCommand': {'GetBattery': {}}}
         response = self._sendCommand(cmd, timeout=timeout,
-                                    callback=callback)
+                                     callback=callback)
         if not response:
             return None
         response = response.get('BatteryState')
@@ -1612,7 +1665,7 @@ class SerialCommandInterface(CommandInterface):
             :returns: `True` if the command was successful.
         """
         return self._runSimpleCommand({'EBMLCommand': {'RecStart': {}}},
-                                      statusCode=self.STATUS_START_PENDING,
+                                      statusCode=DeviceStatusCode.START_PENDING,
                                       timeoutMsg="Timed out waiting for recording to start",
                                       wait=wait,
                                       timeout=timeout,
@@ -1636,7 +1689,7 @@ class SerialCommandInterface(CommandInterface):
             :returns: `True` if the command was successful.
         """
         return self._runSimpleCommand({'EBMLCommand': {'Reset': {}}},
-                                      statusCode=self.STATUS_RESET_PENDING,
+                                      statusCode=DeviceStatusCode.RESET_PENDING,
                                       timeoutMsg="Timed out waiting for device to reset",
                                       wait=wait,
                                       timeout=timeout,
@@ -1663,7 +1716,7 @@ class SerialCommandInterface(CommandInterface):
         """
         cmd = "SecureUpdateAll" if secure else "LegacyAll"
         return self._runSimpleCommand({'EBMLCommand': {cmd: {}}},
-                                      statusCode=self.STATUS_RESET_PENDING,
+                                      statusCode=DeviceStatusCode.RESET_PENDING,
                                       timeoutMsg="Timed out waiting for update to begin",
                                       wait=wait,
                                       timeout=timeout,
@@ -1727,7 +1780,7 @@ class FileCommandInterface(CommandInterface):
     """
 
     def _writeCommand(self,
-                     packet: Union[bytearray, bytes]) -> int:
+                      packet: Union[AnyStr, ByteString]) -> int:
         """
         Send an encoded EBMLCommand element. This is a low-level write; the
         data should include any transport-specific packaging. It generally
@@ -1753,9 +1806,11 @@ class FileCommandInterface(CommandInterface):
         if device.isVirtual or not device.path:
             return False
 
-        # Old SlamStick devices may not support COMMAND. Use `canRecord`,
-        # which checks the firmware version. Hack.
-        if 'SlamStick' in type(device).__name__ and not device.canRecord:
+        # Old SlamStick devices may not support COMMAND. They should get
+        # the `LegacyFileCommandInterface` because it is checked first,
+        # but check anyway, just to make sure.
+        if (not device.getInfo('McuType', '').startswith(('EFM32GG11', 'STM32'))
+                and device.firmwareVersion <= 19):
             return False
 
         # Newer firmware will explicitly indicate in DEVINFO if the device
@@ -1765,9 +1820,17 @@ class FileCommandInterface(CommandInterface):
         return bool(device.getInfo('FileCommandInterface', 1))
 
 
+    @property
+    def available(self) -> bool:
+        """ Is the command interface available and able to accept commands?
+        """
+        return (self.device.available
+                and os.path.isfile(self.device.commandFile))
+
+
     def _readResponse(self,
-                     timeout: Optional[Union[int, float]] = None,
-                     callback: Optional[Callable] = None) -> dict:
+                      timeout: Optional[Union[int, float]] = None,
+                      callback: Optional[Callable] = None) -> Union[dict, None]:
         """
         Helper to retrieve an EBML response from the device's `RESPONSE` file.
 
@@ -1801,7 +1864,7 @@ class FileCommandInterface(CommandInterface):
 
 
     def _getTime(self,
-                pause=False) -> Tuple[Epoch, Epoch]:
+                 pause=False) -> Tuple[Epoch, Epoch]:
         """
         Called by `Recorder.getTime()` and `Recorder.getClockDrift()`.
 
@@ -1865,12 +1928,12 @@ class FileCommandInterface(CommandInterface):
 
 
     def _sendCommand(self,
-                    cmd: dict,
-                    response: bool = True,
-                    timeout: float = 10,
-                    interval: float = .25,
-                    index: bool = True,
-                    callback: Optional[Callable] = None) -> Union[None, dict]:
+                     cmd: dict,
+                     response: bool = True,
+                     timeout: float = 10,
+                     interval: float = .25,
+                     index: bool = True,
+                     callback: Optional[Callable] = None) -> Union[None, dict]:
         """ Send a raw command to the device and (optionally) retrieve the
             response.
 
@@ -1885,7 +1948,7 @@ class FileCommandInterface(CommandInterface):
                 will be cancelled. The callback function should require no
                 arguments.
 
-            :raise DeviceTimeout
+            :raise: DeviceTimeout
         """
         if 'EBMLCommand' in cmd and index:
             self.index += 1
@@ -1938,7 +2001,7 @@ class FileCommandInterface(CommandInterface):
 
     def _runSimpleCommand(self,
                           cmd: dict,
-                          statusCode: int = CommandInterface.STATUS_RESET_PENDING,
+                          statusCode: int = DeviceStatusCode.RESET_PENDING,
                           timeoutMsg: Optional[str] = None,
                           wait: bool = True,
                           timeout: float = 5,
@@ -1946,7 +2009,9 @@ class FileCommandInterface(CommandInterface):
         """ Send a command that will cause the device to reset/dismount. No
             response is expected/required.
 
-            :param cmd: The command to execute.
+            :param cmd: The command to execute. It is assumed to be a
+                legacy command, with no outer `<EBMLCommand>` wrapper.
+                Only the first 2 bytes will be sent.
             :param statusCode: The ``<DeviceStatusCode>`` expected in the
                 acknowledgement (if the interface supports one).
             :param wait: If `True`, wait for the recorer to respond and/or
@@ -1997,7 +2062,7 @@ class FileCommandInterface(CommandInterface):
 
     def startRecording(self,
                        wait: bool = True,
-                       timeout: float = 1,
+                       timeout: float = 10,
                        callback: Optional[Callable] = None) -> bool:
         """ Start the device recording, if supported.
 
@@ -2011,10 +2076,11 @@ class FileCommandInterface(CommandInterface):
                 require no arguments.
             :returns: `True` if the command was successful.
         """
-        if not self.device.canRecord:
+        if not self.canRecord:
             return False
 
         # FUTURE: Write commands wrapped in a <EBMLCommand> element?
+        #  Exclude LegacyFileCommandInterface.
         return self._runSimpleCommand({'RecStart': {}},
                                       timeoutMsg="Timed out waiting for recording to start",
                                       wait=wait,
@@ -2039,6 +2105,7 @@ class FileCommandInterface(CommandInterface):
             :returns: `True` if the command was successful.
         """
         # FUTURE: Write commands wrapped in a <EBMLCommand> element?
+        #  Exclude LegacyFileCommandInterface.
         return self._runSimpleCommand({'Reset': {}},
                                       timeoutMsg="Timed out waiting for device to reset",
                                       wait=wait,
@@ -2050,8 +2117,60 @@ class FileCommandInterface(CommandInterface):
 #
 # ===========================================================================
 
+class LegacyFileCommandInterface(FileCommandInterface):
+    """
+    A mechanism for sending commands to a recorder via the `COMMAND` file.
+    For devices using old firmware that supports only a subset of
+    commands.
+    """
+
+    @classmethod
+    def hasInterface(cls, device) -> bool:
+        """ Determine if a device supports this `CommandInterface` type.
+
+            :param device: The recorder to check.
+            :return: `True` if the device supports the interface.
+        """
+        if device.getInfo('McuType', "EFM32GG330") != "EFM32GG330":
+            return False
+
+        return 17 <= device.firmwareVersion <= 19
+
+
+    @property
+    def canCopyFirmware(self) -> bool:
+        """ Can the device get new firmware/userpage from a file? """
+        return False
+
+
+    @property
+    def canRecord(self) -> bool:
+        """ Can the device record on command? """
+        return not (self.device.isVirtual or self.device.path is None)
+
+
+    def setKeys(self, *args, **kwargs):
+        """ Update the device's key bundle. Not supported on this device.
+        """
+        raise UnsupportedFeature(self, self.setKeys)
+
+
+    def updateDevice(self, *args, **kwargs) -> bool:
+        """ Apply a firmware package and/or device description data update.
+            Not supported on this device; serial bootloader connection
+            required.
+        """
+        raise UnsupportedFeature(self, self.updateDevice)
+
+
+# ===========================================================================
+#
+# ===========================================================================
+
 #: A list of all `CommandInterface` types, used when finding a device's
 #   interface. `FileCommandInterface` should go last, since devices with
 #   "better" interfaces may support it as a fallback. New interface types
 #   defined elsewhere should append/insert themselves into this list.
-INTERFACES = [SerialCommandInterface, FileCommandInterface]
+INTERFACES = [SerialCommandInterface,
+              LegacyFileCommandInterface,
+              FileCommandInterface]

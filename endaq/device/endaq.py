@@ -3,7 +3,7 @@ Classes for representing specific models of enDAQ data recoreder.
 """
 
 __author__ = "dstokes"
-__copyright__ = "Copyright 2022 Mide Technology Corporation"
+__copyright__ = "Copyright 2023 Mide Technology Corporation"
 
 import re
 from typing import Callable, Optional, Union
@@ -40,16 +40,6 @@ class EndaqW(EndaqS):
 
     # Part number starts with "W", a 1-2 digit number, and "-"
     _NAME_PATTERN = re.compile(r'(^W(\d|\d\d)-.*)|(^SF-DR4-(01|03))')
-
-    # These are now in CommandInterface, and will eventually be removed here
-    WIFI_STATUS_IDLE = 0
-    WIFI_STATUS_PENDING = 1
-    WIFI_STATUS_CONNECTED = 2
-
-    WIFI_CONNECTION_FAILED = 0
-    WIFI_CONNECTING = 1
-    WIFI_CONNECTED = 2
-    WIFI_CONNECTED_CLOUD = 3
 
 
     def setAP(self, ssid: str, password: Optional[str] = None):

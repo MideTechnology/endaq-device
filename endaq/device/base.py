@@ -4,7 +4,7 @@ eliminate circular dependencies.
 """
 
 __author__ = "dstokes"
-__copyright__ = "Copyright 2022 Mide Technology Corporation"
+__copyright__ = "Copyright 2023 Mide Technology Corporation"
 
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -174,6 +174,19 @@ class Recorder:
             return bool(self.command)
         except UnsupportedFeature:
             return False
+
+
+    @property
+    def available(self) -> bool:
+        """ Is the device mounted and available as a drive?
+        """
+        if self.isVirtual or not self.path:
+            return False
+
+        # Two checks, since former is a property that sets latter
+        # and path itself isn't a reliable test in Linux
+        return (os.path.exists(self.path)
+                and os.path.isfile(self.infoFile))
 
 
     def __repr__(self):
@@ -596,8 +609,8 @@ class Recorder:
         """ Can the device record on command? """
         if not self.hasCommandInterface:
             return False
-        # All 'real' GG11-based and newer devices can (ostensibly) do this.
-        return self.getInfo('McuType', '').startswith(("EFM32GG11", "STM32"))
+
+        return self.command.canRecord
 
 
     @property
@@ -605,8 +618,8 @@ class Recorder:
         """ Can the device get new firmware/userpage from a file? """
         if not self.hasCommandInterface:
             return False
-        # All 'real' GG11-based and newer devices can (ostensibly) do this.
-        return self.getInfo('McuType', '').startswith(("EFM32GG11", "STM32"))
+
+        return self.command.canCopyFirmware
 
 
     @property
@@ -781,10 +794,9 @@ class Recorder:
         if self.isVirtual or not self.path:
             raise UnsupportedFeature('Virtual devices do not have clocks')
 
-        if self.command:
+        if self.hasCommandInterface:
             return self.command.getTime(epoch=epoch)
         else:
-            logger.debug('')
             ci = command_interfaces.FileCommandInterface(self)
             return ci.getTime(epoch=epoch)
 
@@ -812,7 +824,7 @@ class Recorder:
         if self.isVirtual or not self.path:
             raise UnsupportedFeature('Virtual devices do not have clocks')
 
-        if self.command:
+        if self.hasCommandInterface:
             return self.command.setTime(t=t, pause=pause, retries=retries)
         else:
             ci = command_interfaces.FileCommandInterface(self)
@@ -836,7 +848,7 @@ class Recorder:
         if self.isVirtual or not self.path:
             raise UnsupportedFeature('Virtual devices do not have clocks')
 
-        if self.command:
+        if self.hasCommandInterface:
             return self.command.getClockDrift(pause=pause, retries=retries)
         else:
             ci = command_interfaces.FileCommandInterface(self)
