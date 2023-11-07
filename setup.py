@@ -9,12 +9,6 @@ def read(rel_path):
         return fp.read()
 
 
-def readlines(rel_path):
-    here = os.path.abspath(os.path.dirname(__file__))
-    with codecs.open(os.path.join(here, rel_path), 'r') as fp:
-        return fp.readlines()
-
-
 def get_version(rel_path):
     for line in read(rel_path).splitlines():
         if line.startswith('__version__'):
@@ -37,7 +31,17 @@ TEST_REQUIRES = [
     'pytest>=7.2',
 ]
 
-DOCS_REQUIRES = readlines('docs/requirements.txt')
+DOCS_REQUIRES = [
+    'Sphinx==4.5.0',
+    'sphinxcontrib-applehelp==1.0.2',
+    'sphinxcontrib-devhelp==1.0.2',
+    'sphinxcontrib-htmlhelp==2.0.0',
+    'sphinxcontrib-jsmath==1.0.1',
+    'sphinxcontrib-qthelp==1.0.3',
+    'sphinxcontrib-serializinghtml==1.1.5',
+    'pydata-sphinx-theme==0.7.1',
+    'sphinx-autodoc-typehints==1.18.1',
+]
 
 
 setuptools.setup(
