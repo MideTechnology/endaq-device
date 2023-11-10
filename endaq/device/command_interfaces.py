@@ -362,7 +362,7 @@ class CommandInterface:
     def _sendCommand(self,
                      cmd: dict,
                      response: bool = True,
-                     timeout: float = 10,
+                     timeout: Union[int, float] = 10,
                      interval: float = .25,
                      index: bool = True,
                      callback: Optional[Callable] = None) -> Union[None, dict]:
@@ -391,7 +391,7 @@ class CommandInterface:
                           statusCode: int = DeviceStatusCode.RESET_PENDING,
                           timeoutMsg: Optional[str] = None,
                           wait: bool = True,
-                          timeout: float = 5,
+                          timeout: Union[int, float] = 5,
                           callback: Optional[Callable] = None) -> bool:
         """ Send a command that will cause the device to reset/dismount. No
             response (other than a simple acknowledgement with a
@@ -425,7 +425,7 @@ class CommandInterface:
 
 
     def startRecording(self,
-                       timeout: float = 5,
+                       timeout: Union[int, float] = 5,
                        callback: Optional[Callable] = None) -> bool:
         """ Start the device recording, if supported.
             Must be implemented in every subclass.
@@ -442,7 +442,7 @@ class CommandInterface:
 
 
     def reset(self,
-              timeout: float = 5,
+              timeout: Union[int, float] = 5,
               callback: Optional[Callable] = None) -> bool:
         """ Reset (reboot) the recorder.
             Must be implemented in every subclass.
@@ -460,7 +460,7 @@ class CommandInterface:
 
 
     def getBatteryStatus(self,
-                         timeout: float = 1,
+                         timeout: Union[int, float] = 1,
                          callback: Optional[Callable] = None) -> bool:
         """ Get the status of the recorder's battery. Not supported on all
             devices.
@@ -495,7 +495,7 @@ class CommandInterface:
 
     def ping(self,
              data: Optional[ByteString] = None,
-             timeout: float = 5,
+             timeout: Union[int, float] = 5,
              callback: Optional[Callable] = None) -> bytes:
         """ Verify the recorder is present and responding. Not supported on
             all devices.
@@ -609,7 +609,7 @@ class CommandInterface:
     def _updateAll(self,
                    secure: True,
                    wait: bool = True,
-                   timeout: float = 10,
+                   timeout: Union[int, float] = 10,
                    callback: Optional[Callable] = None) -> bool:
         """ Send interface-specific update command. Implemented for each
             subclass.
@@ -669,7 +669,7 @@ class CommandInterface:
                      firmware: Optional[str] = None,
                      userpage: Optional[str] = None,
                      clean: bool = False,
-                     timeout: float = 10.0,
+                     timeout: Union[int, float] = 10.0,
                      callback: Optional[Callable] = None) -> bool:
         """ Apply a firmware package and/or device description data update
             to the device. If no filenames are supplied, it will be assumed
@@ -754,7 +754,7 @@ class CommandInterface:
 
 
     def setKeys(self, keys: ByteString,
-                timeout: float = 5,
+                timeout: Union[int, float] = 5,
                 callback: Optional[Callable] = None):
         """ Update the device's key bundle
 
@@ -778,7 +778,7 @@ class CommandInterface:
     def setAP(self,
               ssid: str,
               password: Optional[str] = None,
-              timeout: int = 10):
+              timeout: Union[int, float] = 10):
         """ Quickly set the Wi-Fi access point (router) and password.
             Applicable only to devices with Wi-Fi hardware.
 
@@ -796,7 +796,7 @@ class CommandInterface:
 
     def setWifi(self,
                 wifi_data: dict,
-                timeout: int = 10,
+                timeout: Union[int, float] = 10,
                 interval: float = 1.25,
                 callback: Optional[Callable] = None):
         """ Configure all known Wi-Fi access points. Applicable only
@@ -840,7 +840,7 @@ class CommandInterface:
 
 
     def queryWifi(self,
-                  timeout: int = 10,
+                  timeout: Union[int, float] = 10,
                   interval: float = .25,
                   callback: Optional[Callable] = None) -> Union[None, dict]:
         """ Check the current state of the Wi-Fi (if present). Applicable only
@@ -878,7 +878,8 @@ class CommandInterface:
         return response.get('QueryWiFiResponse')
 
 
-    def scanWifi(self, timeout: int = 10,
+    def scanWifi(self, 
+                 timeout: Union[int, float] = 10,
                  interval: float = .25,
                  callback: Optional[Callable] = None) -> Union[None, list]:
         """ Initiate a scan for Wi-Fi access points (APs). Applicable only
@@ -938,7 +939,7 @@ class CommandInterface:
 
     def updateESP32(self,
                     firmware: str,
-                    timeout: float = 10,
+                    timeout: Union[int, float] = 10,
                     callback: Optional[Callable] = None):
         """ Update the ESP32 firmware. Applicable only to devices with
             ESP32 Wi-Fi hardware.
@@ -975,7 +976,7 @@ class CommandInterface:
 
 
     def getNetworkStatus(self,
-                         timeout: int = 10,
+                         timeout: Union[int, float] = 10,
                          interval: float = .25,
                          callback: Optional[Callable] = None) -> Union[None, dict]:
         """ Check the device's networking hardware. The response is less
@@ -1021,7 +1022,7 @@ class CommandInterface:
 
 
     def getNetworkAddress(self,
-                          timeout: int = 10,
+                          timeout: Union[int, float] = 10,
                           interval: float = .25,
                           callback: Optional[Callable] = None
                           ) -> Tuple[Optional[str], Optional[str]]:
@@ -1400,7 +1401,7 @@ class SerialCommandInterface(CommandInterface):
     def _sendCommand(self,
                      cmd: dict,
                      response: bool = True,
-                     timeout: float = 10,
+                     timeout: Union[int, float] = 10,
                      interval: float = .25,
                      index: bool = True,
                      callback: Optional[Callable] = None) -> Union[None, dict]:
@@ -1442,6 +1443,9 @@ class SerialCommandInterface(CommandInterface):
                     packet = self._encode(cmd)
                     self.lastCommand = time(), deepcopy(cmd)
                     self._writeCommand(packet)
+            
+                    if timeout == 0:
+                        return None
 
                     try:
                         resp = self._readResponse(timeout, callback=callback)
@@ -1493,7 +1497,7 @@ class SerialCommandInterface(CommandInterface):
                         queueDepth = 1
 
                     # Failure!
-                    if timeout >= 0 and time() >= deadline:
+                    if timeout > 0 and time() >= deadline:
                         if queueDepth == 0:
                             raise DeviceTimeout('Timed out waiting for opening in command queue')
                         else:
@@ -1539,7 +1543,7 @@ class SerialCommandInterface(CommandInterface):
                 while int(t) == int(sysTime):
                     sysTime = time()
 
-            response = self._sendCommand(command)
+            response = self._sendCommand(command, timeout=timeout)
             try:
                 dt = response['ClockTime']
                 devTime = self.device._TIME_PARSER.unpack_from(dt)[0]
@@ -1584,14 +1588,15 @@ class SerialCommandInterface(CommandInterface):
             while t0 < t:
                 t0 = time()
 
-        self._sendCommand({'EBMLCommand': {'SetClock': payload}})
+        self._sendCommand({'EBMLCommand': {'SetClock': payload}}, 
+                          response=False)
 
         return t0, t
 
 
     def ping(self,
              data: Optional[ByteString] = None,
-             timeout: float = 10,
+             timeout: Union[int, float] = 10,
              interval: float = .25,
              callback: Optional[Callable] = None) -> dict:
         """ Verify the recorder is present and responding. Not supported on
@@ -1620,7 +1625,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def getBatteryStatus(self,
-                         timeout: float = 1,
+                         timeout: Union[int, float] = 1,
                          callback: Optional[Callable] = None) -> Union[dict, None]:
         """ Get the status of the recorder's battery. Not supported on all
             devices.
@@ -1670,7 +1675,7 @@ class SerialCommandInterface(CommandInterface):
 
     def startRecording(self,
                        wait: bool = True,
-                       timeout: float = 5,
+                       timeout: Union[int, float] = 5,
                        callback: Optional[Callable] = None) -> bool:
         """ Start the device recording.
 
@@ -1694,7 +1699,7 @@ class SerialCommandInterface(CommandInterface):
 
     def reset(self,
               wait: bool = True,
-              timeout: float = 5,
+              timeout: Union[int, float] = 5,
               callback: Optional[Callable] = None) -> bool:
         """ Reset (reboot) the recorder.
 
@@ -1719,7 +1724,7 @@ class SerialCommandInterface(CommandInterface):
     def _updateAll(self,
                    secure: bool = True,
                    wait: bool = True,
-                   timeout: float = 5,
+                   timeout: Union[int, float] = 5,
                    callback: Optional[Callable] = None):
         """ Send the 'secure update all' command, installing any userpage
             and/or firmware update files copied to the device.
@@ -1744,7 +1749,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def scanWifi(self,
-                 timeout: int = 10,
+                 timeout: Union[int, float] = 10,
                  interval: float = .25,
                  callback: Optional[Callable] = None) -> Union[None, list]:
         """ Initiate a scan for Wi-Fi access points (APs). Applicable only
@@ -1952,7 +1957,7 @@ class FileCommandInterface(CommandInterface):
     def _sendCommand(self,
                      cmd: dict,
                      response: bool = True,
-                     timeout: float = 10,
+                     timeout: Union[int, float] = 10,
                      interval: float = .25,
                      index: bool = True,
                      callback: Optional[Callable] = None) -> Union[None, dict]:
@@ -2035,7 +2040,7 @@ class FileCommandInterface(CommandInterface):
                           statusCode: int = DeviceStatusCode.RESET_PENDING,
                           timeoutMsg: Optional[str] = None,
                           wait: bool = True,
-                          timeout: float = 5,
+                          timeout: Union[int, float] = 5,
                           callback: Optional[Callable] = None) -> bool:
         """ Send a command that will cause the device to reset/dismount. No
             response is expected/required.
@@ -2067,7 +2072,7 @@ class FileCommandInterface(CommandInterface):
     def _updateAll(self,
                    secure: bool = True,
                    wait: bool = True,
-                   timeout: float = 10,
+                   timeout: Union[int, float] = 10,
                    callback: Optional[Callable] = None) -> bool:
         """ Send the `"SecureUpdateAll"` command (or `"LegacyAll"` if the
             firmware is a simple binary rather than a signed package).
@@ -2095,7 +2100,7 @@ class FileCommandInterface(CommandInterface):
 
     def startRecording(self,
                        wait: bool = True,
-                       timeout: float = 10,
+                       timeout: Union[int, float] = 10,
                        callback: Optional[Callable] = None) -> bool:
         """ Start the device recording, if supported.
 
@@ -2124,7 +2129,7 @@ class FileCommandInterface(CommandInterface):
 
     def reset(self,
               wait: bool = True,
-              timeout: float = 10,
+              timeout: Union[int, float] = 10,
               callback: Optional[Callable] = None) -> bool:
         """ Reset (reboot) the recorder.
 
