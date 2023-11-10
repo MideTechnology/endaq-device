@@ -214,7 +214,8 @@ class CommandInterface:
         Wait for and retrieve the response to a serial command. Does not do any
         processing other than (attempting to) decode the EBML payload.
 
-        :param timeout: Time to wait for a valid response.
+        :param timeout: Time (in seconds) to wait for a valid response before
+            raising a `DeviceTimeout` exception. -1 will wait indefinitely.
         :param callback: A function to call each response-checking
             cycle. If the callback returns `True`, the wait for a response
             will be cancelled. The callback function should require no
@@ -372,7 +373,7 @@ class CommandInterface:
                 the names of EBML elements.
             :param response: If `True`, wait for and return a response.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a `DeviceTimeout` exception. -1 will wait indefinitely.
             :param interval: Time (in seconds) between checks for a
                 response.
             :param callback: A function to call each response-checking
@@ -402,8 +403,8 @@ class CommandInterface:
                 acknowledgement (if the interface supports one).
             :param wait: If `True`, wait for the recorer to respond and/or
                 dismount.
-            :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a `DeviceTimeout` exception. -1 will wait indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -429,8 +430,8 @@ class CommandInterface:
         """ Start the device recording, if supported.
             Must be implemented in every subclass.
 
-            :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a `DeviceTimeout` exception. -1 will wait indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -447,7 +448,8 @@ class CommandInterface:
             Must be implemented in every subclass.
 
             :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+                respond. 0 will return immediately; -1 will wait
+                indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -464,7 +466,8 @@ class CommandInterface:
             devices.
 
             :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+                respond. 0 will return immediately; -1 will wait
+                indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -500,7 +503,8 @@ class CommandInterface:
             :param data: An optional binary payload, returned by the recorder
                 verbatim.
             :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+                respond. 0 will return immediately; -1 will wait
+                indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -531,8 +535,8 @@ class CommandInterface:
             rebooted, started recording, started firmware application, etc.
 
             :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately; `None` will wait
-                indefinitely.
+                respond. 0 will return immediately; -1 will wait
+                indefinitely. `None` will use the interface's default.
             :param timeoutMsg: A command-specific message to use when raising
                 a `DeviceTimeout` exception.
             :param callback: A function to call each response-checking
@@ -549,11 +553,9 @@ class CommandInterface:
             return not self.device.available
 
         with self.device._busy:
-            if timeout is None or timeout < 0:
-                deadline = -1
-            else:
-                deadline = time() + timeout
-            while time() < deadline or deadline < 0:
+            timeout = self.timeout if timeout is None else timeout
+            deadline = time() + timeout
+            while timeout < 0 or time() < deadline:
                 if callback and callback():
                     return False
                 elif not self.device.available:
@@ -573,7 +575,7 @@ class CommandInterface:
             application, etc.
 
             :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately; `None` will wait
+                respond. 0 will return immediately; -1 will wait
                 indefinitely.
             :param timeoutMsg: A command-specific message to use when raising
                 a `DeviceTimeout` exception.
@@ -591,11 +593,9 @@ class CommandInterface:
             return self.device.available
 
         with self.device._busy:
-            if timeout is None:
-                deadline = -1
-            else:
-                deadline = time() + timeout
-            while time() < deadline or deadline < 0:
+            timeout = self.timeout if timeout is None else timeout
+            deadline = time() + timeout
+            while timeout < 0 or time() < deadline:
                 if callback and callback():
                     return False
                 elif self.device.available:
@@ -618,7 +618,7 @@ class CommandInterface:
                 indicating the update has started.
             :param timeout: Time (in seconds) to wait for the recorder to
                 dismount, implying the updates are being applied. 0 will
-                return immediately.
+                return immediately; -1 will wait indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -692,7 +692,7 @@ class CommandInterface:
                 `firmware` or `userpage` is supplied (but not both).
             :param timeout: Time (in seconds) to wait for the recorder to
                 dismount, implying the updates are being applied. 0 will
-                return immediately.
+                return immediately; -1 will wait indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -760,7 +760,7 @@ class CommandInterface:
 
             :param keys: The key data.
             :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+                respond. 0 will return immediately. -1 will wait indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -775,17 +775,23 @@ class CommandInterface:
     # Wi-Fi
     # =======================================================================
 
-    def setAP(self, ssid: str, password: Optional[str] = None):
+    def setAP(self,
+              ssid: str,
+              password: Optional[str] = None,
+              timeout: int = 10):
         """ Quickly set the Wi-Fi access point (router) and password.
             Applicable only to devices with Wi-Fi hardware.
 
             :param ssid: The SSID (name) of the wireless access point.
             :param password: The access point password.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                -1 will wait indefinitely.
         """
         cmd = {'SSID': ssid, 'Selected': 1}
         if password is not None:
             cmd['Password'] = password
-        return self.setWifi(cmd)
+        return self.setWifi(cmd, timeout=timeout)
 
 
     def setWifi(self,
@@ -809,6 +815,7 @@ class CommandInterface:
                 set on the device.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                -1 will wait indefinitely.
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will be
@@ -938,7 +945,7 @@ class CommandInterface:
 
             :param firmware: The name of the ESP32 firmware package (.bin).
             :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+                respond. 0 will return immediately; -1 will wait indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -991,6 +998,7 @@ class CommandInterface:
 
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                -1 will wait indefinitely
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will
@@ -1031,6 +1039,7 @@ class CommandInterface:
 
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                -1 will wait indefinitely.
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will
@@ -1133,7 +1142,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     @classmethod
-    def hasInterface(cls, device) -> bool:
+    def hasInterface(cls, device: "Recorder") -> bool:
         """ Determine if a device supports this `CommandInterface` type.
 
             :param device: The recorder to check.
@@ -1170,7 +1179,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     @classmethod
-    def findSerialPort(cls, device) -> Union[None, str]:
+    def findSerialPort(cls, device: "Recorder") -> Union[None, str]:
         """ Find the path/name/number of a serial port corresponding to a
             given serial number.
 
@@ -1273,7 +1282,8 @@ class SerialCommandInterface(CommandInterface):
         return True
 
 
-    def _encode(self, data: dict,
+    def _encode(self,
+                data: dict,
                 checkSize: bool = True) -> bytearray:
         """
             Generate a serial packet containing EBMLCommand data. Separated from
@@ -1348,7 +1358,8 @@ class SerialCommandInterface(CommandInterface):
         Wait for and retrieve the response to a serial command. Does not do any
         processing other than (attempting to) decode the EBML payload.
 
-        :param timeout: Time to wait for a valid response.
+        :param timeout: Time to wait for a valid response. -1 will wait
+            indefinitely.
         :param callback: A function to call each response-checking
             cycle. If the callback returns `True`, the wait for a
             response will be cancelled. The callback function should
@@ -1361,7 +1372,7 @@ class SerialCommandInterface(CommandInterface):
 
         buf = b''
 
-        while time() < deadline:
+        while timeout < 0 or time() < deadline:
             if callback is not None and callback() is True:
                 return
             if self.port.in_waiting:
@@ -1403,7 +1414,7 @@ class SerialCommandInterface(CommandInterface):
                 commands that potentially cause a reset faster than the
                 acknowledgement can be read.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a `DeviceTimeout` exception. -1 will wait indefinitely.
             :param interval: Time (in seconds) between checks for a
                 response. Not used by the serial interface.
             :param index: If `True` (default), include an incrementing
@@ -1417,8 +1428,8 @@ class SerialCommandInterface(CommandInterface):
 
             :raise: DeviceTimeout
         """
-        now = time()
-        deadline = now + timeout
+        timeout = self.timeout if timeout is None else timeout
+        deadline = time() + timeout
 
         with self.device._busy:
             self.getSerialPort()
@@ -1432,11 +1443,25 @@ class SerialCommandInterface(CommandInterface):
                     self.lastCommand = time(), deepcopy(cmd)
                     self._writeCommand(packet)
 
-                    if not response:
-                        self.status = None, None
-                        return None
+                    try:
+                        resp = self._readResponse(timeout, callback=callback)
+                    except (IOError, serial.SerialException) as err:
+                        # Commands that reset can cause the device to close the
+                        # port faster than the response can be read. Fail
+                        # gracefully if no response is required.
+                        if (not isinstance(err, serial.SerialException)
+                                and getattr(err, 'errno') != errno.EIO):
+                            # Linux (possibly other POSIX) raises IOError EIO (5)
+                            # if the port is gone. Raise if other errno.
+                            raise
+                        if not response:
+                            logger.debug('Ignoring anticipated exception because '
+                                         'response not required: {!r}'.format(err))
+                            self.status = None, None
+                            return None
+                        else:
+                            raise
 
-                    resp = self._readResponse(timeout, callback=callback)
                     if resp:
                         code = resp.get('DeviceStatusCode', 0)
                         msg = resp.get('DeviceStatusMessage')
@@ -1468,12 +1493,21 @@ class SerialCommandInterface(CommandInterface):
                         queueDepth = 1
 
                     # Failure!
-                    if time() >= deadline:
+                    if timeout >= 0 and time() >= deadline:
                         if queueDepth == 0:
                             raise DeviceTimeout('Timed out waiting for opening in command queue')
                         else:
                             raise DeviceTimeout('Timed out waiting for command response')
-                        
+
+            except TimeoutError:
+                if not response:
+                    logger.debug('Ignoring timeout waiting for response '
+                                 'because no response required')
+                    self.status = None, None
+                    return None
+                else:
+                    raise
+
             finally:
                 self.port.close()
 
@@ -1693,7 +1727,7 @@ class SerialCommandInterface(CommandInterface):
             :param wait: If `True`, wait for the recorer to dismount,
                 indicating the update has started.
             :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+                respond. 0 will return immediately. -1 will wait indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a response
                 will be cancelled. The callback function should require no
@@ -1717,7 +1751,7 @@ class SerialCommandInterface(CommandInterface):
             to devices with Wi-Fi hardware.
 
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a `DeviceTimeout` exception. -1 will wait indefinitely.
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will
@@ -1928,7 +1962,7 @@ class FileCommandInterface(CommandInterface):
             :param cmd: The raw EBML representing the command.
             :param response: If `True`, wait for and return a response.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a `DeviceTimeout` exception. -1 will wait indefinitely.
             :param interval: Time (in seconds) between checks for a
                 response.
             :param callback: A function to call each response-checking
@@ -1952,7 +1986,7 @@ class FileCommandInterface(CommandInterface):
 
             # Wait until the command queue is empty.
             # The file interface does this first.
-            while response:  # a `while True` infinite loop
+            while True:  # a `while True` infinite loop
                 data = self._readResponse()
                 if data:
                     idx = data.get('ResponseIdx')
@@ -1963,13 +1997,15 @@ class FileCommandInterface(CommandInterface):
                     sleep(interval)
 
                 if time() > deadline:
+                    if not response:
+                        logger.debug('Ignoring timeout waiting for CMDQueue '
+                                     'to empty because no response required')
+                        return
+
                     raise DeviceTimeout("Timed out waiting for device to complete "
                                         "queued commands (%s remaining)" % queueDepth)
 
             self._writeCommand(ebml)
-
-            if not response:
-                return
 
             while time() <= deadline:
                 if callback is not None and callback() is True:
@@ -1981,6 +2017,11 @@ class FileCommandInterface(CommandInterface):
                     return data
 
                 sleep(interval)
+
+            if not response:
+                logger.debug('Ignoring timeout waiting for response '
+                             'because no response required')
+                return
 
             raise DeviceTimeout("Timed out waiting for command response (%s seconds)" % timeout)
 
@@ -2006,8 +2047,9 @@ class FileCommandInterface(CommandInterface):
                 acknowledgement (if the interface supports one).
             :param wait: If `True`, wait for the recorer to respond and/or
                 dismount.
-            :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a `DeviceTimeout` exception. 0 will return
+                immediately; -1 will wait indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -2034,8 +2076,9 @@ class FileCommandInterface(CommandInterface):
                 instead of `"LegacyAll"`.
             :param wait: If `True`, wait for the recorer to dismount,
                 indicating the command has executed.
-            :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a `DeviceTimeout` exception. 0 will return
+                immediately; -1 will wait indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -2058,8 +2101,9 @@ class FileCommandInterface(CommandInterface):
 
             :param wait: If `True`, wait for the recorer to dismount,
                 indicating the recording has started.
-            :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a `DeviceTimeout` exception. 0 will return
+                immediately; -1 will wait indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -2086,8 +2130,9 @@ class FileCommandInterface(CommandInterface):
 
             :param wait: If `True`, wait for the recorer to dismount,
                 indicating the reset has taken effect.
-            :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a `DeviceTimeout` exception. 0 will return
+                immediately; -1 will wait indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
