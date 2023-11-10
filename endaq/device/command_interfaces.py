@@ -1432,25 +1432,11 @@ class SerialCommandInterface(CommandInterface):
                     self.lastCommand = time(), deepcopy(cmd)
                     self._writeCommand(packet)
 
-                    try:
-                        resp = self._readResponse(timeout, callback=callback)
-                    except (IOError, serial.SerialException) as err:
-                        # Commands that reset can cause the device to close the
-                        # port faster than the response can be read. Fail
-                        # gracefully if no response is required.
-                        if (not isinstance(err, serial.SerialException)
-                                and getattr(err, 'errno') != errno.EIO):
-                            # Linux (possibly other POSIX) raises IOError EIO (5)
-                            # if the port is gone. Raise if other errno.
-                            raise
-                        if not response:
-                            logger.debug('Ignoring anticipated exception because '
-                                         'response not required: {!r}'.format(err))
-                            self.status = None, None
-                            return None
-                        else:
-                            raise
+                    if not response:
+                        self.status = None, None
+                        return None
 
+                    resp = self._readResponse(timeout, callback=callback)
                     if resp:
                         code = resp.get('DeviceStatusCode', 0)
                         msg = resp.get('DeviceStatusMessage')
@@ -1834,7 +1820,8 @@ class FileCommandInterface(CommandInterface):
         """
         Helper to retrieve an EBML response from the device's `RESPONSE` file.
 
-        :param timeout: Time to wait for a valid response.
+        :param timeout: Time to wait for a valid response. Not applicable to
+            `FileCommandInterface` (timeout handled by caller).
         :param callback: A function to call each response-checking
             cycle. If the callback returns `True`, the wait for a response
             will be cancelled. The callback function should require no
@@ -1858,7 +1845,8 @@ class FileCommandInterface(CommandInterface):
 
             except (AttributeError, IndexError, KeyError, TypeError) as err:
                 # TODO: Better exception handling in readResponse()
-                warnings.warn("Ignoring exception in {}._readResponse(): {!r}".format(type(self).__name__, err))
+                warnings.warn("Ignoring exception in {}._readResponse(): {!r}"
+                              .format(type(self).__name__, err))
 
         return None
 
@@ -1971,10 +1959,12 @@ class FileCommandInterface(CommandInterface):
                     queueDepth = data.get('CMDQueueDepth', 1)
                     if queueDepth > 0:
                         break
-                    raise DeviceTimeout("Timed out waiting for device to complete "
-                                        "queued commands (%s remaining)" % queueDepth)
                 else:
                     sleep(interval)
+
+                if time() > deadline:
+                    raise DeviceTimeout("Timed out waiting for device to complete "
+                                        "queued commands (%s remaining)" % queueDepth)
 
             self._writeCommand(ebml)
 

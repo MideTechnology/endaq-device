@@ -21,7 +21,7 @@ from .types import Filename, Epoch
 
 from . import schemata
 
-__version__ = "1.0.8"
+__version__ = "1.0.9a1"
 
 __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'DeviceError', 'DeviceTimeout', 'UnsupportedFeature',
@@ -177,12 +177,16 @@ def getDevices(paths: Optional[List[Filename]] = None,
 
 def findDevice(sn: Union[str, int],
                paths: Optional[List[Filename]] = None,
+               update: bool = False,
                strict: bool = True) -> Union[Recorder, None]:
     """ Find a specific recorder by serial number.
 
         :param sn: The serial number of the recorder to find.
         :param paths: A list of specific paths to recording devices.
             Defaults to all found devices (as returned by `getDeviceList()`).
+        :param update: If `True`, update the path of known devices if they
+            have changed (e.g., their drive letter or mount point changed
+            after a device reset).
         :param strict: If `False`, only the directory structure is used
             to identify a recorder. If `True`, non-FAT file systems will
             be automatically rejected.
@@ -195,7 +199,7 @@ def findDevice(sn: Union[str, int],
             sn = 0
         sn = int(sn)
 
-    for d in getDevices(paths, strict=strict):
+    for d in getDevices(paths, update=update, strict=strict):
         if d.serialInt == sn:
             return d
 
