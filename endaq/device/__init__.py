@@ -181,12 +181,14 @@ def findDevice(sn: Optional[Union[str, int]] = None,
                update: bool = False,
                strict: bool = True) -> Union[Recorder, None]:
     """ Find a specific recorder by serial number or unique chip ID. One or
-        the other must be provided, but not both.
+        the other must be provided, but not both. Note that early firmware
+        versions do not report the device's chip ID.
 
         :param sn: The serial number of the recorder to find. Cannot be used
-            with `chipId`.
+            with `chipId`. It can be an integer or a formatted serial number
+            string (e.g., `12345` or `"S00012345"`).
         :param chipId: The chip ID of the recorder to find. Cannot be used
-            with `sn`.
+            with `sn`. It can be an integer or a hex string.
         :param paths: A list of specific paths to recording devices.
             Defaults to all found devices (as returned by `getDeviceList()`).
         :param update: If `True`, update the path of known devices if they
