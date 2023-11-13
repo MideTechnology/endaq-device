@@ -373,7 +373,8 @@ class CommandInterface:
                 the names of EBML elements.
             :param response: If `True`, wait for and return a response.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception. `None` or -1 will wait indefinitely.
+                raising a `DeviceTimeout` exception. `None` or -1 will wait
+                indefinitely.
             :param interval: Time (in seconds) between checks for a
                 response.
             :param callback: A function to call each response-checking
@@ -404,7 +405,8 @@ class CommandInterface:
             :param wait: If `True`, wait for the recorer to respond and/or
                 dismount.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception. `None` or -1 will wait indefinitely.
+                raising a `DeviceTimeout` exception. `None` or -1 will wait
+                indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -431,7 +433,8 @@ class CommandInterface:
             Must be implemented in every subclass.
 
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception. `None` or -1 will wait indefinitely.
+                raising a `DeviceTimeout` exception. `None` or -1 will wait
+                indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -760,7 +763,8 @@ class CommandInterface:
 
             :param keys: The key data.
             :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately. `None` or -1 will wait indefinitely.
+                respond. 0 will return immediately. `None` or -1 will wait
+                indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -1969,7 +1973,8 @@ class FileCommandInterface(CommandInterface):
             :param cmd: The raw EBML representing the command.
             :param response: If `True`, wait for and return a response.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception. `None` or -1 will wait indefinitely.
+                raising a `DeviceTimeout` exception. `None` or -1 will wait
+                indefinitely.
             :param interval: Time (in seconds) between checks for a
                 response.
             :param callback: A function to call each response-checking
