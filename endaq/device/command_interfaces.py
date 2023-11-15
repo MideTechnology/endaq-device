@@ -48,7 +48,9 @@ class CommandInterface:
     Base class for command interfaces, the mechanism that communicates with
     and controls the recording device.
 
-    :ivar timeout: The default response timeout.
+    :ivar timeout: The underlying communication medium's response timeout (in
+        seconds). This is not the same as the timeout for individual commands.
+        Not used by all interface types.
     :ivar status: The last reported device status. Not available on all
         interface types. A tuple containing the status code and a
         status message string (optional).
@@ -60,24 +62,21 @@ class CommandInterface:
 
 
     def __init__(self,
-                 device: "Recorder",
-                 timeout: Union[int, float] = 1):
+                 device: "Recorder"):
         """ `CommandInterface` instances are rarely (if ever) explicitly
             created; the parent `Recorder` object will create an instance of
             the appropriate `CommandInterface` subclass when its `command`
             property is first accessed.
 
             :param device: The Recorder to which to interface.
-            :param timeout: Default time to wait (in seconds) for commands
-                to process.
         """
         self.schema = loadSchema('command-response.xml')
 
         self.device = device
         self.index: int = 0
 
-        # The default response timeout (in seconds).
-        self.timeout: Union[int, float] = timeout
+        # The communication timeout (in seconds).
+        self.timeout: Union[int, float] = 1
 
         # Last command sent: timestamp and a copy of the command (dict)
         self.lastCommand: Tuple[Optional[float], Optional[dict]] = (None, None)
@@ -214,7 +213,9 @@ class CommandInterface:
         Wait for and retrieve the response to a serial command. Does not do any
         processing other than (attempting to) decode the EBML payload.
 
-        :param timeout: Time to wait for a valid response.
+        :param timeout: Time (in seconds) to wait for a valid response before
+            raising a `DeviceTimeout` exception. `None` or -1 will wait
+            indefinitely.
         :param callback: A function to call each response-checking
             cycle. If the callback returns `True`, the wait for a response
             will be cancelled. The callback function should require no
@@ -361,7 +362,7 @@ class CommandInterface:
     def _sendCommand(self,
                      cmd: dict,
                      response: bool = True,
-                     timeout: float = 10,
+                     timeout: Union[int, float] = 10,
                      interval: float = .25,
                      index: bool = True,
                      callback: Optional[Callable] = None) -> Union[None, dict]:
@@ -372,7 +373,8 @@ class CommandInterface:
                 the names of EBML elements.
             :param response: If `True`, wait for and return a response.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a `DeviceTimeout` exception. `None` or -1 will wait
+                indefinitely.
             :param interval: Time (in seconds) between checks for a
                 response.
             :param callback: A function to call each response-checking
@@ -390,7 +392,7 @@ class CommandInterface:
                           statusCode: int = DeviceStatusCode.RESET_PENDING,
                           timeoutMsg: Optional[str] = None,
                           wait: bool = True,
-                          timeout: float = 5,
+                          timeout: Union[int, float] = 5,
                           callback: Optional[Callable] = None) -> bool:
         """ Send a command that will cause the device to reset/dismount. No
             response (other than a simple acknowledgement with a
@@ -402,8 +404,9 @@ class CommandInterface:
                 acknowledgement (if the interface supports one).
             :param wait: If `True`, wait for the recorer to respond and/or
                 dismount.
-            :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a `DeviceTimeout` exception. `None` or -1 will wait
+                indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -424,13 +427,14 @@ class CommandInterface:
 
 
     def startRecording(self,
-                       timeout: float = 5,
+                       timeout: Union[int, float] = 5,
                        callback: Optional[Callable] = None) -> bool:
         """ Start the device recording, if supported.
             Must be implemented in every subclass.
 
-            :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a `DeviceTimeout` exception. `None` or -1 will wait
+                indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -441,13 +445,14 @@ class CommandInterface:
 
 
     def reset(self,
-              timeout: float = 5,
+              timeout: Union[int, float] = 5,
               callback: Optional[Callable] = None) -> bool:
         """ Reset (reboot) the recorder.
             Must be implemented in every subclass.
 
             :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+                respond. 0 will return immediately; `None` or -1 will wait
+                indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -458,13 +463,14 @@ class CommandInterface:
 
 
     def getBatteryStatus(self,
-                         timeout: float = 1,
+                         timeout: Union[int, float] = 1,
                          callback: Optional[Callable] = None) -> bool:
         """ Get the status of the recorder's battery. Not supported on all
             devices.
 
             :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+                respond. 0 will return immediately; `None` or -1 will wait
+                indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -492,7 +498,7 @@ class CommandInterface:
 
     def ping(self,
              data: Optional[ByteString] = None,
-             timeout: float = 5,
+             timeout: Union[int, float] = 5,
              callback: Optional[Callable] = None) -> bytes:
         """ Verify the recorder is present and responding. Not supported on
             all devices.
@@ -500,7 +506,8 @@ class CommandInterface:
             :param data: An optional binary payload, returned by the recorder
                 verbatim.
             :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+                respond. 0 will return immediately; `None` or -1 will wait
+                indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -531,7 +538,7 @@ class CommandInterface:
             rebooted, started recording, started firmware application, etc.
 
             :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately; `None` will wait
+                respond. 0 will return immediately; `None` or -1 will wait
                 indefinitely.
             :param timeoutMsg: A command-specific message to use when raising
                 a `DeviceTimeout` exception.
@@ -549,11 +556,9 @@ class CommandInterface:
             return not self.device.available
 
         with self.device._busy:
-            if timeout is None or timeout < 0:
-                deadline = -1
-            else:
-                deadline = time() + timeout
-            while time() < deadline or deadline < 0:
+            timeout = -1 if timeout is None else timeout
+            deadline = time() + timeout
+            while timeout < 0 or time() < deadline:
                 if callback and callback():
                     return False
                 elif not self.device.available:
@@ -573,7 +578,7 @@ class CommandInterface:
             application, etc.
 
             :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately; `None` will wait
+                respond. 0 will return immediately; `None` or -1 will wait
                 indefinitely.
             :param timeoutMsg: A command-specific message to use when raising
                 a `DeviceTimeout` exception.
@@ -591,11 +596,9 @@ class CommandInterface:
             return self.device.available
 
         with self.device._busy:
-            if timeout is None:
-                deadline = -1
-            else:
-                deadline = time() + timeout
-            while time() < deadline or deadline < 0:
+            timeout = -1 if timeout is None else timeout
+            deadline = time() + timeout
+            while timeout < 0 or time() < deadline:
                 if callback and callback():
                     return False
                 elif self.device.available:
@@ -609,7 +612,7 @@ class CommandInterface:
     def _updateAll(self,
                    secure: True,
                    wait: bool = True,
-                   timeout: float = 10,
+                   timeout: Union[int, float] = 10,
                    callback: Optional[Callable] = None) -> bool:
         """ Send interface-specific update command. Implemented for each
             subclass.
@@ -618,7 +621,7 @@ class CommandInterface:
                 indicating the update has started.
             :param timeout: Time (in seconds) to wait for the recorder to
                 dismount, implying the updates are being applied. 0 will
-                return immediately.
+                return immediately; `None` or -1 will wait indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -669,7 +672,7 @@ class CommandInterface:
                      firmware: Optional[str] = None,
                      userpage: Optional[str] = None,
                      clean: bool = False,
-                     timeout: float = 10.0,
+                     timeout: Union[int, float] = 10.0,
                      callback: Optional[Callable] = None) -> bool:
         """ Apply a firmware package and/or device description data update
             to the device. If no filenames are supplied, it will be assumed
@@ -692,7 +695,7 @@ class CommandInterface:
                 `firmware` or `userpage` is supplied (but not both).
             :param timeout: Time (in seconds) to wait for the recorder to
                 dismount, implying the updates are being applied. 0 will
-                return immediately.
+                return immediately; `None` or -1 will wait indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -754,13 +757,14 @@ class CommandInterface:
 
 
     def setKeys(self, keys: ByteString,
-                timeout: float = 5,
+                timeout: Union[int, float] = 5,
                 callback: Optional[Callable] = None):
         """ Update the device's key bundle
 
             :param keys: The key data.
             :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+                respond. 0 will return immediately. `None` or -1 will wait
+                indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -775,22 +779,28 @@ class CommandInterface:
     # Wi-Fi
     # =======================================================================
 
-    def setAP(self, ssid: str, password: Optional[str] = None):
+    def setAP(self,
+              ssid: str,
+              password: Optional[str] = None,
+              timeout: Union[int, float] = 10):
         """ Quickly set the Wi-Fi access point (router) and password.
             Applicable only to devices with Wi-Fi hardware.
 
             :param ssid: The SSID (name) of the wireless access point.
             :param password: The access point password.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
         """
         cmd = {'SSID': ssid, 'Selected': 1}
         if password is not None:
             cmd['Password'] = password
-        return self.setWifi(cmd)
+        return self.setWifi(cmd, timeout=timeout)
 
 
     def setWifi(self,
                 wifi_data: dict,
-                timeout: int = 10,
+                timeout: Union[int, float] = 10,
                 interval: float = 1.25,
                 callback: Optional[Callable] = None):
         """ Configure all known Wi-Fi access points. Applicable only
@@ -809,6 +819,7 @@ class CommandInterface:
                 set on the device.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will be
@@ -833,7 +844,7 @@ class CommandInterface:
 
 
     def queryWifi(self,
-                  timeout: int = 10,
+                  timeout: Union[int, float] = 10,
                   interval: float = .25,
                   callback: Optional[Callable] = None) -> Union[None, dict]:
         """ Check the current state of the Wi-Fi (if present). Applicable only
@@ -871,7 +882,8 @@ class CommandInterface:
         return response.get('QueryWiFiResponse')
 
 
-    def scanWifi(self, timeout: int = 10,
+    def scanWifi(self, 
+                 timeout: Union[int, float] = 10,
                  interval: float = .25,
                  callback: Optional[Callable] = None) -> Union[None, list]:
         """ Initiate a scan for Wi-Fi access points (APs). Applicable only
@@ -931,14 +943,15 @@ class CommandInterface:
 
     def updateESP32(self,
                     firmware: str,
-                    timeout: float = 10,
+                    timeout: Union[int, float] = 10,
                     callback: Optional[Callable] = None):
         """ Update the ESP32 firmware. Applicable only to devices with
             ESP32 Wi-Fi hardware.
 
             :param firmware: The name of the ESP32 firmware package (.bin).
             :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+                respond. 0 will return immediately; `None` or -1 will wait
+                indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -968,7 +981,7 @@ class CommandInterface:
 
 
     def getNetworkStatus(self,
-                         timeout: int = 10,
+                         timeout: Union[int, float] = 10,
                          interval: float = .25,
                          callback: Optional[Callable] = None) -> Union[None, dict]:
         """ Check the device's networking hardware. The response is less
@@ -991,6 +1004,7 @@ class CommandInterface:
 
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will
@@ -1013,7 +1027,7 @@ class CommandInterface:
 
 
     def getNetworkAddress(self,
-                          timeout: int = 10,
+                          timeout: Union[int, float] = 10,
                           interval: float = .25,
                           callback: Optional[Callable] = None
                           ) -> Tuple[Optional[str], Optional[str]]:
@@ -1031,6 +1045,7 @@ class CommandInterface:
 
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will
@@ -1102,7 +1117,6 @@ class SerialCommandInterface(CommandInterface):
 
     def __init__(self,
                  device: 'Recorder',
-                 timeout: Union[int, float] = 1,
                  make_crc: bool = True,
                  ignore_crc: bool = False,
                  **serial_kwargs):
@@ -1110,14 +1124,13 @@ class SerialCommandInterface(CommandInterface):
         Constructor.
 
         :param device: The Recorder to which to interface.
-        :param timeout: The default response timeout.
         :param make_crc: If `True`, generate CRCs for outgoing packets.
         :param ignore_crc: If `True`, ignore the CRC on response packets.
 
         If additional keyword arguments are provided, they will be used
         when opening the serial port.
         """
-        super().__init__(device, timeout=timeout)
+        super().__init__(device)
 
         self.make_crc = make_crc
         self.ignore_crc = ignore_crc
@@ -1133,7 +1146,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     @classmethod
-    def hasInterface(cls, device) -> bool:
+    def hasInterface(cls, device: "Recorder") -> bool:
         """ Determine if a device supports this `CommandInterface` type.
 
             :param device: The recorder to check.
@@ -1170,7 +1183,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     @classmethod
-    def findSerialPort(cls, device) -> Union[None, str]:
+    def findSerialPort(cls, device: "Recorder") -> Union[None, str]:
         """ Find the path/name/number of a serial port corresponding to a
             given serial number.
 
@@ -1273,7 +1286,8 @@ class SerialCommandInterface(CommandInterface):
         return True
 
 
-    def _encode(self, data: dict,
+    def _encode(self,
+                data: dict,
                 checkSize: bool = True) -> bytearray:
         """
             Generate a serial packet containing EBMLCommand data. Separated from
@@ -1345,10 +1359,11 @@ class SerialCommandInterface(CommandInterface):
                       timeout: Optional[float] = None,
                       callback: Optional[Callable] = None) -> Union[None, dict]:
         """
-        Wait for and retrieve the response to a serial command. Does not do any
-        processing other than (attempting to) decode the EBML payload.
+        Wait for and retrieve the response to a serial command. Does not do
+        any processing other than (attempting to) decode the EBML payload.
 
-        :param timeout: Time to wait for a valid response.
+        :param timeout: Time to wait for a valid response. `None` or -1 will
+            wait indefinitely.
         :param callback: A function to call each response-checking
             cycle. If the callback returns `True`, the wait for a
             response will be cancelled. The callback function should
@@ -1356,12 +1371,12 @@ class SerialCommandInterface(CommandInterface):
         :return: A `dict` of response data, or `None` if `callback` caused
             the process to cancel.
         """
-        timeout = self.timeout if timeout is None else timeout
+        timeout = -1 if timeout is None else timeout
         deadline = time() + timeout
 
         buf = b''
 
-        while time() < deadline:
+        while timeout < 0 or time() < deadline:
             if callback is not None and callback() is True:
                 return
             if self.port.in_waiting:
@@ -1389,7 +1404,7 @@ class SerialCommandInterface(CommandInterface):
     def _sendCommand(self,
                      cmd: dict,
                      response: bool = True,
-                     timeout: float = 10,
+                     timeout: Union[int, float] = 10,
                      interval: float = .25,
                      index: bool = True,
                      callback: Optional[Callable] = None) -> Union[None, dict]:
@@ -1403,7 +1418,8 @@ class SerialCommandInterface(CommandInterface):
                 commands that potentially cause a reset faster than the
                 acknowledgement can be read.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a `DeviceTimeout` exception. `None` or -1 will wait
+                indefinitely.
             :param interval: Time (in seconds) between checks for a
                 response. Not used by the serial interface.
             :param index: If `True` (default), include an incrementing
@@ -1417,8 +1433,8 @@ class SerialCommandInterface(CommandInterface):
 
             :raise: DeviceTimeout
         """
-        now = time()
-        deadline = now + timeout
+        timeout = -1 if timeout is None else timeout
+        deadline = time() + timeout
 
         with self.device._busy:
             self.getSerialPort()
@@ -1431,6 +1447,9 @@ class SerialCommandInterface(CommandInterface):
                     packet = self._encode(cmd)
                     self.lastCommand = time(), deepcopy(cmd)
                     self._writeCommand(packet)
+            
+                    if timeout == 0:
+                        return None
 
                     try:
                         resp = self._readResponse(timeout, callback=callback)
@@ -1482,12 +1501,21 @@ class SerialCommandInterface(CommandInterface):
                         queueDepth = 1
 
                     # Failure!
-                    if time() >= deadline:
+                    if timeout > 0 and time() >= deadline:
                         if queueDepth == 0:
                             raise DeviceTimeout('Timed out waiting for opening in command queue')
                         else:
                             raise DeviceTimeout('Timed out waiting for command response')
-                        
+
+            except TimeoutError:
+                if not response:
+                    logger.debug('Ignoring timeout waiting for response '
+                                 'because no response required')
+                    self.status = None, None
+                    return None
+                else:
+                    raise
+
             finally:
                 self.port.close()
 
@@ -1519,7 +1547,7 @@ class SerialCommandInterface(CommandInterface):
                 while int(t) == int(sysTime):
                     sysTime = time()
 
-            response = self._sendCommand(command)
+            response = self._sendCommand(command, timeout=timeout)
             try:
                 dt = response['ClockTime']
                 devTime = self.device._TIME_PARSER.unpack_from(dt)[0]
@@ -1564,14 +1592,15 @@ class SerialCommandInterface(CommandInterface):
             while t0 < t:
                 t0 = time()
 
-        self._sendCommand({'EBMLCommand': {'SetClock': payload}})
+        self._sendCommand({'EBMLCommand': {'SetClock': payload}}, 
+                          response=False)
 
         return t0, t
 
 
     def ping(self,
              data: Optional[ByteString] = None,
-             timeout: float = 10,
+             timeout: Union[int, float] = 10,
              interval: float = .25,
              callback: Optional[Callable] = None) -> dict:
         """ Verify the recorder is present and responding. Not supported on
@@ -1600,7 +1629,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def getBatteryStatus(self,
-                         timeout: float = 1,
+                         timeout: Union[int, float] = 1,
                          callback: Optional[Callable] = None) -> Union[dict, None]:
         """ Get the status of the recorder's battery. Not supported on all
             devices.
@@ -1650,7 +1679,7 @@ class SerialCommandInterface(CommandInterface):
 
     def startRecording(self,
                        wait: bool = True,
-                       timeout: float = 5,
+                       timeout: Union[int, float] = 5,
                        callback: Optional[Callable] = None) -> bool:
         """ Start the device recording.
 
@@ -1674,7 +1703,7 @@ class SerialCommandInterface(CommandInterface):
 
     def reset(self,
               wait: bool = True,
-              timeout: float = 5,
+              timeout: Union[int, float] = 5,
               callback: Optional[Callable] = None) -> bool:
         """ Reset (reboot) the recorder.
 
@@ -1699,7 +1728,7 @@ class SerialCommandInterface(CommandInterface):
     def _updateAll(self,
                    secure: bool = True,
                    wait: bool = True,
-                   timeout: float = 5,
+                   timeout: Union[int, float] = 5,
                    callback: Optional[Callable] = None):
         """ Send the 'secure update all' command, installing any userpage
             and/or firmware update files copied to the device.
@@ -1707,7 +1736,8 @@ class SerialCommandInterface(CommandInterface):
             :param wait: If `True`, wait for the recorer to dismount,
                 indicating the update has started.
             :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+                respond. 0 will return immediately. `None` or -1 will wait
+                indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a response
                 will be cancelled. The callback function should require no
@@ -1724,14 +1754,15 @@ class SerialCommandInterface(CommandInterface):
 
 
     def scanWifi(self,
-                 timeout: int = 10,
+                 timeout: Union[int, float] = 10,
                  interval: float = .25,
                  callback: Optional[Callable] = None) -> Union[None, list]:
         """ Initiate a scan for Wi-Fi access points (APs). Applicable only
             to devices with Wi-Fi hardware.
 
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a `DeviceTimeout` exception. `None` or -1 will wait
+                indefinitely.
             :param interval: Time (in seconds) between checks for a response.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will
@@ -1834,7 +1865,8 @@ class FileCommandInterface(CommandInterface):
         """
         Helper to retrieve an EBML response from the device's `RESPONSE` file.
 
-        :param timeout: Time to wait for a valid response.
+        :param timeout: Time to wait for a valid response. Not applicable to
+            `FileCommandInterface` (timeout handled by caller).
         :param callback: A function to call each response-checking
             cycle. If the callback returns `True`, the wait for a response
             will be cancelled. The callback function should require no
@@ -1858,7 +1890,8 @@ class FileCommandInterface(CommandInterface):
 
             except (AttributeError, IndexError, KeyError, TypeError) as err:
                 # TODO: Better exception handling in readResponse()
-                warnings.warn("Ignoring exception in {}._readResponse(): {!r}".format(type(self).__name__, err))
+                warnings.warn("Ignoring exception in {}._readResponse(): {!r}"
+                              .format(type(self).__name__, err))
 
         return None
 
@@ -1930,7 +1963,7 @@ class FileCommandInterface(CommandInterface):
     def _sendCommand(self,
                      cmd: dict,
                      response: bool = True,
-                     timeout: float = 10,
+                     timeout: Union[int, float] = 10,
                      interval: float = .25,
                      index: bool = True,
                      callback: Optional[Callable] = None) -> Union[None, dict]:
@@ -1940,7 +1973,8 @@ class FileCommandInterface(CommandInterface):
             :param cmd: The raw EBML representing the command.
             :param response: If `True`, wait for and return a response.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a `DeviceTimeout` exception. `None` or -1 will wait
+                indefinitely.
             :param interval: Time (in seconds) between checks for a
                 response.
             :param callback: A function to call each response-checking
@@ -1964,22 +1998,26 @@ class FileCommandInterface(CommandInterface):
 
             # Wait until the command queue is empty.
             # The file interface does this first.
-            while response:  # a `while True` infinite loop
+            while True:  # a `while True` infinite loop
                 data = self._readResponse()
                 if data:
                     idx = data.get('ResponseIdx')
                     queueDepth = data.get('CMDQueueDepth', 1)
                     if queueDepth > 0:
                         break
-                    raise DeviceTimeout("Timed out waiting for device to complete "
-                                        "queued commands (%s remaining)" % queueDepth)
                 else:
                     sleep(interval)
 
-            self._writeCommand(ebml)
+                if time() > deadline:
+                    if not response:
+                        logger.debug('Ignoring timeout waiting for CMDQueue '
+                                     'to empty because no response required')
+                        return
 
-            if not response:
-                return
+                    raise DeviceTimeout("Timed out waiting for device to complete "
+                                        "queued commands (%s remaining)" % queueDepth)
+
+            self._writeCommand(ebml)
 
             while time() <= deadline:
                 if callback is not None and callback() is True:
@@ -1991,6 +2029,11 @@ class FileCommandInterface(CommandInterface):
                     return data
 
                 sleep(interval)
+
+            if not response:
+                logger.debug('Ignoring timeout waiting for response '
+                             'because no response required')
+                return
 
             raise DeviceTimeout("Timed out waiting for command response (%s seconds)" % timeout)
 
@@ -2004,7 +2047,7 @@ class FileCommandInterface(CommandInterface):
                           statusCode: int = DeviceStatusCode.RESET_PENDING,
                           timeoutMsg: Optional[str] = None,
                           wait: bool = True,
-                          timeout: float = 5,
+                          timeout: Union[int, float] = 5,
                           callback: Optional[Callable] = None) -> bool:
         """ Send a command that will cause the device to reset/dismount. No
             response is expected/required.
@@ -2016,8 +2059,9 @@ class FileCommandInterface(CommandInterface):
                 acknowledgement (if the interface supports one).
             :param wait: If `True`, wait for the recorer to respond and/or
                 dismount.
-            :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a `DeviceTimeout` exception. 0 will return
+                immediately; `None` or -1 will wait indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -2035,7 +2079,7 @@ class FileCommandInterface(CommandInterface):
     def _updateAll(self,
                    secure: bool = True,
                    wait: bool = True,
-                   timeout: float = 10,
+                   timeout: Union[int, float] = 10,
                    callback: Optional[Callable] = None) -> bool:
         """ Send the `"SecureUpdateAll"` command (or `"LegacyAll"` if the
             firmware is a simple binary rather than a signed package).
@@ -2044,8 +2088,9 @@ class FileCommandInterface(CommandInterface):
                 instead of `"LegacyAll"`.
             :param wait: If `True`, wait for the recorer to dismount,
                 indicating the command has executed.
-            :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a `DeviceTimeout` exception. 0 will return
+                immediately; `None` or -1 will wait indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -2062,14 +2107,15 @@ class FileCommandInterface(CommandInterface):
 
     def startRecording(self,
                        wait: bool = True,
-                       timeout: float = 10,
+                       timeout: Union[int, float] = 10,
                        callback: Optional[Callable] = None) -> bool:
         """ Start the device recording, if supported.
 
             :param wait: If `True`, wait for the recorer to dismount,
                 indicating the recording has started.
-            :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a `DeviceTimeout` exception. 0 will return
+                immediately; `None` or -1 will wait indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -2090,14 +2136,15 @@ class FileCommandInterface(CommandInterface):
 
     def reset(self,
               wait: bool = True,
-              timeout: float = 10,
+              timeout: Union[int, float] = 10,
               callback: Optional[Callable] = None) -> bool:
         """ Reset (reboot) the recorder.
 
             :param wait: If `True`, wait for the recorer to dismount,
                 indicating the reset has taken effect.
-            :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a `DeviceTimeout` exception. 0 will return
+                immediately; `None` or -1 will wait indefinitely.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
