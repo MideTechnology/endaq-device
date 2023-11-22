@@ -81,7 +81,8 @@
         <BinaryElement name="SetClock" id="0x5510" multiple="0" mandatory="0">Serial only. Set the real time clock. Expects a 10 byte value. Comparable to writing to the CLOCK file.</BinaryElement>
         <MasterElement name="GetClock" id="0x5500" multiple="0" mandatory="0">Serial only. Request RTC clock time. Comparable to reading the CLOCK file.</MasterElement>
         <MasterElement name="GetBattery" id="0x5600" multiple="0" mandatory="0">Serial only. Request the battery state.</MasterElement>
-        <BinaryElement name="SendPing" id="0x5700" multiple="0" mandatory="0">Serial only. Request the device echo the enclosed data.</BinaryElement>		
+        <BinaryElement name="SendPing" id="0x5700" multiple="0" mandatory="0">Serial only. Request the device echo the enclosed data.</BinaryElement>
+        <UIntegerElement name="Blink" id="0x5800" multiple="0" mandatory="0">Serial only. Blinks LEDs on device for recognition purposes</UIntegerElement>
     </MasterElement>
 
     <MasterElement name="EBMLResponse" id="0x86" multiple="0" mandatory="0">Response payload to above EBML command payload. Not all commands generate a response
