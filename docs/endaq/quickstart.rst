@@ -20,7 +20,6 @@ A ``endaq.device`` "Hello World":
    >>> import endaq.device
    >>> endaq.device.getDevices()
    [<EndaqS S3-E25D40 "Example S3" SN:S0009468 (D:\)>]
-   >>> dev = _[0]
 
 Accessing basic recorder properties
 -----------------------------------
@@ -29,6 +28,7 @@ Most common properties are read-only attributes of :py:class:`endaq.device.Recor
 
 .. code-block:: python
 
+   >>> dev = endaq.device.getDevices()[0]
    >>> dev.name
    'Example S3'
    >>> dev.serial
