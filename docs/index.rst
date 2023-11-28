@@ -14,6 +14,8 @@ also supports legacy SlamStick™ devices (X, C, and S).
    :caption: Contents:
 
    endaq/quickstart
+   endaq/finding_devices
+   endaq/Recorder
    endaq/config_control
    endaq/special_topics
    api_ref
