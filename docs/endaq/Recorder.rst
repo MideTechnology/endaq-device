@@ -14,7 +14,9 @@ subclass associated with their product name will instantiate as :class:`~.Record
 .. note::
   Some or all of the discrete product-specific subclasses may be deprecated in the near
   future (the legacy SlamStick classes excluded). Using `isinstance()` to determine
-  `Recorder` subclasses is not recommended.
+  :class:`~.Recorder` subclasses is not recommended; consider using the properties
+  :attr:`~.Recorder.partNumber` and :attr:`~.Recorder.productName` instead
+  (see below).
 
 .. autoclass:: endaq.device.base.Recorder
   :members:
