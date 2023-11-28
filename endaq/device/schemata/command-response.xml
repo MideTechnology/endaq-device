@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Schema type="mide.ss.cmd" version="2" readversion="1">
+<Schema type="mide.ss.cmd" version="3" readversion="2">
     <SchemaInfo>
         <Author>Derek Witt</Author>
         <Author>David Randall Stokes</Author>

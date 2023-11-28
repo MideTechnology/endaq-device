@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Schema type="mide" version="2" readversion="2">
+<Schema type="mide" version="3" readversion="2">
   <!-- Base EBML elements. Required. -->
   <MasterElement name="EBML" id="0x1A45DFA3" mandatory="1" multiple="0" minver="1">Set the EBML characteristics of the data to follow. Each EBML document has to start with this.
       <UIntegerElement name="EBMLVersion" id="0x4286" multiple="0" mandatory="1" default="1" minver="1">The version of EBML parser used to create the file.</UIntegerElement>
