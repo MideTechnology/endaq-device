@@ -522,6 +522,37 @@ class CommandInterface:
         raise UnsupportedFeature(self, self.ping)
 
 
+    def blink(self,
+              duration: int = 3,
+              priority: int = 0,
+              a: int = 0b00000111,
+              b: int = 0b00000000):
+        """ Blink the device's LEDs. This is intended for identifying a
+            specific recorder when multiple are plugged into one computer.
+            Not supported on all devices.
+
+            Blinking will alternate between patterns `a` and `b` every 0.5
+            seconds, continuing for the specified duration. `a` and `b`
+            are unsigned 8 bit integers, in which each bit represents one
+            of the recorder's LEDs:
+                * Bit 0 (LSB): Red
+                * Bit 1: Green
+                * Bit 2: Blue
+                * Bits 3-7: Reserved for future use.
+
+            :param duration: The total duration (in seconds) of the blinking,
+                maximum 255.
+            :param priority: If 1, the Blink command should take precedence
+                over all other device LED sequences. If 0, the Blink command
+                should not take precedence over Wi-Fi indications including
+                Provisioning, Connecting, and Success/Failure indications,
+                but it should take precedence over battery indications.
+            :param a: LED pattern 'A'.
+            :param b: LED pattern 'B'.
+        """
+        raise UnsupportedFeature(self, self.blink)
+
+
     # =======================================================================
     # Firmware/userpage updating
     #
@@ -1626,6 +1657,37 @@ class SerialCommandInterface(CommandInterface):
             raise CommandError('Ping response did not contain a PingReply')
 
         return response['PingReply']
+
+
+    def blink(self,
+              duration: int = 3,
+              priority: int = 0,
+              a: int = 0b00000111,
+              b: int = 0b00000000):
+        """ Blink the device's LEDs. This is intended for identifying a
+            specific recorder when multiple are plugged into one computer.
+            Not supported on all devices.
+
+            Blinking will alternate between patterns `a` and `b` every 0.5
+            seconds, continuing for the specified duration. `a` and `b`
+            are unsigned 8 bit integers, in which each bit represents one
+            of the recorder's LEDs:
+                * Bit 0 (LSB): Red
+                * Bit 1: Green
+                * Bit 2: Blue
+                * Bits 3-7: Reserved for future use.
+
+            :param duration: The total duration of the blinking, 0-255.
+            :param priority: If 1, the Blink command should take precedence
+                over all other device LED sequences. If 0, the Blink command
+                should not take precedence over Wi-Fi indications including
+                Provisioning, Connecting, and Success/Failure indications,
+                but it should take precedence over battery indications.
+            :param a: LED pattern 'A'.
+            :param b: LED pattern 'B'.
+        """
+        payload = bytearray([val & 0xff for val in (duration, priority, a, b)])
+        self._sendCommand({'EBMLCommand': {'Blink': payload}}, response=False)
 
 
     def getBatteryStatus(self,
