@@ -21,7 +21,7 @@ from .types import Filename, Epoch
 
 from . import schemata
 
-__version__ = "1.0.8"
+__version__ = "1.1.0"
 
 __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'DeviceError', 'DeviceTimeout', 'UnsupportedFeature',
@@ -175,28 +175,48 @@ def getDevices(paths: Optional[List[Filename]] = None,
     return result
 
 
-def findDevice(sn: Union[str, int],
+def findDevice(sn: Optional[Union[str, int]] = None,
+               chipId: Optional[Union[str, int]] = None,
                paths: Optional[List[Filename]] = None,
+               update: bool = False,
                strict: bool = True) -> Union[Recorder, None]:
-    """ Find a specific recorder by serial number.
+    """ Find a specific recorder by serial number or unique chip ID. One or
+        the other must be provided, but not both. Note that early firmware
+        versions do not report the device's chip ID.
 
-        :param sn: The serial number of the recorder to find.
+        :param sn: The serial number of the recorder to find. Cannot be used
+            with `chipId`. It can be an integer or a formatted serial number
+            string (e.g., `12345` or `"S00012345"`).
+        :param chipId: The chip ID of the recorder to find. Cannot be used
+            with `sn`. It can be an integer or a hex string.
         :param paths: A list of specific paths to recording devices.
             Defaults to all found devices (as returned by `getDeviceList()`).
+        :param update: If `True`, update the path of known devices if they
+            have changed (e.g., their drive letter or mount point changed
+            after a device reset).
         :param strict: If `False`, only the directory structure is used
             to identify a recorder. If `True`, non-FAT file systems will
             be automatically rejected.
         :return: An instance of a `Recorder` subclass representing the
-            device with the specified serial number, or `None`.
+            device with the specified serial number or chip ID, or `None`
+            if it cannot be found.
     """
+    if sn and chipId:
+        raise ValueError('Either a serial number or chip ID is required, not both')
+    elif sn is None and chipId is None:
+        raise ValueError('Either a serial number or chip ID is required')
+
     if isinstance(sn, str):
         sn = sn.lstrip(string.ascii_letters+"0")
         if not sn:
             sn = 0
         sn = int(sn)
 
-    for d in getDevices(paths, strict=strict):
-        if d.serialInt == sn:
+    if isinstance(chipId, str):
+        chipId = int(chipId, 16)
+
+    for d in getDevices(paths, update=update, strict=strict):
+        if d.serialInt == sn or d.chipId == chipId:
             return d
 
     return None

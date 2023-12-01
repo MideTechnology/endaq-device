@@ -788,15 +788,15 @@ Attributes: a way to insert an arbitrary key/value into a structure, without rev
 schema itself. This data is typically non-critical. Strictly speaking, this may be considered an abuse of EBML, but it
 is flexible and moderately clean. This is used in several Mide schemata.
 -->
-<MasterElement name="Attribute" global="1" id="0x6110" multiple="1" minver="2"> Container For arbitrary name/value attributes, allowing additional data without revising (and bloating) the schema. All of these elements are level -1, allowing an AttributeList to occur at any level, but should always be used at the relative levels implied below.
-    <UnicodeElement name="AttributeName" id="0x612f" multiple="0" minver="2"> Attribute name. Should always be child of Atrribute. </UnicodeElement>
-    <IntegerElement name="IntAttribute" id="0x6120" multiple="0" minver="2"> Integer Attribute. Should always be child of Atrribute. </IntegerElement>
-    <UIntegerElement name="UIntAttribute" id="0x6121" multiple="0" minver="2"> Unsigned integer Attribute. Should always be child of Atrribute. </UIntegerElement>
-    <FloatElement name="FloatAttribute" id="0x6122" multiple="0" minver="2"> Floating point Attribute. Should always be child of Atrribute. </FloatElement>
-    <StringElement name="StringAttribute" id="0x6123" multiple="0" minver="2"> ASCII String Attribute. Should always be child of Atrribute. </StringElement>
-    <DateElement name="DateAttribute" id="0x6124" multiple="0" minver="2"> Date Attribute. Should always be child of Atrribute. </DateElement>
-    <BinaryElement name="BinaryAttribute" id="0x6125" multiple="0" minver="2"> Binary Attribute. Should always be child of Atrribute. </BinaryElement>
-    <UnicodeElement name="UnicodeAttribute" id="0x6126" multiple="0" minver="2"> ASCII String Attribute. Should always be child of Atrribute. </UnicodeElement>
+<MasterElement name="Attribute" id="0x6110" global="1" multiple="1"> Container For arbitrary name/value attributes, allowing additional data without revising (and bloating) the schema. It should contain exactly one `AttributeName` and one of the value elements.
+    <UnicodeElement name="AttributeName" id="0x612f" multiple="0" mandatory="1"> Attribute name. Should always be child of Attribute. </UnicodeElement>
+    <IntegerElement name="IntAttribute" id="0x6120" multiple="0"> Integer Attribute. Should always be child of Attribute. </IntegerElement>
+    <UIntegerElement name="UIntAttribute" id="0x6121" multiple="0"> Unsigned integer Attribute. Should always be child of Attribute. </UIntegerElement>
+    <FloatElement name="FloatAttribute" id="0x6122" multiple="0"> Floating point Attribute. Should always be child of Attribute. </FloatElement>
+    <StringElement name="StringAttribute" id="0x6123" multiple="0"> ASCII String Attribute. Should always be child of Attribute. </StringElement>
+    <DateElement name="DateAttribute" id="0x6124" multiple="0"> Date Attribute. Should always be child of Attribute. </DateElement>
+    <BinaryElement name="BinaryAttribute" id="0x6125" multiple="0"> Binary Attribute. Should always be child of Attribute. </BinaryElement>
+    <UnicodeElement name="UnicodeAttribute" id="0x6126" multiple="0"> Unicode String Attribute. Should always be child of Attribute. </UnicodeElement>
 </MasterElement>
 
 </Schema>

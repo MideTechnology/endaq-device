@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Schema type="mide.ss.fwpkg" version="2" readversion="2">
+<Schema type="mide.ss.fwpkg" version="3" readversion="2">
     <SchemaInfo>
         <Author>Derek Witt</Author>
         <Description>Metadata and packing format for encrypted update packages</Description>
@@ -45,5 +45,21 @@
 </MasterElement> <!-- UpdatePkg -->
 
 <!-- Not part of the schema officially, but there is a binary blob appended to the end of this "header" that carries the payload described by the tags above -->
+
+<!--
+Attributes: a way to insert an arbitrary key/value into a structure, without revising (and potentially bloating) the
+schema itself. This data is typically non-critical. Strictly speaking, this may be considered an abuse of EBML, but it
+is flexible and moderately clean. This is used in several Mide schemata.
+-->
+<MasterElement name="Attribute" id="0x6110" global="1" multiple="1"> Container For arbitrary name/value attributes, allowing additional data without revising (and bloating) the schema. It should contain exactly one `AttributeName` and one of the value elements.
+    <UnicodeElement name="AttributeName" id="0x612f" multiple="0" mandatory="1"> Attribute name. Should always be child of Attribute. </UnicodeElement>
+    <IntegerElement name="IntAttribute" id="0x6120" multiple="0"> Integer Attribute. Should always be child of Attribute. </IntegerElement>
+    <UIntegerElement name="UIntAttribute" id="0x6121" multiple="0"> Unsigned integer Attribute. Should always be child of Attribute. </UIntegerElement>
+    <FloatElement name="FloatAttribute" id="0x6122" multiple="0"> Floating point Attribute. Should always be child of Attribute. </FloatElement>
+    <StringElement name="StringAttribute" id="0x6123" multiple="0"> ASCII String Attribute. Should always be child of Attribute. </StringElement>
+    <DateElement name="DateAttribute" id="0x6124" multiple="0"> Date Attribute. Should always be child of Attribute. </DateElement>
+    <BinaryElement name="BinaryAttribute" id="0x6125" multiple="0"> Binary Attribute. Should always be child of Attribute. </BinaryElement>
+    <UnicodeElement name="UnicodeAttribute" id="0x6126" multiple="0"> Unicode String Attribute. Should always be child of Attribute. </UnicodeElement>
+</MasterElement>
 
 </Schema>
