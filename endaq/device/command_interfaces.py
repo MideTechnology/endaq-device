@@ -1008,7 +1008,7 @@ class CommandInterface:
         payload = {}
 
         cmd = {'EBMLCommand': {'LegacyESP': payload}}
-        return self._sendCommand(cmd, timeout=timeout, callback=callback)
+        return self._runSimpleCommand(cmd, timeout=timeout, callback=callback)
 
 
     def getNetworkStatus(self,
