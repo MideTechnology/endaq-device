@@ -541,7 +541,9 @@ class CommandInterface:
                 * Bits 3-7: Reserved for future use.
 
             :param duration: The total duration (in seconds) of the blinking,
-                maximum 255.
+                maximum 255. 0 will blink without time limit, stopping when
+                the device is disconnected from USB, or when a recording is
+                started (trigger or button press).
             :param priority: If 1, the Blink command should take precedence
                 over all other device LED sequences. If 0, the Blink command
                 should not take precedence over Wi-Fi indications including
