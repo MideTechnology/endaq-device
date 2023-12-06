@@ -17,7 +17,7 @@ from .base import Recorder, os_specific
 from .exceptions import *
 from .endaq import EndaqS, EndaqW
 from .slamstick import SlamStickX, SlamStickC, SlamStickS
-from .types import Filename, Epoch
+from .types import Drive, Filename, Epoch
 
 from . import schemata
 
@@ -25,7 +25,7 @@ __version__ = "1.1.0"
 
 __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'DeviceError', 'DeviceTimeout', 'UnsupportedFeature',
-           'deviceChanged', 'findDevice', 'fromRecording', 'getDeviceList',
+           'deviceChanged', 'findDevice', 'fromRecording',
            'getDevices', 'getRecorder', 'isRecorder', 'onRecorder',
            'Recorder', 'EndaqS', 'EndaqW', 'SlamStickX', 'SlamStickC',
            'SlamStickS')
@@ -131,13 +131,15 @@ def deviceChanged(recordersOnly: bool = True,
     return os_specific.deviceChanged(recordersOnly, RECORDER_TYPES, clear=clear)
 
 
-def getDeviceList(strict: bool = True) -> List[Filename]:
+def getDeviceList(strict: bool = True) -> List[Drive]:
     """ Get a list of data recorders, as their respective path (or the drive
         letter under Windows).
 
         :param strict: If `False`, only the directory structure is used
             to identify a recorder. If `True`, non-FAT file systems will
             be automatically rejected.
+        :return: A list of `Drive` objects (named tuples containing the
+            drive path, label, and other low-level filesystem info).
     """
     return os_specific.getDeviceList(RECORDER_TYPES, strict=strict)
 
@@ -188,7 +190,10 @@ def findDevice(sn: Optional[Union[str, int]] = None,
             with `chipId`. It can be an integer or a formatted serial number
             string (e.g., `12345` or `"S00012345"`).
         :param chipId: The chip ID of the recorder to find. Cannot be used
-            with `sn`. It can be an integer or a hex string.
+            with `sn`. It can be an integer or a hex string. Note that
+            `chipId` cannot be used to find SlamStick and older enDAQ S
+            devices (prior to hardware revision 2.0), as they do not report
+            their chip ID.
         :param paths: A list of specific paths to recording devices.
             Defaults to all found devices (as returned by `getDeviceList()`).
         :param update: If `True`, update the path of known devices if they
