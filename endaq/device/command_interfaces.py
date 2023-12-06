@@ -11,7 +11,7 @@ import os.path
 import shutil
 import sys
 from time import sleep, time, struct_time
-from typing import Any, AnyStr, ByteString, Optional, Tuple, Union, Callable, TYPE_CHECKING
+from typing import Any, AnyStr, ByteString, Dict, Optional, Tuple, Union, Callable, TYPE_CHECKING
 import warnings
 
 import logging
@@ -196,7 +196,7 @@ class CommandInterface:
     # =======================================================================
 
     def _encodeResponseCodes(self,
-                             response: Optional[dict[str, Any]]) -> dict[str, Any]:
+                             response: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """ Convert any known response codes to their corresponding enum. For
             generating more human-readable output. Invalid enum values are
             not changed.
