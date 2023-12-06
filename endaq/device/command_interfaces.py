@@ -842,20 +842,44 @@ class CommandInterface:
     def setAP(self,
               ssid: str,
               password: Optional[str] = None,
-              timeout: Union[int, float] = 10):
+              wait: bool = True,
+              timeout: Union[int, float] = 10,
+              callback: Optional[Callable] = None):
         """ Quickly set the Wi-Fi access point (router) and password.
             Applicable only to devices with Wi-Fi hardware.
 
             :param ssid: The SSID (name) of the wireless access point.
             :param password: The access point password.
+            :param wait: If `True`, wait until the device reports it is
+                connected before returning.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
                 `None` or -1 will wait indefinitely.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will be
+                cancelled. The callback function should require no arguments.
+                The `callback` will not be called if `wait` is `False`.
         """
+        timeout = -1 if timeout is None else timeout
+        deadline = time() + timeout
+
         cmd = {'SSID': ssid, 'Selected': 1}
         if password is not None:
             cmd['Password'] = password
-        return self.setWifi(cmd, timeout=timeout)
+
+        self.setWifi(cmd, timeout=timeout, callback=callback)
+        if not wait or timeout == 0:
+            return
+
+        while timeout < 0 or time() < deadline:
+            status = self.queryWifi(timeout=0.5).get('WiFiConnectionStatus')
+
+            if status == WiFiConnectionStatus.CONNECTED:
+                return
+
+            sleep(min(timeout, 1))
+
+        raise DeviceTimeout('Timed out waiting to connect to AP SSID {}'.format(ssid))
 
 
     def setWifi(self,
