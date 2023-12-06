@@ -11,7 +11,7 @@ import os.path
 import shutil
 import sys
 from time import sleep, time, struct_time
-from typing import AnyStr, ByteString, Optional, Tuple, Union, Callable, TYPE_CHECKING
+from typing import Any, AnyStr, ByteString, Optional, Tuple, Union, Callable, TYPE_CHECKING
 import warnings
 
 import logging
@@ -25,6 +25,7 @@ from .exceptions import DeviceError, CommandError, DeviceTimeout, UnsupportedFea
 from .hdlc import hdlc_decode, hdlc_encode, HDLC_BREAK_CHAR
 from .exceptions import CRCError
 from .types import Epoch
+from . import response_codes
 from .response_codes import *
 
 if sys.platform == 'darwin':
@@ -193,6 +194,32 @@ class CommandInterface:
     # =======================================================================
     # The actual command sending and response receiving.
     # =======================================================================
+
+    def _encodeResponseCodes(self,
+                             response: Optional[dict[str, Any]]) -> dict[str, Any]:
+        """ Convert any known response codes to their corresponding enum. For
+            generating more human-readable output. Invalid enum values are
+            not changed.
+
+            :param response: The response dictionary to be returned with
+                enums instead of integer response codes. Note that this
+                gets modified in-place!
+            :return: The modified `response` dictionary (it is modified
+                in place, but as a convenience, it is also returned).
+        """
+        if not response:
+            return
+
+        for name, code in [(k, v) for k, v in response.items()
+                           if k in response_codes.__dict__]:
+            try:
+                response[name] = response_codes.__dict__[name](code)
+            except (AttributeError, TypeError):
+                logger.debug('Received unknown {}: {}'.format(name, code))
+                pass
+
+        return response
+
 
     def _writeCommand(self, packet: ByteString) -> int:
         """
@@ -912,7 +939,7 @@ class CommandInterface:
         if response is None:
             return None
 
-        return response.get('QueryWiFiResponse')
+        return self._encodeResponseCodes(response.get('QueryWiFiResponse'))
 
 
     def scanWifi(self, 
@@ -954,7 +981,8 @@ class CommandInterface:
 
         cmd = {'EBMLCommand': {'WiFiScan': None}}
 
-        response = self._sendCommand(cmd, response=True, timeout=timeout, interval=interval, callback=callback)
+        response = self._sendCommand(cmd, response=True, timeout=timeout,
+                                     interval=interval, callback=callback)
 
         if response is None:
             return None
@@ -1028,9 +1056,10 @@ class CommandInterface:
             * ``IPV4Address`` (bytes): The device's IP address (typically
                 set by the router when the device connects). This will not
                 be present if the device is not connected.
-            * ``CurrentWiFiStatus`` (int): The Wi-Fi connection status.
-                Note: this is not the same as the ``WiFiConnectionStatus``
-                in the response returned by `queryWifi()`.
+            * ``CurrentWiFiStatus`` (int, optional): The Wi-Fi connection
+                status. May not be present. Note: this is not the same as the
+                ``WiFiConnectionStatus`` in the response returned by
+                `queryWifi()`.
 
             :raise DeviceTimeout: Raised if 'timeout' seconds have gone by
                 without getting a response
@@ -1056,7 +1085,8 @@ class CommandInterface:
                                  timeout=timeout,
                                  interval=interval,
                                  callback=callback)
-        return response.get('NetworkStatusResponse', None)
+
+        return self._encodeResponseCodes(response.get('NetworkStatusResponse'))
 
 
     def getNetworkAddress(self,
@@ -1679,7 +1709,10 @@ class SerialCommandInterface(CommandInterface):
                 * Bit 2: Blue
                 * Bits 3-7: Reserved for future use.
 
-            :param duration: The total duration of the blinking, 0-255.
+            :param duration: The total duration (in seconds) of the blinking,
+                maximum 255. 0 will blink without time limit, stopping when
+                the device is disconnected from USB, or when a recording is
+                started (trigger or button press).
             :param priority: If 1, the Blink command should take precedence
                 over all other device LED sequences. If 0, the Blink command
                 should not take precedence over Wi-Fi indications including
