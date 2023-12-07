@@ -107,8 +107,7 @@ class CommandInterface:
 
     @property
     def available(self) -> bool:
-        """ Is the command interface available and able to accept commands?
-        """
+        """ Is the command interface available and able to accept commands? """
         return self.device and self.device.available
 
 
@@ -493,7 +492,19 @@ class CommandInterface:
                          timeout: Union[int, float] = 1,
                          callback: Optional[Callable] = None) -> bool:
         """ Get the status of the recorder's battery. Not supported on all
-            devices.
+            devices. Status is returned as a dictionary. The dictionary will
+            always contain the key `"hasBattery"`, and if that is `True`,
+            it will contain other keys:
+
+            * `"charging"`: (bool) `True` if the battery is charging.
+            * `"percentage"`: (bool) `True` if the reported charge
+              level is a percentage, or 3 states (0 = empty,
+              255 = full, anything else is 'some' charge) of `False`.
+            * `"level"`: (int) The current battery charge level.
+
+            If the device is capable of reporting if it is receiving
+            external power, the dict will contain `"externalPower"`
+            (bool).
 
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately; `None` or -1 will wait
@@ -502,19 +513,7 @@ class CommandInterface:
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
                 require no arguments.
-            :return: A dictionary with the parsed battery status. It will
-                always contain the key `"hasBattery"`, and if that is `True`,
-                it will contain other keys:
-
-                - `"charging"`: (bool)
-                - `"percentage"`: (bool) `True` if the reported charge
-                    level is a percentage, or 3 states (0 = empty,
-                    255 = full, anything else is 'some' charge).
-                - `"level"`: (int) The current battery charge level.
-
-                If the device is capable of reporting if it is receiving
-                external power, the dict will contain `"externalPower"`
-                (bool).
+            :return: A dictionary with the parsed battery status.
 
             :raise UnsupportedFeature: Raised if the device does not
             support the command.
@@ -562,10 +561,11 @@ class CommandInterface:
             seconds, continuing for the specified duration. `a` and `b`
             are unsigned 8 bit integers, in which each bit represents one
             of the recorder's LEDs:
-                * Bit 0 (LSB): Red
-                * Bit 1: Green
-                * Bit 2: Blue
-                * Bits 3-7: Reserved for future use.
+
+            * Bit 0 (LSB): Red
+            * Bit 1: Green
+            * Bit 2: Blue
+            * Bits 3-7: Reserved for future use.
 
             :param duration: The total duration (in seconds) of the blinking,
                 maximum 255. 0 will blink without time limit, stopping when
@@ -842,7 +842,7 @@ class CommandInterface:
     def setAP(self,
               ssid: str,
               password: Optional[str] = None,
-              wait: bool = True,
+              wait: bool = False,
               timeout: Union[int, float] = 10,
               callback: Optional[Callable] = None):
         """ Quickly set the Wi-Fi access point (router) and password.
@@ -895,9 +895,10 @@ class CommandInterface:
             * ``"Password"``: The access point's password (string, optional)
             * ``"Selected"``: 1 if the device should use this AP, 0 if not
 
-            Note that devices may not support configuring multiple Wi-Fi AP.
-            In most cases, only one should be specified, and it should be
-            marked as selected.
+            Note that devices (as of firmware 3.0.17) do not support
+            configuring multiple Wi-Fi AP. Consider using
+            :meth:`~.endaq.device.command_interfaces.CommandInterface.setAP`
+            instead.
 
             :param wifi_data: The information about the Wi-Fi networks to be
                 set on the device.
@@ -1071,7 +1072,7 @@ class CommandInterface:
                          callback: Optional[Callable] = None) -> Union[None, dict]:
         """ Check the device's networking hardware. The response is less
             specific to one interface type (i.e., the results of
-            `queryWiFi()`).
+            :meth:`~.endaq.device.command_interfaces.CommandInterface.queryWiFi()`).
 
             The resluts is a dictionary, with keys:
 
@@ -1083,7 +1084,7 @@ class CommandInterface:
             * ``CurrentWiFiStatus`` (int, optional): The Wi-Fi connection
                 status. May not be present. Note: this is not the same as the
                 ``WiFiConnectionStatus`` in the response returned by
-                `queryWifi()`.
+                :meth:`~.endaq.device.command_interfaces.CommandInterface.queryWifi()`.
 
             :raise DeviceTimeout: Raised if 'timeout' seconds have gone by
                 without getting a response
@@ -1254,8 +1255,7 @@ class SerialCommandInterface(CommandInterface):
 
     @property
     def available(self) -> bool:
-        """ Is the command interface available and able to accept commands?
-        """
+        """ Is the command interface available and able to accept commands? """
         if self.device.isVirtual:
             return False
 
@@ -1505,8 +1505,8 @@ class SerialCommandInterface(CommandInterface):
                 commands that potentially cause a reset faster than the
                 acknowledgement can be read.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception. `None` or -1 will wait
-                indefinitely.
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
             :param interval: Time (in seconds) between checks for a
                 response. Not used by the serial interface.
             :param index: If `True` (default), include an incrementing
@@ -1695,7 +1695,7 @@ class SerialCommandInterface(CommandInterface):
 
             :param data: Optional data, which will be returned verbatim.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
             :param interval: Time (in seconds) between checks for a
                 response.
             :param callback: A function to call each response-checking
@@ -1765,11 +1765,11 @@ class SerialCommandInterface(CommandInterface):
                 always contain the key `"hasBattery"`, and if that is `True`,
                 it will contain other keys:
 
-                - `"charging"`: (bool)
-                - `"percentage"`: (bool) `True` if the reported charge
+                * `"charging"`: (bool)
+                * `"percentage"`: (bool) `True` if the reported charge
                     level is a percentage, or 3 states (0 = empty,
                     255 = full, anything else is 'some' charge).
-                - `"level"`: (int) The current battery charge level.
+                * `"level"`: (int) The current battery charge level.
 
                 If the device is capable of reporting if it is receiving
                 external power, the dict will contain `"externalPower"`
@@ -1974,8 +1974,7 @@ class FileCommandInterface(CommandInterface):
 
     @property
     def available(self) -> bool:
-        """ Is the command interface available and able to accept commands?
-        """
+        """ Is the command interface available and able to accept commands? """
         return (self.device.available
                 and os.path.isfile(self.device.commandFile))
 
