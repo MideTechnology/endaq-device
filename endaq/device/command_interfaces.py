@@ -876,10 +876,14 @@ class CommandInterface:
                 if callback is not None and callback():
                     return None
 
-                status = self.queryWifi(timeout=0.5).get('WiFiConnectionStatus')
-
-                if status == WiFiConnectionStatus.CONNECTED:
-                    return
+                response = self.queryWifi(timeout=0.5)
+                if response:
+                    status = response.get('WiFiConnectionStatus')
+                    if status == WiFiConnectionStatus.CONNECTED:
+                        return
+                else:
+                    logger.debug('setAP(): got bad queryWifi() response: {!r}'
+                                 .format(response))
 
                 sleep(min(timeout, 0.5))
 
@@ -1037,6 +1041,10 @@ class CommandInterface:
                     callback: Optional[Callable] = None):
         """ Update the ESP32 firmware. Applicable only to devices with
             ESP32 Wi-Fi hardware.
+
+            Note: Updating the ESP32 is a long process, typically taking
+            up to 4 minutes after calling the function to complete. This
+            is normal.
 
             :param firmware: The name of the ESP32 firmware package (.bin).
             :param timeout: Time (in seconds) to wait for the recorder to
