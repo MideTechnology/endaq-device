@@ -619,7 +619,7 @@ class CommandInterface:
             timeout = -1 if timeout is None else timeout
             deadline = time() + timeout
             while timeout < 0 or time() < deadline:
-                if callback and callback():
+                if callback is not None and callback():
                     return False
                 elif not self.device.available:
                     return True
@@ -659,7 +659,7 @@ class CommandInterface:
             timeout = -1 if timeout is None else timeout
             deadline = time() + timeout
             while timeout < 0 or time() < deadline:
-                if callback and callback():
+                if callback is not None and callback():
                     return False
                 elif self.device.available:
                     return True
@@ -867,17 +867,25 @@ class CommandInterface:
         if password is not None:
             cmd['Password'] = password
 
-        self.setWifi(cmd, timeout=timeout, callback=callback)
-        if not wait or timeout == 0:
-            return
-
-        while timeout < 0 or time() < deadline:
-            status = self.queryWifi(timeout=0.5).get('WiFiConnectionStatus')
-
-            if status == WiFiConnectionStatus.CONNECTED:
+        with self.device._busy:
+            self.setWifi(cmd, timeout=timeout, callback=callback)
+            if not wait or timeout == 0:
                 return
 
-            sleep(min(timeout, 1))
+            while timeout < 0 or time() < deadline:
+                if callback is not None and callback():
+                    return None
+
+                response = self.queryWifi(timeout=0.5)
+                if response:
+                    status = response.get('WiFiConnectionStatus')
+                    if status == WiFiConnectionStatus.CONNECTED:
+                        return
+                else:
+                    logger.debug('setAP(): got bad queryWifi() response: {!r}'
+                                 .format(response))
+
+                sleep(min(timeout, 0.5))
 
         raise DeviceTimeout('Timed out waiting to connect to AP SSID {}'.format(ssid))
 
@@ -1033,6 +1041,10 @@ class CommandInterface:
                     callback: Optional[Callable] = None):
         """ Update the ESP32 firmware. Applicable only to devices with
             ESP32 Wi-Fi hardware.
+
+            Note: Updating the ESP32 is a long process, typically taking
+            up to 4 minutes after calling the function to complete. This
+            is normal.
 
             :param firmware: The name of the ESP32 firmware package (.bin).
             :param timeout: Time (in seconds) to wait for the recorder to
@@ -1464,7 +1476,7 @@ class SerialCommandInterface(CommandInterface):
         buf = b''
 
         while timeout < 0 or time() < deadline:
-            if callback is not None and callback() is True:
+            if callback is not None and callback():
                 return
             if self.port.in_waiting:
                 buf += self.port.read()
@@ -1679,7 +1691,7 @@ class SerialCommandInterface(CommandInterface):
             while t0 < t:
                 t0 = time()
 
-        self._sendCommand({'EBMLCommand': {'SetClock': payload}}, 
+        self._sendCommand({'EBMLCommand': {'SetClock': payload}},
                           response=False)
 
         return t0, t
@@ -2111,6 +2123,7 @@ class FileCommandInterface(CommandInterface):
         ebml = self._encode(cmd)
 
         now = time()
+        timeout = -1 if timeout is None else timeout
         deadline = now + timeout
 
         with self.device._busy:
@@ -2128,7 +2141,7 @@ class FileCommandInterface(CommandInterface):
                 else:
                     sleep(interval)
 
-                if time() > deadline:
+                if timeout >= 0 and time() > deadline:
                     if not response:
                         logger.debug('Ignoring timeout waiting for CMDQueue '
                                      'to empty because no response required')
@@ -2137,16 +2150,19 @@ class FileCommandInterface(CommandInterface):
                     raise DeviceTimeout("Timed out waiting for device to complete "
                                         "queued commands (%s remaining)" % queueDepth)
 
-            self._writeCommand(ebml)
-
-            while time() <= deadline:
-                if callback is not None and callback() is True:
+                if callback is not None and callback():
                     return
 
+            self._writeCommand(ebml)
+
+            while timeout < 0 or time() <= deadline:
                 data = self._readResponse()
 
                 if data and data.get("ResponseIdx") != idx:
                     return data
+
+                if callback is not None and callback():
+                    return
 
                 sleep(interval)
 
