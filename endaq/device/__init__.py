@@ -21,7 +21,7 @@ from .types import Drive, Filename, Epoch
 
 from . import schemata
 
-__version__ = "1.1.1b1"
+__version__ = "1.1.1"
 
 __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'DeviceError', 'DeviceTimeout', 'UnsupportedFeature',
