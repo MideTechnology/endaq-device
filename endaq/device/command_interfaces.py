@@ -11,7 +11,7 @@ import os.path
 import shutil
 import sys
 from time import sleep, time, struct_time
-from typing import AnyStr, ByteString, Optional, Tuple, Union, Callable, TYPE_CHECKING
+from typing import Any, AnyStr, ByteString, Dict, Optional, Tuple, Union, Callable, TYPE_CHECKING
 import warnings
 
 import logging
@@ -25,6 +25,7 @@ from .exceptions import DeviceError, CommandError, DeviceTimeout, UnsupportedFea
 from .hdlc import hdlc_decode, hdlc_encode, HDLC_BREAK_CHAR
 from .exceptions import CRCError
 from .types import Epoch
+from . import response_codes
 from .response_codes import *
 
 if sys.platform == 'darwin':
@@ -106,8 +107,7 @@ class CommandInterface:
 
     @property
     def available(self) -> bool:
-        """ Is the command interface available and able to accept commands?
-        """
+        """ Is the command interface available and able to accept commands? """
         return self.device and self.device.available
 
 
@@ -193,6 +193,32 @@ class CommandInterface:
     # =======================================================================
     # The actual command sending and response receiving.
     # =======================================================================
+
+    def _encodeResponseCodes(self,
+                             response: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """ Convert any known response codes to their corresponding enum. For
+            generating more human-readable output. Invalid enum values are
+            not changed.
+
+            :param response: The response dictionary to be returned with
+                enums instead of integer response codes. Note that this
+                gets modified in-place!
+            :return: The modified `response` dictionary (it is modified
+                in place, but as a convenience, it is also returned).
+        """
+        if not response:
+            return
+
+        for name, code in [(k, v) for k, v in response.items()
+                           if k in response_codes.__dict__]:
+            try:
+                response[name] = response_codes.__dict__[name](code)
+            except (AttributeError, TypeError):
+                logger.debug('Received unknown {}: {}'.format(name, code))
+                pass
+
+        return response
+
 
     def _writeCommand(self, packet: ByteString) -> int:
         """
@@ -466,7 +492,19 @@ class CommandInterface:
                          timeout: Union[int, float] = 1,
                          callback: Optional[Callable] = None) -> bool:
         """ Get the status of the recorder's battery. Not supported on all
-            devices.
+            devices. Status is returned as a dictionary. The dictionary will
+            always contain the key `"hasBattery"`, and if that is `True`,
+            it will contain other keys:
+
+            * `"charging"`: (bool) `True` if the battery is charging.
+            * `"percentage"`: (bool) `True` if the reported charge
+              level is a percentage, or 3 states (0 = empty,
+              255 = full, anything else is 'some' charge) of `False`.
+            * `"level"`: (int) The current battery charge level.
+
+            If the device is capable of reporting if it is receiving
+            external power, the dict will contain `"externalPower"`
+            (bool).
 
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately; `None` or -1 will wait
@@ -475,19 +513,7 @@ class CommandInterface:
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
                 require no arguments.
-            :return: A dictionary with the parsed battery status. It will
-                always contain the key `"hasBattery"`, and if that is `True`,
-                it will contain other keys:
-
-                - `"charging"`: (bool)
-                - `"percentage"`: (bool) `True` if the reported charge
-                    level is a percentage, or 3 states (0 = empty,
-                    255 = full, anything else is 'some' charge).
-                - `"level"`: (int) The current battery charge level.
-
-                If the device is capable of reporting if it is receiving
-                external power, the dict will contain `"externalPower"`
-                (bool).
+            :return: A dictionary with the parsed battery status.
 
             :raise UnsupportedFeature: Raised if the device does not
             support the command.
@@ -535,13 +561,16 @@ class CommandInterface:
             seconds, continuing for the specified duration. `a` and `b`
             are unsigned 8 bit integers, in which each bit represents one
             of the recorder's LEDs:
-                * Bit 0 (LSB): Red
-                * Bit 1: Green
-                * Bit 2: Blue
-                * Bits 3-7: Reserved for future use.
+
+            * Bit 0 (LSB): Red
+            * Bit 1: Green
+            * Bit 2: Blue
+            * Bits 3-7: Reserved for future use.
 
             :param duration: The total duration (in seconds) of the blinking,
-                maximum 255.
+                maximum 255. 0 will blink without time limit, stopping when
+                the device is disconnected from USB, or when a recording is
+                started (trigger or button press).
             :param priority: If 1, the Blink command should take precedence
                 over all other device LED sequences. If 0, the Blink command
                 should not take precedence over Wi-Fi indications including
@@ -590,7 +619,7 @@ class CommandInterface:
             timeout = -1 if timeout is None else timeout
             deadline = time() + timeout
             while timeout < 0 or time() < deadline:
-                if callback and callback():
+                if callback is not None and callback():
                     return False
                 elif not self.device.available:
                     return True
@@ -630,7 +659,7 @@ class CommandInterface:
             timeout = -1 if timeout is None else timeout
             deadline = time() + timeout
             while timeout < 0 or time() < deadline:
-                if callback and callback():
+                if callback is not None and callback():
                     return False
                 elif self.device.available:
                     return True
@@ -813,20 +842,52 @@ class CommandInterface:
     def setAP(self,
               ssid: str,
               password: Optional[str] = None,
-              timeout: Union[int, float] = 10):
+              wait: bool = False,
+              timeout: Union[int, float] = 10,
+              callback: Optional[Callable] = None):
         """ Quickly set the Wi-Fi access point (router) and password.
             Applicable only to devices with Wi-Fi hardware.
 
             :param ssid: The SSID (name) of the wireless access point.
             :param password: The access point password.
+            :param wait: If `True`, wait until the device reports it is
+                connected before returning.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
                 `None` or -1 will wait indefinitely.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will be
+                cancelled. The callback function should require no arguments.
+                The `callback` will not be called if `wait` is `False`.
         """
+        timeout = -1 if timeout is None else timeout
+        deadline = time() + timeout
+
         cmd = {'SSID': ssid, 'Selected': 1}
         if password is not None:
             cmd['Password'] = password
-        return self.setWifi(cmd, timeout=timeout)
+
+        with self.device._busy:
+            self.setWifi(cmd, timeout=timeout, callback=callback)
+            if not wait or timeout == 0:
+                return
+
+            while timeout < 0 or time() < deadline:
+                if callback is not None and callback():
+                    return None
+
+                response = self.queryWifi(timeout=0.5)
+                if response:
+                    status = response.get('WiFiConnectionStatus')
+                    if status == WiFiConnectionStatus.CONNECTED:
+                        return
+                else:
+                    logger.debug('setAP(): got bad queryWifi() response: {!r}'
+                                 .format(response))
+
+                sleep(min(timeout, 0.5))
+
+        raise DeviceTimeout('Timed out waiting to connect to AP SSID {}'.format(ssid))
 
 
     def setWifi(self,
@@ -842,9 +903,10 @@ class CommandInterface:
             * ``"Password"``: The access point's password (string, optional)
             * ``"Selected"``: 1 if the device should use this AP, 0 if not
 
-            Note that devices may not support configuring multiple Wi-Fi AP.
-            In most cases, only one should be specified, and it should be
-            marked as selected.
+            Note that devices (as of firmware 3.0.17) do not support
+            configuring multiple Wi-Fi AP. Consider using
+            :meth:`~.endaq.device.command_interfaces.CommandInterface.setAP`
+            instead.
 
             :param wifi_data: The information about the Wi-Fi networks to be
                 set on the device.
@@ -910,7 +972,7 @@ class CommandInterface:
         if response is None:
             return None
 
-        return response.get('QueryWiFiResponse')
+        return self._encodeResponseCodes(response.get('QueryWiFiResponse'))
 
 
     def scanWifi(self, 
@@ -952,7 +1014,8 @@ class CommandInterface:
 
         cmd = {'EBMLCommand': {'WiFiScan': None}}
 
-        response = self._sendCommand(cmd, response=True, timeout=timeout, interval=interval, callback=callback)
+        response = self._sendCommand(cmd, response=True, timeout=timeout,
+                                     interval=interval, callback=callback)
 
         if response is None:
             return None
@@ -978,6 +1041,10 @@ class CommandInterface:
                     callback: Optional[Callable] = None):
         """ Update the ESP32 firmware. Applicable only to devices with
             ESP32 Wi-Fi hardware.
+
+            Note: Updating the ESP32 is a long process, typically taking
+            up to 4 minutes after calling the function to complete. This
+            is normal.
 
             :param firmware: The name of the ESP32 firmware package (.bin).
             :param timeout: Time (in seconds) to wait for the recorder to
@@ -1008,7 +1075,7 @@ class CommandInterface:
         payload = {}
 
         cmd = {'EBMLCommand': {'LegacyESP': payload}}
-        return self._sendCommand(cmd, timeout=timeout, callback=callback)
+        return self._runSimpleCommand(cmd, timeout=timeout, callback=callback)
 
 
     def getNetworkStatus(self,
@@ -1017,7 +1084,7 @@ class CommandInterface:
                          callback: Optional[Callable] = None) -> Union[None, dict]:
         """ Check the device's networking hardware. The response is less
             specific to one interface type (i.e., the results of
-            `queryWiFi()`).
+            :meth:`~.endaq.device.command_interfaces.CommandInterface.queryWiFi()`).
 
             The resluts is a dictionary, with keys:
 
@@ -1026,9 +1093,10 @@ class CommandInterface:
             * ``IPV4Address`` (bytes): The device's IP address (typically
                 set by the router when the device connects). This will not
                 be present if the device is not connected.
-            * ``CurrentWiFiStatus`` (int): The Wi-Fi connection status.
-                Note: this is not the same as the ``WiFiConnectionStatus``
-                in the response returned by `queryWifi()`.
+            * ``CurrentWiFiStatus`` (int, optional): The Wi-Fi connection
+                status. May not be present. Note: this is not the same as the
+                ``WiFiConnectionStatus`` in the response returned by
+                :meth:`~.endaq.device.command_interfaces.CommandInterface.queryWifi()`.
 
             :raise DeviceTimeout: Raised if 'timeout' seconds have gone by
                 without getting a response
@@ -1054,7 +1122,8 @@ class CommandInterface:
                                  timeout=timeout,
                                  interval=interval,
                                  callback=callback)
-        return response.get('NetworkStatusResponse', None)
+
+        return self._encodeResponseCodes(response.get('NetworkStatusResponse'))
 
 
     def getNetworkAddress(self,
@@ -1198,8 +1267,7 @@ class SerialCommandInterface(CommandInterface):
 
     @property
     def available(self) -> bool:
-        """ Is the command interface available and able to accept commands?
-        """
+        """ Is the command interface available and able to accept commands? """
         if self.device.isVirtual:
             return False
 
@@ -1408,7 +1476,7 @@ class SerialCommandInterface(CommandInterface):
         buf = b''
 
         while timeout < 0 or time() < deadline:
-            if callback is not None and callback() is True:
+            if callback is not None and callback():
                 return
             if self.port.in_waiting:
                 buf += self.port.read()
@@ -1449,8 +1517,8 @@ class SerialCommandInterface(CommandInterface):
                 commands that potentially cause a reset faster than the
                 acknowledgement can be read.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception. `None` or -1 will wait
-                indefinitely.
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
             :param interval: Time (in seconds) between checks for a
                 response. Not used by the serial interface.
             :param index: If `True` (default), include an incrementing
@@ -1623,7 +1691,7 @@ class SerialCommandInterface(CommandInterface):
             while t0 < t:
                 t0 = time()
 
-        self._sendCommand({'EBMLCommand': {'SetClock': payload}}, 
+        self._sendCommand({'EBMLCommand': {'SetClock': payload}},
                           response=False)
 
         return t0, t
@@ -1639,7 +1707,7 @@ class SerialCommandInterface(CommandInterface):
 
             :param data: Optional data, which will be returned verbatim.
             :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception.
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
             :param interval: Time (in seconds) between checks for a
                 response.
             :param callback: A function to call each response-checking
@@ -1677,7 +1745,10 @@ class SerialCommandInterface(CommandInterface):
                 * Bit 2: Blue
                 * Bits 3-7: Reserved for future use.
 
-            :param duration: The total duration of the blinking, 0-255.
+            :param duration: The total duration (in seconds) of the blinking,
+                maximum 255. 0 will blink without time limit, stopping when
+                the device is disconnected from USB, or when a recording is
+                started (trigger or button press).
             :param priority: If 1, the Blink command should take precedence
                 over all other device LED sequences. If 0, the Blink command
                 should not take precedence over Wi-Fi indications including
@@ -1706,11 +1777,11 @@ class SerialCommandInterface(CommandInterface):
                 always contain the key `"hasBattery"`, and if that is `True`,
                 it will contain other keys:
 
-                - `"charging"`: (bool)
-                - `"percentage"`: (bool) `True` if the reported charge
+                * `"charging"`: (bool)
+                * `"percentage"`: (bool) `True` if the reported charge
                     level is a percentage, or 3 states (0 = empty,
                     255 = full, anything else is 'some' charge).
-                - `"level"`: (int) The current battery charge level.
+                * `"level"`: (int) The current battery charge level.
 
                 If the device is capable of reporting if it is receiving
                 external power, the dict will contain `"externalPower"`
@@ -1915,8 +1986,7 @@ class FileCommandInterface(CommandInterface):
 
     @property
     def available(self) -> bool:
-        """ Is the command interface available and able to accept commands?
-        """
+        """ Is the command interface available and able to accept commands? """
         return (self.device.available
                 and os.path.isfile(self.device.commandFile))
 
@@ -2053,6 +2123,7 @@ class FileCommandInterface(CommandInterface):
         ebml = self._encode(cmd)
 
         now = time()
+        timeout = -1 if timeout is None else timeout
         deadline = now + timeout
 
         with self.device._busy:
@@ -2070,7 +2141,7 @@ class FileCommandInterface(CommandInterface):
                 else:
                     sleep(interval)
 
-                if time() > deadline:
+                if timeout >= 0 and time() > deadline:
                     if not response:
                         logger.debug('Ignoring timeout waiting for CMDQueue '
                                      'to empty because no response required')
@@ -2079,16 +2150,19 @@ class FileCommandInterface(CommandInterface):
                     raise DeviceTimeout("Timed out waiting for device to complete "
                                         "queued commands (%s remaining)" % queueDepth)
 
-            self._writeCommand(ebml)
-
-            while time() <= deadline:
-                if callback is not None and callback() is True:
+                if callback is not None and callback():
                     return
 
+            self._writeCommand(ebml)
+
+            while timeout < 0 or time() <= deadline:
                 data = self._readResponse()
 
                 if data and data.get("ResponseIdx") != idx:
                     return data
+
+                if callback is not None and callback():
+                    return
 
                 sleep(interval)
 

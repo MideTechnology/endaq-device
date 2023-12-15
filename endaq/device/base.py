@@ -330,13 +330,13 @@ class Recorder:
 
     @classmethod
     def isRecorder(cls,
-                   dev: Filename,
+                   path: Filename,
                    strict: bool = True,
                    **kwargs) -> bool:
         """ Test whether a given filesystem path refers to the root directory
             of a data recorder.
 
-            :param dev: The path to the possible recording device (e.g. a
+            :param path: The path to the possible recording device (e.g. a
                 mount point under Linux/BSD/etc., or a drive letter under
                 Windows)
             :param strict: If `False`, only the directory structure is used
@@ -348,10 +348,9 @@ class Recorder:
         #  `getDevices()`.
 
         try:
-            if isinstance(dev, Drive):
-                path, _volumeName, _sn, fs, _dtype = dev
+            if isinstance(path, Drive):
+                path, _volumeName, _sn, fs, _dtype = path
             else:
-                path = dev
                 fs = ''
 
             path = os.path.realpath(path)
@@ -359,7 +358,7 @@ class Recorder:
 
             if strict:
                 if not fs:
-                    info = os_specific.getDriveInfo(dev)
+                    info = os_specific.getDriveInfo(path)
                     if not info:
                         return False
                     fs = info.fs
