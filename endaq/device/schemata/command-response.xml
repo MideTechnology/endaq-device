@@ -33,7 +33,7 @@
     <!-- These endpoints are kept so that FW can continue to respond to legacy firmware updates and other actions properly, the IDs directly map to ASCII codes-->
     <!-- Note: All 'Legacy' commands except 'LegacyAll' are getting deprecated, and should be avoided. -->
     <MasterElement name="RecStart" id="0x7273" mandatory="0" multiple="0">"rs" Initiate a recording as if button was pressed</MasterElement>
-    <MasterElement name="RecStop" id="0x7275" mandatory="0" multiple="0">"rs" Stop a recording as if button was pressed</MasterElement>
+    <MasterElement name="RecStop" id="0x7275" mandatory="0" multiple="0">"ru" Stop a recording as if button was pressed</MasterElement>
     <MasterElement name="LegacyFW" id="0x6677" mandatory="0" multiple="0">"fw" Update App FW (legacy interface)</MasterElement>
     <MasterElement name="LegacyBL" id="0x626C" mandatory="0" multiple="0">"bl" Update Bootloader Image (legacy)</MasterElement>
     <MasterElement name="LegacyAll" id="0x7561" mandatory="0" multiple="0">"ua" Update FW, userpage, and bootloader (legacy)</MasterElement>
@@ -50,7 +50,6 @@
         <UIntegerElement name="CommandIdx" id="0x88" multiple="0" mandatory="1">Incrementing index, will bump by one for each update to this data structure, starting at 0 after device reset</UIntegerElement>
         <!-- Legacy commands, duplicated within EBMLCommand for serial use (which requires the outer EBMLCommand element) -->
         <MasterElement name="RecStart" id="0x7273" mandatory="0" multiple="0">"rs" Initiate a recording as if button was pressed</MasterElement>
-        <MasterElement name="RecStop" id="0x7275" mandatory="0" multiple="0">"ro" Stop a recording as if button was pressed</MasterElement>
         <MasterElement name="LegacyFW" id="0x6677" mandatory="0" multiple="0">"fw" Update App FW (legacy interface)</MasterElement>
         <MasterElement name="LegacyBL" id="0x626C" mandatory="0" multiple="0">"bl" Update Bootloader Image (legacy)</MasterElement>
         <MasterElement name="LegacyAll" id="0x7561" mandatory="0" multiple="0">"ua" Update FW, userpage, and bootloader (legacy)</MasterElement>
