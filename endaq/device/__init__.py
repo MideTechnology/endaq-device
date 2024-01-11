@@ -87,6 +87,9 @@ def getRecorder(path: Filename,
     """
     global RECORDERS
 
+    if not isinstance(path, (str, Path, Drive)):
+        raise TypeError('Invalid type for path: {}'.format(type(path).__name__))
+
     dev = None
 
     for rtype in RECORDER_TYPES:
