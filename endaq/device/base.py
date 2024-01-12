@@ -871,7 +871,7 @@ class Recorder:
             pass
 
 
-    def _readUserpage(self) -> Union[dict, None]:
+    def _readUserpage(self) -> Union[Dict[str, Any], None]:
         """ Read the device's manifest data from the EFM32 'userpage'. The
             data is a superset of the information returned by `getInfo()`.
             Factory calibration and recorder properties are also read
@@ -920,7 +920,7 @@ class Recorder:
         return self._manifest
 
 
-    def _readManifest(self) -> Union[dict, None]:
+    def _readManifest(self) -> Union[Dict[str, Any], None]:
         """ Read the device's manifest data from the 'MANIFEST' file. The
             data is a superset of the information returned by `getInfo()`.
 
@@ -1244,7 +1244,7 @@ class Recorder:
 
     @classmethod
     def generateCalEbml(cls,
-                        transforms: dict,
+                        transforms: Union[List[Transform], Dict[int, Transform]],
                         date: Optional[int] = None,
                         expires: Optional[int] = None,
                         calSerial: int = 0) -> ebmlite.Document:
@@ -1279,7 +1279,7 @@ class Recorder:
 
 
     def writeUserCal(self,
-                     transforms: dict,
+                     transforms: Union[List[Transform], Dict[int, Transform]],
                      filename: Union[str, Path, None] = None):
         """ Write user calibration to the SSX.
 
