@@ -1449,7 +1449,7 @@ class SerialCommandInterface(CommandInterface):
 
         if port.in_waiting:
             logger.debug('Flushing {} bytes from serial input'.format(port.in_waiting))
-            port.flushInput()
+            port.reset_input_buffer()
 
         return port.write(packet)
 
@@ -1740,8 +1740,8 @@ class SerialCommandInterface(CommandInterface):
             seconds, continuing for the specified duration. `a` and `b`
             are unsigned 8 bit integers, in which each bit represents one
             of the recorder's LEDs:
-                * Bit 0 (LSB): Red
-                * Bit 1: Green
+                * Bit 0 (LSB): Green
+                * Bit 1: Red
                 * Bit 2: Blue
                 * Bits 3-7: Reserved for future use.
 

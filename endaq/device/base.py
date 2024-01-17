@@ -16,10 +16,10 @@ import struct
 import sys
 from threading import RLock
 from time import struct_time
-from typing import Any, AnyStr, Callable, Dict, Optional, Tuple, Union
+from typing import Any, AnyStr, Callable, Dict, List, Optional, Tuple, Union
 import warnings
 
-from idelib.dataset import Dataset, Channel
+from idelib.dataset import Dataset, Channel, SubChannel, Sensor
 from idelib import importer
 from idelib.parsers import CalibrationListParser, RecordingPropertiesParser
 from idelib.transforms import Transform
@@ -265,6 +265,8 @@ class Recorder:
 
     @property
     def path(self) -> Union[str, None]:
+        """ The recorder's filesystem path (e.g., drive letter or mount point).
+        """
         with self._busy:
             return self._path
 
@@ -766,7 +768,7 @@ class Recorder:
         return self._channelRanges[key]
 
 
-    def getAccelAxisChannels(self) -> dict:
+    def getAccelAxisChannels(self) -> Dict[int, List[SubChannel]]:
         """ Retrieve a list of all accelerometer axis subchannels, ordered
             alphabetically (X, Y, Z).
 
@@ -869,7 +871,7 @@ class Recorder:
             pass
 
 
-    def _readUserpage(self) -> Union[dict, None]:
+    def _readUserpage(self) -> Union[Dict[str, Any], None]:
         """ Read the device's manifest data from the EFM32 'userpage'. The
             data is a superset of the information returned by `getInfo()`.
             Factory calibration and recorder properties are also read
@@ -918,7 +920,7 @@ class Recorder:
         return self._manifest
 
 
-    def _readManifest(self) -> Union[dict, None]:
+    def _readManifest(self) -> Union[Dict[str, Any], None]:
         """ Read the device's manifest data from the 'MANIFEST' file. The
             data is a superset of the information returned by `getInfo()`.
 
@@ -954,7 +956,7 @@ class Recorder:
         return self._manifest
 
 
-    def getManifest(self) -> Union[dict, None]:
+    def getManifest(self) -> Union[Dict[str, Any], None]:
         """ Read the device's manifest data. The data is a superset of the
             information returned by `getInfo()`.
         """
@@ -971,7 +973,7 @@ class Recorder:
 
 
     def getUserCalibration(self,
-                           filename: Optional[Filename] = None) -> Union[dict, None]:
+                           filename: Optional[Filename] = None) -> Union[Dict[str, Any], None]:
         """ Get the recorder's user-defined calibration data as a dictionary
             of parameters.
         """
@@ -992,7 +994,7 @@ class Recorder:
 
 
     def getUserCalPolynomials(self,
-                              filename: Optional[Filename] = None) -> Union[dict, None]:
+                              filename: Optional[Filename] = None) -> Union[Dict[int, Transform], None]:
         """ Get the recorder's user-defined calibration data as a dictionary
             of `idelib.transforms.Transform` subclass instances, keyed by ID.
 
@@ -1012,7 +1014,7 @@ class Recorder:
         return self._userCalPolys
 
 
-    def getCalibration(self, user: bool = True) -> Union[dict, None]:
+    def getCalibration(self, user: bool = True) -> Union[Dict[str, Any], None]:
         """ Get the recorder's current calibration information. User-supplied
             calibration, if present, takes priority (as it is what will be
             applied in recordings).
@@ -1029,7 +1031,7 @@ class Recorder:
         return self._calibration
 
 
-    def getCalPolynomials(self, user: bool = True) -> Union[dict, None]:
+    def getCalPolynomials(self, user: bool = True) -> Union[Dict[int, Transform], None]:
         """ Get the constructed Polynomial objects created from the device's
             current calibration data, as a dictionary of
             `idelib.transform.Transform` subclass instances, keyed by ID.
@@ -1128,7 +1130,7 @@ class Recorder:
 
 
     @property
-    def transforms(self) -> Union[dict, None]:
+    def transforms(self) -> Union[Dict[int, Transform], None]:
         """ The recorder's calibration polynomials, a dictionary of
             `idelib.transform.Transform` subclass instances keyed by ID. For
             compatibility with `idelib.dataset.Dataset`; results are the
@@ -1137,7 +1139,7 @@ class Recorder:
         return self.getCalPolynomials()
 
 
-    def getProperties(self) -> dict:
+    def getProperties(self) -> Dict[str, Any]:
         """ Get the raw Recording Properties from the device.
         """
         if self.isVirtual or self._properties is not None:
@@ -1150,7 +1152,7 @@ class Recorder:
         return self._properties
 
 
-    def getSensors(self) -> dict:
+    def getSensors(self) -> Dict[int, Sensor]:
         """ Get the recorder sensor description data.
         """
         self.getManifest()
@@ -1188,17 +1190,25 @@ class Recorder:
 
 
     @property
-    def sensors(self) -> dict:
+    def sensors(self) -> Dict[int, Sensor]:
+        """ The device's sensors; a dictionary of `Sensor` objects keyed by
+            sensor ID. For compatibility with `idelib.dataset.Dataset`; results
+            are the same as `Recorder.getSensors()`.
+        """
         return self.getSensors()
 
 
     @property
-    def channels(self) -> dict:
+    def channels(self) -> Dict[int, Channel]:
+        """ The devices recording channels; a dictionary of `Channel` objects
+            keyed by channel ID. For compatibility with `idelib.dataset.Dataset`;
+            results are the same as `Recorder.getChannels(mtype=None)`.
+        """
         self.getSensors()
         return self._channels.copy()
 
 
-    def getChannels(self, mtype: Union[MeasurementType, str, None] = None) -> dict:
+    def getChannels(self, mtype: Union[MeasurementType, str, None] = None) -> Dict[int, Channel]:
         """ Get the recorder channel description data.
 
             :param mtype: An optional measurement type, to filter results.
@@ -1213,7 +1223,7 @@ class Recorder:
             return self._channels.copy()
 
 
-    def getSubchannels(self, mtype: Union[MeasurementType, str, None] = None) -> dict:
+    def getSubchannels(self, mtype: Union[MeasurementType, str, None] = None) -> List[SubChannel]:
         """ Get the recorder subchannel description data.
 
             :param mtype: An optional measurement type, to filter results. See
@@ -1234,7 +1244,7 @@ class Recorder:
 
     @classmethod
     def generateCalEbml(cls,
-                        transforms: dict,
+                        transforms: Union[List[Transform], Dict[int, Transform]],
                         date: Optional[int] = None,
                         expires: Optional[int] = None,
                         calSerial: int = 0) -> ebmlite.Document:
@@ -1269,7 +1279,7 @@ class Recorder:
 
 
     def writeUserCal(self,
-                     transforms: dict,
+                     transforms: Union[List[Transform], Dict[int, Transform]],
                      filename: Union[str, Path, None] = None):
         """ Write user calibration to the SSX.
 
