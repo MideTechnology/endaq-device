@@ -178,40 +178,76 @@ class Recorder:
 
     @property
     def available(self) -> bool:
-        """ Is the device mounted and available as a drive?
+        """ Is the device mounted and available as a drive? Note: if the
+            device's path or drive letter changed (e.g., after being rebooted
+            or disconnected/reconnected), or the device's firmware or
+            manifest was updated, you may need to call
+            :meth:`~.endaq.device.Recorder.update` first.
         """
+        if self.isVirtual or not self.path:
+            return False
+
+        # Two checks, since former is a property that sets latter
+        # and path itself isn't a reliable test in Linux
+        if (os.path.exists(self.path) and os.path.isfile(self.infoFile)):
+            # See if the device is mounted in the same place and is unchanged.
+            return self._getHash(self.path) == hash(self)
+
+        return False
+
+
+    def update(self,
+               virtual: bool = False,
+               paths: Optional[List[Filename]] = None,
+               strict: bool = True) -> bool:
+        """ Attempt to update the device's information. Call this method
+            if a device has had its firmware or manifest data updated. This
+            method can also be used to attempt to find the actual hardware
+            corresponding to a 'virtual' device (i.e., instantiated from
+            an IDE recording file).
+
+            :param virtual: If `True` and the recorder is a 'virtual' device,
+                attempt to connect it to the actual hardware (if present).
+            :param paths: A list of specific paths to recording devices.
+                Defaults to all found devices (as returned by
+                :meth:`~.endaq.device.getDeviceList`).
+            :param strict: If `False`, only the directory structure is used
+                to identify a recorder. If `True`, non-FAT file systems will
+                be automatically rejected.
+            :return: `True` if the device had its information updated, or
+                `False` if the device is unchanged or the hardware could
+                not be found.
+        """
+        if not virtual and self.isVirtual:
+            return False
+
         # Imported here to avoid circular references.
         # I don't like doing this, but I think this case is okay.
         from . import RECORDERS, findDevice, _busy
 
-        if self.isVirtual or not self.path:
-            return False
-
-        # See if the device is mounted in the same place and is unchanged.
-        oldhash = hash(self)
-        if self._getHash(self.path) == oldhash:
-            return True
-
         # See if a device with the same chip ID (or serial number for older
-        # devices) can be found anywhere.
+        # devices) can be found anywhere. This will also update the paths
+        # of known devices.
         if self.chipId:
-            dev = findDevice(chipId=self.chipId, update=True)
+            dev = findDevice(chipId=self.chipId, update=True, paths=paths, strict=strict)
         else:
-            dev = findDevice(sn=self.serialInt, update=True)
+            dev = findDevice(sn=self.serialInt, update=True, paths=paths, strict=strict)
 
-        if dev is None or not dev.path:
-            return False
-
-        if dev != self:
+        if dev and dev != self:
             with _busy:
                 RECORDERS[hash(dev)] = self
-                RECORDERS.pop(oldhash, None)
+                RECORDERS.pop(hash(self), None)
+                self._virtual = False
+                if dev.path:
+                    self.path = dev.path
                 self.refresh(force=True)
+                return True
 
-        return True
+        return False
 
 
     def __repr__(self):
+        """ Return repr(self). """
         if self.isVirtual:
             path = "virtual"
         else:
