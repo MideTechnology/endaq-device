@@ -40,6 +40,18 @@
     <StringElement name="FWRevString" id="0xF7" multiple="0" mandatory="0"> Human readable firmware revision</StringElement>
     <StringElement name="UpdateNotes" id="0xF8" multiple="0" mandatory="0"> Human readable notes regarding the update</StringElement>
     <MasterElement name="NonCriticalElements" global="1" id="0xE0" multiple="0" mandatory="0">The device may skip elements inside NonCriticalElements without stopping the update. Any other unrecognized elements will kill the firmware update.
+
+
+        <!-- Additional element for NCP (EFM currently) information. Not strictly necessary but for newer models allows simultaneous updating of the NCP -->
+    <MasterElement name="NcpUpdate" id="0x80" mandatory="0" multiple="0">
+        <StringElement name="NcpType" id="0x81" multiple="0" mandatory="1"> NCP chip type the update is meant for</StringElement>
+        <StringElement name="Ncp" id="0x82" multiple="0" mandatory="1"> NCP update file</StringElement>
+        <UIntegerElement name="NcpFwRev" multiple="0" mandatory="1"> NCP firmware vers. single digit format</UIntegerElement>
+        <StringElement name="NcpFwRevString" multiple="0" mandatory="0"> NCP firmware vers. triple digit format</StringElement>
+        <IntegerElement name="NcpKeySlot" multiple="0" mandatory="1"> Encryption key used to decrypt NCP file</IntegerElement>
+        <BinaryElement name="NcpUpdateData" multiple="0" mandatory="0"> The body of the ncp update (encrypted in public use)</BinaryElement>
+
+    </MasterElement>
     </MasterElement> <!-- UpdatePkg -->
 
 </MasterElement> <!-- UpdatePkg -->
