@@ -46,10 +46,10 @@
     <MasterElement name="NcpUpdate" id="0x80" mandatory="0" multiple="0">
         <StringElement name="NcpType" id="0x81" multiple="0" mandatory="1"> NCP chip type the update is meant for</StringElement>
         <StringElement name="Ncp" id="0x82" multiple="0" mandatory="1"> NCP update file</StringElement>
-        <UIntegerElement name="NcpFwRev" multiple="0" mandatory="1"> NCP firmware vers. single digit format</UIntegerElement>
-        <StringElement name="NcpFwRevString" multiple="0" mandatory="0"> NCP firmware vers. triple digit format</StringElement>
-        <IntegerElement name="NcpKeySlot" multiple="0" mandatory="1"> Encryption key used to decrypt NCP file</IntegerElement>
-        <BinaryElement name="NcpUpdateData" multiple="0" mandatory="0"> The body of the ncp update (encrypted in public use)</BinaryElement>
+        <UIntegerElement name="NcpFwRev" id="0x83"   multiple="0" mandatory="1"> NCP firmware vers. single digit format</UIntegerElement>
+        <StringElement name="NcpFwRevString" id="0x84" multiple="0" mandatory="0"> NCP firmware vers. triple digit format</StringElement>
+        <IntegerElement name="NcpKeySlot"  id="0x85" multiple="0" mandatory="1"> Encryption key used to decrypt NCP file</IntegerElement>
+        <BinaryElement name="NcpUpdateData" id="0x86" multiple="0" mandatory="0"> The body of the ncp update (encrypted in public use)</BinaryElement>
 
     </MasterElement>
     </MasterElement> <!-- UpdatePkg -->
