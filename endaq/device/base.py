@@ -4,7 +4,6 @@ eliminate circular dependencies.
 """
 
 __author__ = "dstokes"
-__copyright__ = "Copyright 2023 Mide Technology Corporation"
 
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -117,6 +116,7 @@ class Recorder:
         self._busy = RLock()
         self.strict = strict
 
+        self._virtual = False
         self._command = None
         self._path = None
         self.refresh(force=True)
@@ -127,7 +127,7 @@ class Recorder:
 
 
     @property
-    def command(self):
+    def command(self) -> Union[None, command_interfaces.CommandInterface]:
         """ The device's "command interface," the means through which to
             directly control the device. Only applicable to non-virtual
             recorders (i.e., actual hardware, not instantiated from a
@@ -154,7 +154,7 @@ class Recorder:
 
 
     @command.setter
-    def command(self, interface):
+    def command(self, interface: Optional[command_interfaces.CommandInterface]):
         with self._busy:
             if interface == self._command:
                 return
@@ -180,17 +180,44 @@ class Recorder:
     def available(self) -> bool:
         """ Is the device mounted and available as a drive?
         """
+        # Imported here to avoid circular references.
+        # I don't like doing this, but I think this case is okay.
+        from . import RECORDERS, findDevice, _busy
+
         if self.isVirtual or not self.path:
             return False
 
-        # Two checks, since former is a property that sets latter
-        # and path itself isn't a reliable test in Linux
-        return (os.path.exists(self.path)
-                and os.path.isfile(self.infoFile))
+        # See if the device is mounted in the same place and is unchanged.
+        oldhash = hash(self)
+        if self._getHash(self.path) == oldhash:
+            return True
+
+        # See if a device with the same chip ID (or serial number for older
+        # devices) can be found anywhere.
+        if self.chipId:
+            dev = findDevice(chipId=self.chipId, update=True)
+        else:
+            dev = findDevice(sn=self.serialInt, update=True)
+
+        if dev is None or not dev.path:
+            return False
+
+        if dev != self:
+            with _busy:
+                RECORDERS[hash(dev)] = self
+                RECORDERS.pop(oldhash, None)
+                self.refresh(force=True)
+
+        return True
 
 
     def __repr__(self):
-        path = self._path or "virtual"
+        if self.isVirtual:
+            path = "virtual"
+        else:
+            # FUTURE: Show appropriate message for remote devices
+            path = self._path or "unmounted"
+
         if self.name:
             name = '{} "{}"'.format(self.partNumber, self.name)
         else:
@@ -318,7 +345,10 @@ class Recorder:
         """ x.__eq__(y) <==> x==y """
         if self is other:
             return True
-        return hash(self) == hash(other)
+        try:
+            return hash(self) == hash(other)
+        except TypeError:
+            return False
 
 
     @classmethod
@@ -390,6 +420,18 @@ class Recorder:
         return False
 
 
+    def _getInfo(self, path=None):
+        """ Read a recorder's device information """
+        if path:
+            infoFile = os.path.join(path, self._INFO_FILE)
+        else:
+            infoFile = self.infoFile
+        if not os.path.isfile(infoFile):
+            return None
+        with open(infoFile, 'rb') as f:
+            return f.read()
+
+
     def getInfo(self,
                 name: Optional[str] = None,
                 default=None) -> Any:
@@ -409,8 +451,7 @@ class Recorder:
         with self._busy:
             if self._info is None:
                 if self.path is not None:
-                    with open(self.infoFile, 'rb') as f:
-                        data = f.read()
+                    data = self._getInfo()
                     self._hash = self._getHash(self.path, data)
                     infoFile = mideSchema.loads(data)
                     try:
@@ -449,9 +490,7 @@ class Recorder:
     @property
     def isVirtual(self):
         """ Is this actual hardware, or a virtual recorder? """
-        # NOTE: This will need revision in the future if/when we have
-        #  actual recorders connected remotely by other means.
-        return self.path is None
+        return self._virtual
 
 
     @property
@@ -1371,6 +1410,7 @@ class Recorder:
             recording.
         """
         dev = cls(None)
+        dev._virtual = True
         dev._source = dataset
         dev._info = dataset.recorderInfo.copy()
         dev._calPolys = dataset.transforms.copy()
