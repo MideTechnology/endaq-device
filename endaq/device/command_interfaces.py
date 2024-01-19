@@ -630,18 +630,22 @@ class CommandInterface:
 
 
     def awaitRemount(self,
+                     update: bool = False,
                      timeout: Optional[Union[int, float]] = None,
-                     timeoutMsg: Optional[str] = None,
+                     interval: float = 0.125,
                      callback: Optional[Callable] = None) -> bool:
         """ Wait for the device to reappear as a drive, indicating it has
             been reconnected, completed a recording, finished firmware
             application, etc.
 
+            :param update: If `True`, attempt to update the device's
+                information. This may be required if the device has had its
+                firmware or userpage updated.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately; `None` or -1 will wait
                 indefinitely.
-            :param timeoutMsg: A command-specific message to use when raising
-                a `DeviceTimeout` exception.
+            :param interval: Time (in seconds) between checks for the
+                remounted device.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -649,6 +653,7 @@ class CommandInterface:
             :return: `True` if the device reappeared. `False` if it is a
                 virtual device, or the wait was cancelled by the callback.
         """
+        # XXX: should we provide the `paths` and `strict` parameters to `update()`?
         if self.device.isVirtual or self.device.path is None:
             return False
 
@@ -661,12 +666,13 @@ class CommandInterface:
             while timeout < 0 or time() < deadline:
                 if callback is not None and callback():
                     return False
-                elif self.device.available:
+                if update:
+                    self.device.update()
+                if self.device.available:
                     return True
-                sleep(0.1)
+                sleep(interval)
 
-            timeoutMsg = timeoutMsg or "Timed out waiting for device to remount"
-            raise DeviceTimeout(timeoutMsg)
+            raise DeviceTimeout("Timed out waiting for device to remount")
 
 
     def _updateAll(self,

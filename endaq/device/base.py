@@ -238,7 +238,7 @@ class Recorder:
                 RECORDERS[hash(dev)] = self
                 RECORDERS.pop(hash(self), None)
                 self._virtual = False
-                if dev.path:
+                if dev.path != self.path:
                     self.path = dev.path
                 self.refresh(force=True)
                 return True
