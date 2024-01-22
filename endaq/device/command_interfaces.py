@@ -1834,6 +1834,25 @@ class SerialCommandInterface(CommandInterface):
                                       callback=callback)
 
 
+    def stopRecording(self,
+                      timeout: Union[int, float] = 5,
+                      callback: Optional[Callable] = None):
+        """ Stop a device that is recording.
+
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a response
+                will be cancelled. The callback function should require no
+                arguments.
+            :returns: `True` if the command was successful.
+        """
+        self._sendCommand({'EBMLCommand': {'RecStop': {}}},
+                          response=False,
+                          timeout=timeout,
+                          callback=callback)
+
+
     def reset(self,
               wait: bool = True,
               timeout: Union[int, float] = 5,
