@@ -48,6 +48,7 @@
         <StringElement name="NcpFwRevString" id="0x87" multiple="0" mandatory="0"> NCP firmware vers. triple digit format</StringElement>
         <IntegerElement name="NcpKeySlot"  id="0x84" multiple="0" mandatory="1"> Encryption key used to decrypt NCP file</IntegerElement>
         <IntegerElement name="NcpPayloadLen" id="0x85" multiple="0" mandatory="1"> Length of NCP encrypted payload of the following format: 1 or more of (uint16 byte offset || uint16 length || [length] bytes of binary data to flash)</IntegerElement>
+        <BinaryElement name="NcpUpdateData" id="0x810" multiple="0" mandatory="1"> The binary contents of the NCP update</BinaryElement>
     </MasterElement> <!-- UpdatePkg -->
 
 </MasterElement> <!-- UpdatePkg -->
