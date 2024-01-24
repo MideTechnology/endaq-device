@@ -11,7 +11,7 @@ import os.path
 import shutil
 import sys
 from time import sleep, time, struct_time
-from typing import Any, AnyStr, ByteString, Dict, Optional, Tuple, Union, Callable, TYPE_CHECKING
+from typing import Any, AnyStr, ByteString, Dict, List, Optional, Tuple, Union, Callable, TYPE_CHECKING
 import warnings
 
 import logging
@@ -24,7 +24,7 @@ import serial.tools.list_ports
 from .exceptions import DeviceError, CommandError, DeviceTimeout, UnsupportedFeature
 from .hdlc import hdlc_decode, hdlc_encode, HDLC_BREAK_CHAR
 from .exceptions import CRCError
-from .types import Epoch
+from .types import Epoch, Filename
 from . import response_codes
 from .response_codes import *
 
@@ -631,6 +631,8 @@ class CommandInterface:
 
     def awaitRemount(self,
                      update: bool = False,
+                     paths: Optional[List[Filename]] = None,
+                     strict: bool = True,
                      timeout: Optional[Union[int, float]] = None,
                      interval: float = 0.125,
                      callback: Optional[Callable] = None) -> bool:
@@ -641,6 +643,11 @@ class CommandInterface:
             :param update: If `True`, attempt to update the device's
                 information. This may be required if the device has had its
                 firmware or userpage updated.
+            :param paths: For use with `update`. A list of specific paths to
+                search for the updated recording device.
+            :param strict: For use with `update`. If `True`, non-FAT file
+                systems will be automatically rejected when searching for the
+                updated recording device.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately; `None` or -1 will wait
                 indefinitely.
@@ -653,7 +660,6 @@ class CommandInterface:
             :return: `True` if the device reappeared. `False` if it is a
                 virtual device, or the wait was cancelled by the callback.
         """
-        # XXX: should we provide the `paths` and `strict` parameters to `update()`?
         if self.device.isVirtual or self.device.path is None:
             return False
 
@@ -667,7 +673,7 @@ class CommandInterface:
                 if callback is not None and callback():
                     return False
                 if update:
-                    self.device.update()
+                    self.device.update(paths=paths, strict=strict)
                 if self.device.available:
                     return True
                 sleep(interval)
