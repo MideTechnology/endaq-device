@@ -11,7 +11,7 @@ import os.path
 import shutil
 import sys
 from time import sleep, time, struct_time
-from typing import Any, AnyStr, ByteString, Dict, Optional, Tuple, Union, Callable, TYPE_CHECKING
+from typing import Any, AnyStr, ByteString, Dict, List, Optional, Tuple, Union, Callable, TYPE_CHECKING
 import warnings
 
 import logging
@@ -24,7 +24,7 @@ import serial.tools.list_ports
 from .exceptions import DeviceError, CommandError, DeviceTimeout, UnsupportedFeature
 from .hdlc import hdlc_decode, hdlc_encode, HDLC_BREAK_CHAR
 from .exceptions import CRCError
-from .types import Epoch
+from .types import Epoch, Filename
 from . import response_codes
 from .response_codes import *
 
@@ -630,18 +630,29 @@ class CommandInterface:
 
 
     def awaitRemount(self,
+                     update: bool = False,
+                     paths: Optional[List[Filename]] = None,
+                     strict: bool = True,
                      timeout: Optional[Union[int, float]] = None,
-                     timeoutMsg: Optional[str] = None,
+                     interval: float = 0.125,
                      callback: Optional[Callable] = None) -> bool:
         """ Wait for the device to reappear as a drive, indicating it has
             been reconnected, completed a recording, finished firmware
             application, etc.
 
+            :param update: If `True`, attempt to update the device's
+                information. This may be required if the device has had its
+                firmware or userpage updated.
+            :param paths: For use with `update`. A list of specific paths to
+                search for the updated recording device.
+            :param strict: For use with `update`. If `True`, non-FAT file
+                systems will be automatically rejected when searching for the
+                updated recording device.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately; `None` or -1 will wait
                 indefinitely.
-            :param timeoutMsg: A command-specific message to use when raising
-                a `DeviceTimeout` exception.
+            :param interval: Time (in seconds) between checks for the
+                remounted device.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -661,12 +672,13 @@ class CommandInterface:
             while timeout < 0 or time() < deadline:
                 if callback is not None and callback():
                     return False
-                elif self.device.available:
+                if update:
+                    self.device.update(paths=paths, strict=strict)
+                if self.device.available:
                     return True
-                sleep(0.1)
+                sleep(interval)
 
-            timeoutMsg = timeoutMsg or "Timed out waiting for device to remount"
-            raise DeviceTimeout(timeoutMsg)
+            raise DeviceTimeout("Timed out waiting for device to remount")
 
 
     def _updateAll(self,
