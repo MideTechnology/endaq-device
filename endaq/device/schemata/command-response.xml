@@ -87,8 +87,8 @@
 
         <MasterElement name="GetLockID" id ="0x90" mandatory="0" multiple="0"> Get the current Lock ID on the device</MasterElement>
         <MasterElement name="SetLockID" id ="0x91" mandatory="0" multiple="0"> Set the current Lock ID on the device
-            <BinaryElement name="CurrentLockID" id="0x9100" mandatory="1" multiple="0" />
-            <BinaryElement name="NewLockID" id="0x9101" mandatory="1" multiple="0" />
+            <BinaryElement name="CurrentLockID" id="0x5A01" mandatory="1" multiple="0" />
+            <BinaryElement name="NewLockID" id="0x5A02" mandatory="1" multiple="0" />
         </MasterElement>
     </MasterElement>
 
@@ -156,7 +156,7 @@
             -70: Preamble (CorBus packet header) invalid
         </IntegerElement>
         <UnicodeElement name="DeviceStatusMessage" id="0x5901" multiple="0" mandatory="0">Serial only. Optional code for device status, including error message</UnicodeElement>
-        <BinaryElement name="LockID" id="0x5A01" mandatory="0" multiple="0"> Serial Only, optional current LockID of device </BinaryElement>
+        <BinaryElement name="LockID" id="0x5A00" mandatory="0" multiple="0"> Serial Only, optional current LockID of device </BinaryElement>
     </MasterElement>
 
 <!--
