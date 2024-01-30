@@ -90,6 +90,7 @@
             <BinaryElement name="CurrentLockID" id="0x5A01" mandatory="1" multiple="0" />
             <BinaryElement name="NewLockID" id="0x5A02" mandatory="1" multiple="0" />
         </MasterElement>
+        <BinaryElement name="LockID" id="0x5A00" mandatory="0" multiple="0"> Serial Only, optional LockID </BinaryElement>
     </MasterElement>
 
     <MasterElement name="EBMLResponse" id="0x86" multiple="0" mandatory="0">Response payload to above EBML command payload. Not all commands generate a response
