@@ -1848,7 +1848,7 @@ class SerialCommandInterface(CommandInterface):
             :returns: `True` if the command was successful.
         """
         self._sendCommand({'EBMLCommand': {'RecStop': {}}},
-                          response=False,
+                          response=True,
                           timeout=timeout,
                           callback=callback)
 
