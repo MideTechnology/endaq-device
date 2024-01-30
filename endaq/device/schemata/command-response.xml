@@ -84,6 +84,13 @@
         <MasterElement name="GetBattery" id="0x5600" multiple="0" mandatory="0">Serial only. Request the battery state.</MasterElement>
         <BinaryElement name="SendPing" id="0x5700" multiple="0" mandatory="0">Serial only. Request the device echo the enclosed data.</BinaryElement>
         <BinaryElement name="Blink" id="0x5800" multiple="0" mandatory="0">Serial only. Blinks LEDs on device for recognition purposes</BinaryElement>
+
+        <MasterElement name="GetLockID" id ="0x90" mandatory="0" multiple="0"> Get the current Lock ID on the device</MasterElement>
+        <MasterElement name="SetLockID" id ="0x91" mandatory="0" multiple="0"> Set the current Lock ID on the device
+            <BinaryElement name="CurrentLockID" id="0x5A01" mandatory="1" multiple="0" />
+            <BinaryElement name="NewLockID" id="0x5A02" mandatory="1" multiple="0" />
+        </MasterElement>
+        <BinaryElement name="LockID" id="0x5A00" mandatory="0" multiple="0"> Serial Only, optional LockID </BinaryElement>
     </MasterElement>
 
     <MasterElement name="EBMLResponse" id="0x86" multiple="0" mandatory="0">Response payload to above EBML command payload. Not all commands generate a response
@@ -142,6 +149,7 @@
             0: Device idle, message successful.
             -10: Communication busy
             -20: Command not valid
+            -21: Command Lock ID invalid
             -30: Unknown command
             -40: Bad payload
             -50: EBML invalid
@@ -149,6 +157,7 @@
             -70: Preamble (CorBus packet header) invalid
         </IntegerElement>
         <UnicodeElement name="DeviceStatusMessage" id="0x5901" multiple="0" mandatory="0">Serial only. Optional code for device status, including error message</UnicodeElement>
+        <BinaryElement name="LockID" id="0x5A00" mandatory="0" multiple="0"> Serial Only, optional current LockID of device </BinaryElement>
     </MasterElement>
 
 <!--
