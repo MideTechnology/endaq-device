@@ -4,7 +4,7 @@
         <Author>Derek Witt</Author>
         <Description>Metadata and packing format for encrypted update packages</Description>
     </SchemaInfo>
-	
+
 	    <!-- Base EBML elements. Required. (but not included in produced update package)-->
     <MasterElement name="EBML" id="0x1A45DFA3" mandatory="1" multiple="0" minver="1">Set the EBML characteristics of the data to follow. Each EBML document has to start with this.
         <UIntegerElement name="EBMLVersion" id="0x4286" multiple="0" mandatory="1" default="1" minver="1">The version of EBML parser used to create the file.</UIntegerElement>
@@ -28,8 +28,8 @@
             </MasterElement>
         </MasterElement>
 </MasterElement>
-	
-	<!-- Only the following elements must exist in the update package -->
+
+		<!-- Only the following elements must exist in the update package -->
 <MasterElement name="UpdatePkg" id="0xF0" mandatory="1" multiple="0">
     <UIntegerElement name="MinHWRev" id="0xF1" multiple="0" mandatory="1"> Minimum Hardware Rev this update can be applied to</UIntegerElement>
     <UIntegerElement name="FWRev" id="0xF2" multiple="0" mandatory="1"> FW Revision contained in this package (may be 0 for non firmware updates)</UIntegerElement>
@@ -39,7 +39,15 @@
     <StringElement name="TargetProcessor" id="0xF6" multiple="0" mandatory="1"> Processor the attached update is intended for. Values include "EFM32GG11B820F2048GL120", "STM32U585AII6", or "ANY" for non-firmware updates</StringElement>
     <StringElement name="FWRevString" id="0xF7" multiple="0" mandatory="0"> Human readable firmware revision</StringElement>
     <StringElement name="UpdateNotes" id="0xF8" multiple="0" mandatory="0"> Human readable notes regarding the update</StringElement>
-    <MasterElement name="NonCriticalElements" global="1" id="0xE0" multiple="0" mandatory="0">The device may skip elements inside NonCriticalElements without stopping the update. Any other unrecognized elements will kill the firmware update.
+    <MasterElement name="NonCriticalElements" global="1" id="0xE0" multiple="0" mandatory="0">The device may skip elements inside NonCriticalElements without stopping the update. Any other unrecognized elements will kill the firmware update.</MasterElement>
+    <!-- Additional element for NCP (EFM currently) information. Not strictly necessary but for newer models allows simultaneous updating of the NCP -->
+    <MasterElement name="NcpUpdate" id="0x80" mandatory="0" multiple="0">
+        <StringElement name="NcpType" id="0x86" multiple="0" mandatory="1"> NCP chip type the update is meant for</StringElement>
+        <UIntegerElement name="NcpFwRev" id="0x82"   multiple="0" mandatory="1"> NCP firmware vers. single digit format</UIntegerElement>
+        <StringElement name="NcpFwRevString" id="0x87" multiple="0" mandatory="0"> NCP firmware vers. triple digit format</StringElement>
+        <IntegerElement name="NcpKeySlot"  id="0x84" multiple="0" mandatory="1"> Encryption key used to decrypt NCP file</IntegerElement>
+        <IntegerElement name="NcpPayloadLen" id="0x85" multiple="0" mandatory="1"> Length of NCP encrypted payload of the following format: 1 or more of (uint16 byte offset || uint16 length || [length] bytes of binary data to flash)</IntegerElement>
+        <BinaryElement name="NcpUpdateData" id="0x81" multiple="0" mandatory="1"> The binary contents of the NCP update</BinaryElement>
     </MasterElement> <!-- UpdatePkg -->
 
 </MasterElement> <!-- UpdatePkg -->
