@@ -456,7 +456,6 @@ class CommandInterface:
                        timeout: Union[int, float] = 5,
                        callback: Optional[Callable] = None) -> bool:
         """ Start the device recording, if supported.
-            Must be implemented in every subclass.
 
             :param timeout: Time (in seconds) to wait for a response before
                 raising a `DeviceTimeout` exception. `None` or -1 will wait
@@ -467,7 +466,23 @@ class CommandInterface:
                 require no arguments.
             :returns: `True` if the command was successful.
         """
-        raise NotImplementedError
+        raise UnsupportedFeature(self, self.startRecording)
+
+
+    def stopRecording(self,
+                      timeout: Union[int, float] = 5,
+                      callback: Optional[Callable] = None):
+        """ Stop a device that is recording, if supported.
+
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a response
+                will be cancelled. The callback function should require no
+                arguments.
+            :returns: `True` if the command was successful.
+        """
+        raise UnsupportedFeature(self, self.stopRecording)
 
 
     def reset(self,
