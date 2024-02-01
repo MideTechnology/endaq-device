@@ -1365,7 +1365,7 @@ class SerialCommandInterface(CommandInterface):
 
         deadline = time() + timeout
 
-        while timeout > 0 and time() < deadline:
+        while timeout < 0 or time() < deadline:
             try:
                 portname = self.findSerialPort(self.device)
 
@@ -1478,7 +1478,7 @@ class SerialCommandInterface(CommandInterface):
         timeout = -1 if timeout is None else timeout
         deadline = time() + timeout
 
-        while timeout > 0 and time() < deadline:
+        while timeout < 0 or time() < deadline:
             try:
                 port = self.getSerialPort()
 
