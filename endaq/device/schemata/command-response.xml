@@ -91,6 +91,25 @@
             <BinaryElement name="NewLockID" id="0x5A02" mandatory="1" multiple="0" />
         </MasterElement>
         <BinaryElement name="LockID" id="0x5A00" mandatory="0" multiple="0"> Serial Only, optional LockID </BinaryElement>
+        <IntegerElement name="GetInfo" id="0x5B00" mandatory="0" multiple="0"> Serial Only, Get device Info. The value corresponds to:
+            0: DEVINFO - Read Only
+            1: DEVPROPS - Read Only
+            2: CONFIG.UI - Read Only
+            3: MANIFEST - Read Only
+            4: SYSCAL - Read Only
+            5: config.cfg - Read / Write
+            6: usercal.dat - Read / Write
+            7: update.pkg - Write Only
+            8: update.pkg.sig - Write Only
+        </IntegerElement>
+        <MasterElement name="SetInfo" id="0x5B01" mandatory="0" multiple="0" >
+            <IntegerElement name="InfoIndex" id="0x5B02" mandatory="1" multiple="0"> See GetInfo for index value</IntegerElement>
+            <MasterElement name="InfoPayload" id="0x5B03" mandatory="1" multiple="0"> Information about the payload
+                <IntegerElement name="PayloadSequenceNumber" id="0x5B04" mandatory="1" multiple="0"> Current sequence number</IntegerElement>
+                <IntegerElement name="PayloadTotalNumber" id="0x5B05" mandatory="1" multiple="0"> Total number of blocks in command</IntegerElement>
+                <BinaryElement name="PayloadData" id="0x5B06" mandatory="1" multiple="0"> Binary data block</BinaryElement>
+            </MasterElement>
+        </MasterElement>
     </MasterElement>
 
     <MasterElement name="EBMLResponse" id="0x86" multiple="0" mandatory="0">Response payload to above EBML command payload. Not all commands generate a response
@@ -150,6 +169,7 @@
             -10: Communication busy
             -20: Command not valid
             -21: Command Lock ID invalid
+            -22: Command Info Index Unknown / Invalid
             -30: Unknown command
             -40: Bad payload
             -50: EBML invalid
@@ -158,6 +178,14 @@
         </IntegerElement>
         <UnicodeElement name="DeviceStatusMessage" id="0x5901" multiple="0" mandatory="0">Serial only. Optional code for device status, including error message</UnicodeElement>
         <BinaryElement name="LockID" id="0x5A00" mandatory="0" multiple="0"> Serial Only, optional current LockID of device </BinaryElement>
+        <MasterElement name="SetInfo" id="0x5B01" mandatory="0" multiple="0" >
+            <IntegerElement name="InfoIndex" id="0x5B02" mandatory="1" multiple="0"> See GetInfo in EBMLCommand for index value</IntegerElement>
+            <MasterElement name="InfoPayload" id="0x5B03" mandatory="1" multiple="0"> Information about the payload
+                <IntegerElement name="PayloadSequenceNumber" id="0x5B04" mandatory="1" multiple="0"> Current sequence number</IntegerElement>
+                <IntegerElement name="PayloadTotalNumber" id="0x5B05" mandatory="1" multiple="0"> Total number of blocks in response</IntegerElement>
+                <BinaryElement name="PayloadData" id="0x5B06" mandatory="1" multiple="0"> Binary data block</BinaryElement>
+            </MasterElement>
+        </MasterElement>
     </MasterElement>
 
 <!--
