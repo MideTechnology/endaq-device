@@ -89,7 +89,7 @@ class CommandInterface:
         # Some interfaces (i.e. serial) have a maximum packet size.
         self.maxCommandSize = self.DEFAULT_MAX_COMMAND_SIZE
 
-        self.lockId: Optional[ByteString] = None
+        self.lockId: bytes = uuid4().bytes
 
 
     def __del__(self):
@@ -1218,8 +1218,8 @@ class CommandInterface:
 
 
     def setLockID(self,
-                  new: Optional[ByteString] = None,
                   current: Optional[ByteString] = None,
+                  new: Optional[ByteString] = None,
                   timeout: Union[int, float] = 5) -> ByteString:
         """ Set a unique 'lock' ID on the device, requesting exclusive use of
             the device.  Not supported by all devices/firmware.
@@ -1228,13 +1228,11 @@ class CommandInterface:
             of a device. If a device has a lock ID set, commands sent without
             that ID will generate an error.
 
-            :param new: The new lock ID. If `None`, a new UUIDv4 will be
-                generated. The command interface will use this lock ID
-                when sending commands to the device.
-            :param current: The lock ID currently on the device. Defaults to
-                this command interface's current lock ID (if any), but one
-                can be supplied to force a device with a different ID to
-                change.
+            :param current: The lock ID currently on the device; for use if
+                the device already has a lock ID set.
+            :param new: The new lock ID. It defaults to the command
+                interface's `lockId` (generated when the `CommandInterface`
+                was instantiated, and unique to this instance).
             :param timeout: Time (in seconds) to wait for a response.
             :returns: The new lock ID.
         """
@@ -2029,31 +2027,40 @@ class SerialCommandInterface(CommandInterface):
             :param timeout: Time (in seconds) to wait for a response.
             :returns: The device's current lock ID, if any.
         """
-        cmd = {'EBMLCommand': {'GetLockID': {}}}
-
         with self.device._busy:
-            response = self._sendCommand(cmd,
-                                         response=True,
-                                         timeout=timeout)
+            cmd = {'EBMLCommand': {'GetLockID': {}}}
+
+            try:
+                response = self._sendCommand(cmd,
+                                             response=True,
+                                             timeout=timeout)
+            except CommandError as err:
+                # Older FW returns wrong status code
+                if err.errno == DeviceStatusCode.ERR_INVALID_COMMAND:
+                    raise CommandError(DeviceStatusCode.ERR_UNKNOWN_COMMAND,
+                                       *err.args[1:])
+                raise
+
             if not response:
                 logger.debug('GetLockID did not get a response!')
                 return None
 
             lockId = response.get('LockID', None)
-            if not lockId:
-                logger.debug('GetLockID response did not contain LockID!')
-                return None
-
+            
             if isinstance(lockId, (bytearray, bytes)) and not any(lockId):
+                # All zeros; lock not set.
+                return None
+            elif not lockId:
+                logger.debug('GetLockID response did not contain LockID!')
                 return None
 
             return lockId
 
 
     def setLockID(self,
-                  new: Optional[ByteString] = None,
                   current: Optional[ByteString] = None,
-                  timeout: Union[int, float] = 5) -> ByteString:
+                  new: Optional[ByteString] = None,
+                  timeout: Union[int, float] = 5) -> bool:
         """ Set a unique 'lock' ID on the device, requesting exclusive use of
             the device.  Not supported by all devices/firmware.
 
@@ -2061,27 +2068,32 @@ class SerialCommandInterface(CommandInterface):
             of a device. If a device has a lock ID set, commands sent without
             that ID will generate an error.
 
-            :param new: The new lock ID. If `None`, a new UUIDv4 will be
-                generated. The command interface will use this lock ID
-                when sending commands to the device.
-            :param current: The lock ID currently on the device. Defaults to
-                this command interface's current lock ID (if any), but one
-                can be supplied to force a device with a different ID to
-                change.
+            :param current: The lock ID currently on the device; for use if
+                the device already has a lock ID set.
+            :param new: The new lock ID. It defaults to the command
+                interface's `lockId` (generated when the `CommandInterface`
+                was instantiated, and unique to this instance).
             :param timeout: Time (in seconds) to wait for a response.
             :returns: The new lock ID.
         """
         with self.device._busy:
-            current = current or self.lockId or (b'\x00' * 16)
+            cmd = {'EBMLCommand':
+                       {'SetLockID':
+                            {'CurrentLockID': current or (b'\x00' * 16),
+                             'NewLockID': new or self.lockId}}}
 
-            if not new:
-                new = self.lockId = uuid4().bytes
+            try:
+                self._sendCommand(cmd,
+                                  response=True,
+                                  timeout=timeout)
+            except CommandError as err:
+                # Older FW returns wrong status code
+                if err.errno == DeviceStatusCode.ERR_INVALID_COMMAND:
+                    raise CommandError(DeviceStatusCode.ERR_UNKNOWN_COMMAND,
+                                       *err.args[1:])
+                raise
 
-            cmd = {'EBMLCommand': {'SetLockID': {'CurrentLockID': current, 'NewLockID': new}}}
-            self._sendCommand(cmd,
-                              response=True,
-                              timeout=timeout)
-            return new
+            return True
 
 
     def clearLockID(self,
@@ -2094,17 +2106,16 @@ class SerialCommandInterface(CommandInterface):
             that ID will generate an error.
 
             :param current: The lock ID currently on the device. Defaults to
-                this command interface's current lock ID (if any), but one
+                this command interface's current lock ID, but one
                 can be supplied to force a device with a different ID to
                 clear it.
             :param timeout: Time (in seconds) to wait for a response.
         """
-        # Same as setting with new=b'\x00\x00\x00\x00', but more user-friendly
+        # Same as setting with new=b'\x00\x00\x00...', but more user-friendly
         with self.device._busy:
             new = b'\00' * 16
             current = current or self.lockId
             result = bool(self.setLockID(new=new, current=current))
-            self.lockId = None
             return result
 
 
