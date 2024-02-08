@@ -1039,10 +1039,10 @@ class Recorder:
             if self.isVirtual or self._manifest is not None:
                 return self._manifest
 
-            if os.path.exists(os.path.join(self.path, self._MANIFEST_FILE)):
-                self._readManifest()
-            elif os.path.exists(os.path.join(self.path, self._USERPAGE_FILE % 0)):
+            if os.path.exists(os.path.join(self.path, self._USERPAGE_FILE % 0)):
                 self._readUserpage()
+            elif os.path.exists(os.path.join(self.path, self._MANIFEST_FILE)):
+                self._readManifest()
 
             return self._manifest
 
