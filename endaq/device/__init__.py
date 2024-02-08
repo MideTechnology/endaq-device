@@ -4,10 +4,12 @@ data-logging devices.
 """
 
 __author__ = "David Stokes"
+__copyright__ = "Copyright 2024 Mide Technology Corporation"
 
 import os
 from pathlib import Path
 import string
+from threading import RLock
 from typing import List, Optional, Union
 
 import ebmlite.core
@@ -21,7 +23,7 @@ from .types import Drive, Filename, Epoch
 
 from . import schemata
 
-__version__ = "1.1.1"
+__version__ = "1.2.0b1"
 
 __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'DeviceError', 'DeviceTimeout', 'UnsupportedFeature',
@@ -65,6 +67,9 @@ RECORDERS = {}
 # Max number of cached recorders. Probably not needed, but just in case.
 RECORDER_CACHE_SIZE = 100
 
+# Lock to prevent contention (primarily with the recorder cache)
+_busy = RLock()
+
 #===============================================================================
 # Platform-specific stuff. 
 #===============================================================================
@@ -89,31 +94,32 @@ def getRecorder(path: Filename,
 
     dev = None
 
-    for rtype in RECORDER_TYPES:
-        if rtype.isRecorder(path, strict=strict):
-            # Get existing recorder if it has already been instantiated.
-            devhash = rtype._getHash(path)
-            dev = RECORDERS.pop(devhash, None)
-            if not dev:
-                dev = rtype(path, strict=strict)
+    with _busy:
+        for rtype in RECORDER_TYPES:
+            if rtype.isRecorder(path, strict=strict):
+                # Get existing recorder if it has already been instantiated.
+                devhash = rtype._getHash(path)
+                dev = RECORDERS.pop(devhash, None)
+                if not dev:
+                    dev = rtype(path, strict=strict)
 
-            if devhash:
-                RECORDERS[devhash] = dev
+                if devhash:
+                    RECORDERS[devhash] = dev
 
-                # Path has changed. Note that the hash does not include
-                # path, in case a device rebooted and remounted with a
-                # different mount point/drive letter.
-                if update and dev.path != path:
-                    dev.path = path
+                    # Path has changed. Note that the hash does not include
+                    # path, in case a device rebooted and remounted with a
+                    # different mount point/drive letter.
+                    if update and dev.path != path:
+                        dev.path = path
 
-            break
+                break
 
-    # Remove old cached devices. Ordered dictionaries assumed!
-    if len(RECORDERS) > RECORDER_CACHE_SIZE:
-        for k in list(RECORDERS.keys())[:-RECORDER_CACHE_SIZE]:
-            del RECORDERS[k]
+        # Remove old cached devices. Ordered dictionaries assumed!
+        if len(RECORDERS) > RECORDER_CACHE_SIZE:
+            for k in list(RECORDERS.keys())[:-RECORDER_CACHE_SIZE]:
+                del RECORDERS[k]
 
-    return dev
+        return dev
 
 
 def deviceChanged(recordersOnly: bool = True,
@@ -162,20 +168,21 @@ def getDevices(paths: Optional[List[Filename]] = None,
     """
     global RECORDERS
 
-    if paths is None:
-        paths = getDeviceList(strict=strict)
-    else:
-        if isinstance(paths, (str, bytes, bytearray, Path)):
-            paths = [paths]
+    with _busy:
+        if paths is None:
+            paths = getDeviceList(strict=strict)
+        else:
+            if isinstance(paths, (str, bytes, bytearray, Path)):
+                paths = [paths]
 
-    result = []
+        result = []
 
-    for path in paths:
-        dev = getRecorder(path, update=update, strict=strict)
-        if dev is not None:
-            result.append(dev)
+        for path in paths:
+            dev = getRecorder(path, update=update, strict=strict)
+            if dev is not None:
+                result.append(dev)
 
-    return result
+        return result
 
 
 def findDevice(sn: Optional[Union[str, int]] = None,
@@ -208,25 +215,26 @@ def findDevice(sn: Optional[Union[str, int]] = None,
             representing the device with the specified serial number or chip
             ID, or `None` if it cannot be found.
     """
-    if sn and chipId:
-        raise ValueError('Either a serial number or chip ID is required, not both')
-    elif sn is None and chipId is None:
-        raise ValueError('Either a serial number or chip ID is required')
+    with _busy:
+        if sn and chipId:
+            raise ValueError('Either a serial number or chip ID is required, not both')
+        elif sn is None and chipId is None:
+            raise ValueError('Either a serial number or chip ID is required')
 
-    if isinstance(sn, str):
-        sn = sn.lstrip(string.ascii_letters+"0")
-        if not sn:
-            sn = 0
-        sn = int(sn)
+        if isinstance(sn, str):
+            sn = sn.lstrip(string.ascii_letters+"0")
+            if not sn:
+                sn = 0
+            sn = int(sn)
 
-    if isinstance(chipId, str):
-        chipId = int(chipId, 16)
+        if isinstance(chipId, str):
+            chipId = int(chipId, 16)
 
-    for d in getDevices(paths, update=update, strict=strict):
-        if d.serialInt == sn or d.chipId == chipId:
-            return d
+        for d in getDevices(paths, update=update, strict=strict):
+            if d.serialInt == sn or d.chipId == chipId:
+                return d
 
-    return None
+        return None
 
 
 #===============================================================================
@@ -242,10 +250,11 @@ def isRecorder(path: Filename,
             is used to identify a recorder. If `True`, non-FAT file systems
             will be automatically rejected.
     """
-    for t in RECORDER_TYPES:
-        if t.isRecorder(path, strict=strict):
-            return True
-    return False
+    with _busy:
+        for t in RECORDER_TYPES:
+            if t.isRecorder(path, strict=strict):
+                return True
+        return False
 
 
 def onRecorder(path: Filename, strict: bool = True) -> bool:
