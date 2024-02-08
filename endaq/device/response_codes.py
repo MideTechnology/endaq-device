@@ -25,6 +25,8 @@ class DeviceStatusCode(IntEnum):
 
     ERR_BUSY = -10  #: Communication channel is busy
     ERR_INVALID_COMMAND = -20  #: Badly formed command
+    ERR_BAD_LOCK_ID = -21 #: Command Lock ID invalid
+    ERR_BAD_INFO_INDEX = -22  #: Unknown GetInfo/SetInfo index, or info is read or write only.
     ERR_UNKNOWN_COMMAND = -30  #: Command not recognized
     ERR_BAD_PAYLOAD = -40  #: Command payload is bad
     ERR_BAD_EBML = -50  #: Command EBML is malformed
