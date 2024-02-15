@@ -16,6 +16,7 @@ import ebmlite.core
 from idelib.dataset import Dataset
 
 from .base import Recorder, os_specific
+from .command_interfaces import SerialCommandInterface
 from .exceptions import *
 from .endaq import EndaqS, EndaqW
 from .slamstick import SlamStickX, SlamStickC, SlamStickS
@@ -151,13 +152,19 @@ def getDeviceList(strict: bool = True) -> List[Drive]:
 
 
 def getDevices(paths: Optional[List[Filename]] = None,
-               update: bool = False,
+               dismounted: bool = False,
+               update: bool = True,
                strict: bool = True) -> List[Recorder]:
     """ Get a list of data recorder objects.
     
         :param paths: A list of specific paths to recording devices.
             Defaults to all found devices (as returned by
             :meth:`~.endaq.device.getDeviceList`).
+        :param dismounted: If `True`, include devices connected by USB
+            but not appearing as drives. Currently, this only applies
+            to devices that had previously been mounted and been found
+            by `getDevices` (e.g. ones that were given the command to start
+            recording).
         :param update: If `True`, update the path of known devices if they
             have changed (e.g., their drive letter or mount point changed
             after a device reset).
@@ -182,12 +189,21 @@ def getDevices(paths: Optional[List[Filename]] = None,
             if dev is not None:
                 result.append(dev)
 
+        if dismounted:
+            for dev in (d for d in RECORDERS.values() if d not in result):
+                if not dev.available:
+                    dev.path = None
+                if isinstance(dev._command, SerialCommandInterface):
+                    if dev._command.findSerialPort(dev):
+                        result.append(dev)
+
         return result
 
 
 def findDevice(sn: Optional[Union[str, int]] = None,
                chipId: Optional[Union[str, int]] = None,
                paths: Optional[List[Filename]] = None,
+               dismounted: bool = False,
                update: bool = False,
                strict: bool = True) -> Union[Recorder, None]:
     """ Find a specific recorder by serial number or unique chip ID. One or
@@ -205,6 +221,11 @@ def findDevice(sn: Optional[Union[str, int]] = None,
         :param paths: A list of specific paths to recording devices.
             Defaults to all found devices (as returned by
             :meth:`~.endaq.device.getDeviceList`).
+        :param dismounted: If `True`, include devices connected by USB
+            but not appearing as drives. Currently, this only applies
+            to devices that had previously been mounted and been found
+            by `getDevices` (e.g. ones that were given the command to start
+            recording).
         :param update: If `True`, update the path of known devices if they
             have changed (e.g., their drive letter or mount point changed
             after a device reset).
@@ -230,7 +251,7 @@ def findDevice(sn: Optional[Union[str, int]] = None,
         if isinstance(chipId, str):
             chipId = int(chipId, 16)
 
-        for d in getDevices(paths, update=update, strict=strict):
+        for d in getDevices(paths, update=update, strict=strict, dismounted=dismounted):
             if d.serialInt == sn or d.chipId == chipId:
                 return d
 
