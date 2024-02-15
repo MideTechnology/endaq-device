@@ -241,10 +241,10 @@ class Recorder:
         # of known devices.
         if self.chipId:
             dev = findDevice(chipId=self.chipId, update=True,
-                             dismounted=True, paths=paths, strict=strict)
+                             unmounted=True, paths=paths, strict=strict)
         else:
             dev = findDevice(sn=self.serialInt, update=True,
-                             dismounted=True, paths=paths, strict=strict)
+                             unmounted=True, paths=paths, strict=strict)
 
         if dev and dev != self:
             # Device's DEVINFO has changed, change in place
