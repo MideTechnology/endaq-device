@@ -190,6 +190,8 @@ def getDevices(paths: Optional[List[Filename]] = None,
                 result.append(dev)
 
         if unmounted:
+            # Get previously-seen, dismounted devices that are still
+            # connected via USB/serial
             for dev in (d for d in RECORDERS.values() if d not in result):
                 if not dev.available:
                     dev.path = None
