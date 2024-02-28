@@ -1922,9 +1922,7 @@ class SerialCommandInterface(CommandInterface):
         if response is not None or not wait:
             return True
 
-        self.awaitRemount(timeout,
-                          timeoutMsg="Timed out waiting for recording to stop",
-                          callback=callback)
+        self.awaitRemount(timeout, callback=callback)
         return True
 
 
