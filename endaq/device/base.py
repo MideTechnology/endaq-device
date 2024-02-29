@@ -7,6 +7,7 @@ __author__ = "dstokes"
 
 from collections import defaultdict
 from datetime import datetime, timedelta
+import errno
 import logging
 import os
 from pathlib import Path
@@ -191,7 +192,15 @@ class Recorder:
         # and path itself isn't a reliable test in Linux
         if (os.path.exists(self.path) and os.path.isfile(self.infoFile)):
             # See if the device is mounted in the same place and is unchanged.
-            return self._getHash(self.path) == hash(self)
+            try:
+                return self._getHash(self.path) == hash(self)
+            except IOError as err:
+                if err.errno == errno.EINVAL:
+                    # Possible race condition: device dismounts after test.
+                    logger.debug('Ignoring expected IOError (EINVAL) getting hash '
+                                 '(device dismounting?)')
+                    return False
+                raise
 
         return False
 
@@ -221,6 +230,8 @@ class Recorder:
         if not virtual and self.isVirtual:
             return False
 
+        path = self.path
+
         # Imported here to avoid circular references.
         # I don't like doing this, but I think this case is okay.
         from . import RECORDERS, findDevice, _busy
@@ -229,11 +240,14 @@ class Recorder:
         # devices) can be found anywhere. This will also update the paths
         # of known devices.
         if self.chipId:
-            dev = findDevice(chipId=self.chipId, update=True, paths=paths, strict=strict)
+            dev = findDevice(chipId=self.chipId, update=True,
+                             unmounted=True, paths=paths, strict=strict)
         else:
-            dev = findDevice(sn=self.serialInt, update=True, paths=paths, strict=strict)
+            dev = findDevice(sn=self.serialInt, update=True,
+                             unmounted=True, paths=paths, strict=strict)
 
         if dev and dev != self:
+            # Device's DEVINFO has changed, change in place
             with _busy:
                 RECORDERS[hash(dev)] = self
                 RECORDERS.pop(hash(self), None)
@@ -243,7 +257,7 @@ class Recorder:
                 self.refresh(force=True)
                 return True
 
-        return False
+        return path != self.path
 
 
     def __repr__(self):
@@ -1039,10 +1053,10 @@ class Recorder:
             if self.isVirtual or self._manifest is not None:
                 return self._manifest
 
-            if os.path.exists(os.path.join(self.path, self._MANIFEST_FILE)):
-                self._readManifest()
-            elif os.path.exists(os.path.join(self.path, self._USERPAGE_FILE % 0)):
+            if os.path.exists(os.path.join(self.path, self._USERPAGE_FILE % 0)):
                 self._readUserpage()
+            elif os.path.exists(os.path.join(self.path, self._MANIFEST_FILE)):
+                self._readManifest()
 
             return self._manifest
 

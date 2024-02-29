@@ -456,7 +456,6 @@ class CommandInterface:
                        timeout: Union[int, float] = 5,
                        callback: Optional[Callable] = None) -> bool:
         """ Start the device recording, if supported.
-            Must be implemented in every subclass.
 
             :param timeout: Time (in seconds) to wait for a response before
                 raising a `DeviceTimeout` exception. `None` or -1 will wait
@@ -467,7 +466,23 @@ class CommandInterface:
                 require no arguments.
             :returns: `True` if the command was successful.
         """
-        raise NotImplementedError
+        raise UnsupportedFeature(self, self.startRecording)
+
+
+    def stopRecording(self,
+                      timeout: Union[int, float] = 5,
+                      callback: Optional[Callable] = None):
+        """ Stop a device that is recording, if supported.
+
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a response
+                will be cancelled. The callback function should require no
+                arguments.
+            :returns: `True` if the command was successful.
+        """
+        raise UnsupportedFeature(self, self.stopRecording)
 
 
     def reset(self,
@@ -987,7 +1002,7 @@ class CommandInterface:
         return self._encodeResponseCodes(response.get('QueryWiFiResponse'))
 
 
-    def scanWifi(self, 
+    def scanWifi(self,
                  timeout: Union[int, float] = 10,
                  interval: float = .25,
                  callback: Optional[Callable] = None) -> Union[None, list]:
@@ -1323,19 +1338,26 @@ class SerialCommandInterface(CommandInterface):
 
     def getSerialPort(self,
                       reset: bool = False,
-                      **kwargs) -> Union[None, serial.Serial]:
+                      timeout: Union[int, float] = 1,
+                      kwargs: Optional[Dict[str, Any]] = None) -> Union[None, serial.Serial]:
         """
         Connect to a device's serial port.
 
         :param reset: If `True`, reset the serial connection if already open.
             Use if the path/number to the device's serial port has changed.
+        :param timeout: Time (in seconds) to get the serial port.
+        :param kwargs: Additional keyword arguments to be used when opening
+            the port. Note: these will be ignored if the port has already
+            been created and `reset` is `False`.
         :return: A `serial.Serial` instance, or `None` if no port matching
             the device can be found.
-
-        Additional keyword arguments will be used when opening the port. Note:
-        these will be ignored if the port has already been created and `reset`
-        is `False`.
         """
+        timeout = -1 if timeout is None else timeout
+        kwargs = kwargs or {}
+        kwargs.setdefault('timeout', self.timeout)
+        params = self.SERIAL_PARAMS.copy()
+        params.update(kwargs)
+
         if self.port:
             try:
                 if reset:
@@ -1353,18 +1375,25 @@ class SerialCommandInterface(CommandInterface):
                 # Disconnected device can cause this. Ignore in this case.
                 pass
 
-        portname = self.findSerialPort(self.device)
+        deadline = time() + timeout
 
-        if not portname:
-            self.port = None
-            raise CommandError('No serial port found for {}'.format(self.device))
+        while timeout < 0 or time() < deadline:
+            try:
+                portname = self.findSerialPort(self.device)
 
-        kwargs.setdefault('timeout', self.timeout)
-        params = self.SERIAL_PARAMS.copy()
-        params.update(kwargs)
+                if portname:
+                    self.port = serial.Serial(portname, **params)
+                    return self.port
 
-        self.port = serial.Serial(portname, **params)
-        return self.port
+            except (IOError, serial.SerialException) as err:
+                logger.debug("Ignoring exception when opening {} (probably okay): "
+                             "{!r}".format(type(self).__name__, err))
+
+            sleep(0.1)
+            continue
+
+        self.port = None
+        raise CommandError('No serial port found for {}'.format(self.device))
 
 
     # =======================================================================
@@ -1447,7 +1476,8 @@ class SerialCommandInterface(CommandInterface):
 
 
     def _writeCommand(self,
-                      packet: ByteString) -> int:
+                      packet: ByteString,
+                      timeout: Union[int, float] = 0.5) -> int:
         """ Transmit a fully formed packet (addressed, HDLC encoded, etc.)
             via serial. This is a low-level write to the medium and does not
             do the additional housekeeping that `sendCommand()` does;
@@ -1457,17 +1487,32 @@ class SerialCommandInterface(CommandInterface):
                 data.
             :return: The number of bytes written.
         """
-        port = self.getSerialPort()
+        timeout = -1 if timeout is None else timeout
+        deadline = time() + timeout
 
-        if port.in_waiting:
-            logger.debug('Flushing {} bytes from serial input'.format(port.in_waiting))
-            port.reset_input_buffer()
+        while timeout < 0 or time() < deadline:
+            try:
+                port = self.getSerialPort()
 
-        return port.write(packet)
+                if port.in_waiting:
+                    logger.debug('Flushing {} bytes from serial input'.format(port.in_waiting))
+                    port.reset_input_buffer()
+
+                return port.write(packet)
+
+            except (IOError, OSError, serial.SerialException) as err:
+                logger.debug("Ignoring exception when closing {} (probably okay): "
+                             "{!r}".format(type(self).__name__, err))
+
+            sleep(0.1)
+            continue
+
+        return None
+        # raise TimeoutError("Timed out attempting to send command via serial")
 
 
     def _readResponse(self,
-                      timeout: Optional[float] = None,
+                      timeout: Optional[float] = 0.5,
                       callback: Optional[Callable] = None) -> Union[None, dict]:
         """
         Wait for and retrieve the response to a serial command. Does not do
@@ -1490,26 +1535,33 @@ class SerialCommandInterface(CommandInterface):
         while timeout < 0 or time() < deadline:
             if callback is not None and callback():
                 return
-            if self.port.in_waiting:
-                buf += self.port.read()
-                self._lastbuf = buf
-                if HDLC_BREAK_CHAR in buf:
-                    packet, _, buf = buf.partition(HDLC_BREAK_CHAR)
-                    if packet.startswith(b'\x81\x00'):
-                        response = self._decode(packet)
-                        self._response = time(), response
-                        if 'EBMLResponse' not in response:
-                            logger.warning('Response did not contain an EBMLResponse element')
-                        return response.get('EBMLResponse', response)
-                    else:
-                        # In the future, there might be other devices on the
-                        # bus, so a wrong header might be for a different
-                        # address. Ignore.
-                        logger.debug("Packet incomplete or has wrong header, ignoring")
-            else:
-                sleep(.01)
+            try:
+                if self.port.in_waiting:
+                    buf += self.port.read()
+                    self._lastbuf = buf
+                    if HDLC_BREAK_CHAR in buf:
+                        packet, _, buf = buf.partition(HDLC_BREAK_CHAR)
+                        if packet.startswith(b'\x81\x00'):
+                            response = self._decode(packet)
+                            self._response = time(), response
+                            if 'EBMLResponse' not in response:
+                                logger.warning('Response did not contain an EBMLResponse element')
+                            return response.get('EBMLResponse', response)
+                        else:
+                            # In the future, there might be other devices on the
+                            # bus, so a wrong header might be for a different
+                            # address. Ignore.
+                            logger.debug("Packet incomplete or has wrong header, ignoring")
+                else:
+                    sleep(.01)
 
-        raise TimeoutError("Timeout waiting for response to serial command")
+            except (IOError, OSError, serial.SerialException) as err:
+                logger.debug("Ignoring exception when reading response (probably okay): "
+                             "{!r}".format(err))
+                sleep(0.1)
+
+        return None
+        # raise TimeoutError("Timeout waiting for response to serial command")
 
 
     def _sendCommand(self,
@@ -1558,7 +1610,7 @@ class SerialCommandInterface(CommandInterface):
                     packet = self._encode(cmd)
                     self.lastCommand = time(), deepcopy(cmd)
                     self._writeCommand(packet)
-            
+
                     if timeout == 0:
                         return None
 
@@ -1844,6 +1896,34 @@ class SerialCommandInterface(CommandInterface):
                                       wait=wait,
                                       timeout=timeout,
                                       callback=callback)
+
+
+    def stopRecording(self,
+                      wait: bool = True,
+                      timeout: Union[int, float] = 5,
+                      callback: Optional[Callable] = None):
+        """ Stop a device that is recording.
+
+            :param wait: If `True`, wait for the recorer to respond and/or
+                remount, indicating the recording has started.
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a response
+                will be cancelled. The callback function should require no
+                arguments.
+            :returns: `True` if the command was successful.
+        """
+        response = self._sendCommand({'EBMLCommand': {'RecStop': {}}},
+                                     response=False,
+                                     timeout=timeout,
+                                     callback=callback)
+
+        if response is not None or not wait:
+            return True
+
+        self.awaitRemount(timeout, callback=callback)
+        return True
 
 
     def reset(self,
