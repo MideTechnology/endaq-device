@@ -104,11 +104,7 @@
         </IntegerElement>
         <MasterElement name="SetInfo" id="0x5B07" mandatory="0" multiple="0" >
             <IntegerElement name="InfoIndex" id="0x5B02" mandatory="1" multiple="0"> See GetInfo for index value</IntegerElement>
-            <MasterElement name="InfoPayload" id="0x5B03" mandatory="1" multiple="0"> Information about the payload
-                <IntegerElement name="PayloadSequenceNumber" id="0x5B04" mandatory="1" multiple="0"> Current sequence number</IntegerElement>
-                <IntegerElement name="PayloadTotalNumber" id="0x5B05" mandatory="1" multiple="0"> Total number of blocks in command</IntegerElement>
-                <BinaryElement name="PayloadData" id="0x5B06" mandatory="1" multiple="0"> Binary data block</BinaryElement>
-            </MasterElement>
+            <BinaryElement name="InfoPayload" id="0x5B03" mandatory="1" multiple="0"> Payload</BinaryElement>
         </MasterElement>
     </MasterElement>
 
@@ -181,11 +177,7 @@
         <BinaryElement name="LockID" id="0x5A00" mandatory="0" multiple="0"> Serial Only, optional current LockID of device </BinaryElement>
         <MasterElement name="GetInfoResp" id="0x5B01" mandatory="0" multiple="0" >
             <IntegerElement name="InfoIndex" id="0x5B02" mandatory="1" multiple="0"> See GetInfo in EBMLCommand for index value</IntegerElement>
-            <MasterElement name="InfoPayload" id="0x5B03" mandatory="1" multiple="0"> Information about the payload
-                <IntegerElement name="PayloadSequenceNumber" id="0x5B04" mandatory="1" multiple="0"> Current sequence number</IntegerElement>
-                <IntegerElement name="PayloadTotalNumber" id="0x5B05" mandatory="1" multiple="0"> Total number of blocks in response</IntegerElement>
-                <BinaryElement name="PayloadData" id="0x5B06" mandatory="1" multiple="0"> Binary data block</BinaryElement>
-            </MasterElement>
+            <BinaryElement name="InfoPayload" id="0x5B03" mandatory="1" multiple="0"> Payload</BinaryElement>
         </MasterElement>
     </MasterElement>
 
