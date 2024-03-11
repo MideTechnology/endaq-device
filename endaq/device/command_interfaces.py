@@ -9,6 +9,7 @@ from datetime import datetime
 import errno
 import os.path
 import shutil
+import struct
 import sys
 from time import sleep, time, struct_time
 from typing import Any, AnyStr, ByteString, Dict, List, Optional, Tuple, Union, Callable, TYPE_CHECKING
@@ -60,6 +61,8 @@ class CommandInterface:
     # Default maximum encoded command length (bytes). Only applicable to
     # certain interfaces.
     DEFAULT_MAX_COMMAND_SIZE = None
+
+    _TIME_PARSER = struct.Struct("<L")
 
 
     def __init__(self,
@@ -1279,7 +1282,7 @@ class SerialCommandInterface(CommandInterface):
             :param device: The recorder to check.
             :return: `True` if the device supports the interface.
         """
-        if device.isVirtual:
+        if device.isVirtual or device.isRemote:
             return False
 
         # If the DEVINFO explicitly indicates a serial command interface,
@@ -1713,7 +1716,7 @@ class SerialCommandInterface(CommandInterface):
             response = self._sendCommand(command, timeout=timeout)
             try:
                 dt = response['ClockTime']
-                devTime = self.device._TIME_PARSER.unpack_from(dt)[0]
+                devTime = self._TIME_PARSER.unpack_from(dt)[0]
             except KeyError:
                 raise CommandError("GetClock response did not contain ClockTime")
 
@@ -1748,7 +1751,7 @@ class SerialCommandInterface(CommandInterface):
             pause = False
 
         t = int(t)
-        payload = self.device._TIME_PARSER.pack(t)
+        payload = self._TIME_PARSER.pack(t)
 
         t0 = time()
         if pause:
@@ -2059,7 +2062,7 @@ class FileCommandInterface(CommandInterface):
             :param device: The recorder to check.
             :return: `True` if the device supports the interface.
         """
-        if device.isVirtual or not device.path:
+        if device.isVirtual or device.isRemote or not device.path:
             return False
 
         # Old SlamStick devices may not support COMMAND. They should get
@@ -2140,7 +2143,7 @@ class FileCommandInterface(CommandInterface):
                 while int(time()) == t:
                     pass
             sysTime, devTime = os_specific.readRecorderClock(self.device.clockFile)
-            devTime = self.device._TIME_PARSER.unpack_from(devTime)[0]
+            devTime = self._TIME_PARSER.unpack_from(devTime)[0]
 
         return sysTime, devTime
 
@@ -2172,7 +2175,7 @@ class FileCommandInterface(CommandInterface):
             pause = False
 
         t = int(t)
-        payload = self.device._TIME_PARSER.pack(t)
+        payload = self._TIME_PARSER.pack(t)
 
         t0 = time()
         with open(self.device.clockFile, 'wb') as f:
@@ -2406,6 +2409,9 @@ class LegacyFileCommandInterface(FileCommandInterface):
             :param device: The recorder to check.
             :return: `True` if the device supports the interface.
         """
+        if device.isRemote:
+            return False
+
         if device.getInfo('McuType', "EFM32GG330") != "EFM32GG330":
             return False
 

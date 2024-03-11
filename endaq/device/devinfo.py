@@ -10,7 +10,6 @@ import os.path
 import struct
 from typing import ByteString, Optional, Tuple, TYPE_CHECKING
 
-from .exceptions import *
 from .types import Drive, Filename
 
 logger = logging.getLogger('endaq.device')
@@ -24,13 +23,14 @@ if TYPE_CHECKING:
 # ===============================================================================
 
 class DeviceInfo(ABC):
-    """ An abstract mechanism for retrieving device information. Its methods
-        only read and write the raw binary.
+    """
+    An abstract mechanism for retrieving device information. Its methods only
+    read and write the raw binary; any parsing is done by the caller.
     """
 
     def _getInfo(self, path=None) -> Optional[ByteString]:
         """ Read a recorder's device information """
-    ...
+        raise NotImplemented
 
 
     @classmethod
@@ -42,7 +42,7 @@ class DeviceInfo(ABC):
             :param info: The contents of the device's `DEVINFO` file, if
                 previously loaded. For future caching optimization.
         """
-        ...
+        raise NotImplemented
 
 
     def readManifest(self) \
@@ -50,14 +50,14 @@ class DeviceInfo(ABC):
         """ Read the device's manifest data. The data is a superset of the
             information returned by `getInfo()`.
         """
-        ...
+        raise NotImplemented
 
 
     def readUserCalibration(self) -> Optional[ByteString]:
         """ Get the recorder's user-defined calibration data as a dictionary
             of parameters.
         """
-        ...
+        raise NotImplemented
 
 
     def writeUserCal(self,
@@ -67,7 +67,7 @@ class DeviceInfo(ABC):
             :param caldata: The raw binary of an EBML `<CalibrationList>`
                 element..
         """
-        ...
+        raise NotImplemented
 
 
 # ===============================================================================
@@ -77,7 +77,8 @@ class DeviceInfo(ABC):
 class FileDeviceInfo(DeviceInfo):
     """
     A mechanism for retrieving device information from files (mostly
-    firmware-generated) on the device.
+    firmware-generated) on the device. Its methods only read and write the raw
+    binary; any parsing is done by the caller.
     """
 
     _INFO_FILE = os.path.join("SYSTEM", "DEV", "DEVINFO")
@@ -88,8 +89,10 @@ class FileDeviceInfo(DeviceInfo):
     
     
     @classmethod
-    def readDevinfo(cls, path: Filename, info=None) -> Optional[ByteString]:
-        """ Calculate the device's hash. Separated from `__hash__()` so it
+    def readDevinfo(cls,
+                    path: Filename,
+                    info: Optional[ByteString] = None) -> Optional[ByteString]:
+        """ Retrieve a DEVINFO data. Calculate the device's hash. Separated from `__hash__()` so it
             can be used by `getDevices()` to find known recorders.
 
             :param path: The device's filesystem path.
@@ -229,4 +232,22 @@ class FileDeviceInfo(DeviceInfo):
         if caldata:
             with open(self.device.userCalFile, 'wb') as f:
                 f.write(caldata)
+
+# ===============================================================================
+#
+# ===============================================================================
+
+
+class MQTTDeviceInfo(DeviceInfo):
+    """
+    A mechanism for retrieving device information from a remote device connected
+    via MQTT. Its methods only read and write the raw binary; any parsing is done
+    by the caller.
+    """
+
+    # XXX: PLACEHOLDER!
+    def __init__(self, device: 'Recorder', **_kwargs):
+        logger.warning('MQTTDeviceInfo not implemented!', NotImplemented)
+        self.device = device
+
 
