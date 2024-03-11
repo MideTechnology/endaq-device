@@ -48,10 +48,10 @@ logger = logging.getLogger('endaq.device')
 
 __all__ = ('Recorder', 'os_specific')
 
+
 # ===============================================================================
 #
 # ===============================================================================
-
 
 class Recorder:
     """ A representation of an enDAQ/SlamStick data recorder. Some devices
@@ -950,9 +950,34 @@ class Recorder:
         """ Read the device's manifest data. The data is a superset of the
             information returned by `getInfo()`.
         """
+        # Note: This method sets `Recorder._propData`, `Recorder._manData`,
+        # `Recorder._calData`, `Recorder._manifest`, and `Recorder._calibration`.
+
         with self._busy:
-            if self._manifest is None and not self.isVirtual:
-                self._devinfo.getManifest()
+            if self._manifest is not None or self.isVirtual:
+                return self._manifest
+
+            manSchema = loadSchema('mide_manifest.xml')
+            calSchema = loadSchema('mide_ide.xml')
+            manData, calData, propData = self._devinfo.readManifest()
+
+            if manData:
+                self._manData = manData
+                try:
+                    self._manifest = manSchema.loads(manData)[0].dump()
+                except IndexError:
+                    logger.warning(f'No manifest data for {self}!')
+                    self._manifest = None
+            if calData:
+                self._calData = calSchema.loads(calData)
+                try:
+                    self._calibration = self._calData[0].dump()
+                except IndexError:
+                    self._calibration = None
+                    logger.warning(f'No system calibration for {self}!')
+            if propData:
+                self._propData = propData
+
             return self._manifest
 
 
@@ -962,9 +987,14 @@ class Recorder:
         """
         if filename:
             with open(filename, 'rb') as f:
-                return loadSchema("mide_ide.xml").loads(f.read())
+                caldata = f.read()
         else:
-            return self._devinfo.getUserCalibration()
+            caldata = self._devinfo.readUserCalibration()
+
+        if caldata:
+            return loadSchema("mide_ide.xml").loads(caldata)
+
+        return None
 
 
     def getUserCalibration(self,
@@ -1281,12 +1311,12 @@ class Recorder:
             raise ConfigError('Could not write user calibration data: '
                               'Not a real recorder!')
 
+        cal = self.generateCalEbml(transforms)
         if filename:
-            cal = self.generateCalEbml(transforms)
             with open(filename, 'wb') as f:
                 f.write(cal)
         else:
-            self._devinfo.writeUserCal(transforms)
+            self._devinfo.writeUserCal(cak)
 
 
     # ===========================================================================
