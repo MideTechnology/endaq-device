@@ -35,7 +35,8 @@ elif sys.platform == 'linux':
 
 from . import config
 from .config import ConfigInterface
-from .devinfo import FileDeviceInfo, MQTTDeviceInfo
+from . import devinfo
+from .devinfo import DeviceInfo, FileDeviceInfo, MQTTDeviceInfo
 from . import measurement
 from .measurement import MeasurementType
 from . import command_interfaces
@@ -103,12 +104,17 @@ class Recorder:
             rarely (if ever) necessary.
 
             :param path: The filesystem path to the recorder, or `None` if
-                it is a 'virtual' device (e.g., constructed from data in a
-                recording).
+                it is a 'virtual' or remote device.
             :param strict: If `True`, only allow real device paths. If
-                `False`, allow any path that contains the standard contents
-                of a recorder's ``SYSTEM`` directory. Primarily for testing.
-            :param devinfo:
+                `False`, allow any path that contains a ``SYSTEM`` directory
+                with the standard contents on a device. Primarily for
+                testing.
+            :param devinfo: The necessary data to instantiate a `Recorder`.
+                If `None`, the data will be read from the device. For
+                creating `Recorder` instances when the hardware isn't
+                physically present on the host computer.
+            :param virtual: `True` if the device is not actual hardware
+                (e.g., constructed from data in a recording).
         """
         self._busy = RLock()
         self.strict: bool = strict
@@ -117,6 +123,7 @@ class Recorder:
         self._command: Optional[CommandInterface] = None
         self._config: Optional[ConfigInterface] = None
         self._path: Optional[Filename] = None
+        self._devinfo: Optional[DeviceInfo] = None
         self._rawinfo: Optional[ByteString] = devinfo
         self._info: Optional[Dict] = None
 
@@ -126,6 +133,23 @@ class Recorder:
 
         # The source IDE `Dataset` used for 'virtual' devices.
         self._source: Optional[Dataset] = None
+
+
+    def _getDevinfo(self) -> Optional[DeviceInfo]:
+        if self._devinfo is not None:
+            return self._devinfo
+
+        elif self.isVirtual:
+            raise DeviceError('Device information cannot be read from virtual devices')
+
+        for interface in devinfo.INTERFACES:
+            if interface.hasInterface(self):
+                self._devinfo = interface(self)
+
+        if self._devinfo is None:
+            raise DeviceError('Cannot find information reader for device')
+
+        return self._devinfo
 
 
     @property
@@ -296,7 +320,7 @@ class Recorder:
         """ Return hash(self). """
         with self._busy:
             if self._hash is None:
-                self.getInfo()
+                self.getInfo(self._rawinfo)
             return self._hash
 
 
@@ -310,6 +334,7 @@ class Recorder:
             if force and not self.isVirtual:
                 self._rawinfo = None
 
+            self._devinfo = None
             self._info: Optional[Dict] = None
             self._hash: Optional[int] = None
             self._configData: Optional[Dict] = None
@@ -369,7 +394,6 @@ class Recorder:
             self.recpropFile = self.commandFile = None
 
             if str(newpath).lower().startswith("mqtt"):
-                self._devinfo = MQTTDeviceInfo(self)
                 path = None
 
             elif newpath is not None:
@@ -387,9 +411,6 @@ class Recorder:
                 self.recpropFile = os.path.join(path, self._RECPROP_FILE)
                 self.commandFile = os.path.join(path, self._COMMAND_FILE)
                 self._volumeName = None
-
-                if os.path.exists(self.infoFile):
-                    self._devinfo = FileDeviceInfo(self)
 
             self._path = path
 
@@ -506,7 +527,7 @@ class Recorder:
         mideSchema = loadSchema("mide_ide.xml")
         with self._busy:
             if not self._info:
-                self._rawinfo = self._rawinfo or self._devinfo.readDevinfo(self.path)
+                self._rawinfo = self._rawinfo or self._getDevinfo().readDevinfo(self.path)
                 if self._rawinfo:
                     self._hash = hash(self._rawinfo)
                     infoFile = mideSchema.loads(self._rawinfo)
@@ -992,7 +1013,7 @@ class Recorder:
 
             manSchema = loadSchema('mide_manifest.xml')
             calSchema = loadSchema('mide_ide.xml')
-            manData, calData, propData = self._devinfo.readManifest()
+            manData, calData, propData = self._getDevinfo().readManifest()
 
             if manData:
                 self._manData = manData
@@ -1001,13 +1022,21 @@ class Recorder:
                 except IndexError:
                     logger.warning(f'No manifest data for {self}!')
                     self._manifest = None
+            else:
+                logger.warning(f'No manifest data for {self}!')
+                self._manData = self._manifest = None
+
             if calData:
                 self._calData = calSchema.loads(calData)
                 try:
                     self._calibration = self._calData[0].dump()
                 except IndexError:
-                    self._calibration = None
                     logger.warning(f'No system calibration for {self}!')
+                    self._calibration = None
+            else:
+                logger.warning(f'No system calibration for {self}!')
+                self._calData = self._calibration = None
+
             if propData:
                 self._propData = propData
 
@@ -1022,7 +1051,7 @@ class Recorder:
             with open(filename, 'rb') as f:
                 caldata = f.read()
         else:
-            caldata = self._devinfo.readUserCalibration()
+            caldata = self._getDevinfo().readUserCalibration()
 
         if caldata:
             return loadSchema("mide_ide.xml").loads(caldata)
@@ -1349,7 +1378,7 @@ class Recorder:
             with open(filename, 'wb') as f:
                 f.write(cal)
         else:
-            self._devinfo.writeUserCal(cal)
+            self._getDevinfo().writeUserCal(cal)
 
 
     # ===========================================================================

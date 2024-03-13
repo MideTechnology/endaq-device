@@ -1,16 +1,19 @@
 """
 'Strategy' classes for reading device information over different media
 (e.g., file-based or through the command interface). These are similar to
-`CommandInterface` and `ConfigInterface`, except that they are not accessed
-directly.
+`CommandInterface` and `ConfigInterface` in that regard, but these are not
+accessed directly.
 """
-from abc import ABC
+
+from abc import ABC, abstractmethod
 import logging
 import os.path
 import struct
 from typing import ByteString, Optional, Tuple, TYPE_CHECKING
 
 from .types import Drive, Filename
+from .command_interfaces import SerialCommandInterface
+from . import util
 
 logger = logging.getLogger('endaq.device')
 
@@ -18,22 +21,30 @@ if TYPE_CHECKING:
     from .base import Recorder
 
 
-# ===============================================================================
+# ===========================================================================
 #
-# ===============================================================================
+# ===========================================================================
 
 class DeviceInfo(ABC):
     """
-    An abstract mechanism for retrieving device information. Its methods only
-    read and write the raw binary; any parsing is done by the caller.
+    An abstract mechanism for retrieving and setting device information. Its
+    methods only read and write the raw binary; any parsing and/or is done by
+    the caller.
     """
 
-    def _getInfo(self, path=None) -> Optional[ByteString]:
-        """ Read a recorder's device information """
+    @classmethod
+    @abstractmethod
+    def hasInterface(cls, device: "Recorder") -> bool:
+        """ Determine if a device supports this info-accessing type.
+
+            :param device: The recorder to check.
+            :return: `True` if the device supports the interface.
+        """
         raise NotImplemented
 
 
     @classmethod
+    @abstractmethod
     def readDevinfo(cls, path: Filename, info=None) -> Optional[ByteString]:
         """ Calculate the device's hash. Separated from `__hash__()` so it
             can be used by `getDevices()` to find known recorders.
@@ -45,6 +56,7 @@ class DeviceInfo(ABC):
         raise NotImplemented
 
 
+    @abstractmethod
     def readManifest(self) \
             -> Tuple[Optional[ByteString], Optional[ByteString], Optional[ByteString]]:
         """ Read the device's manifest data. The data is a superset of the
@@ -53,6 +65,7 @@ class DeviceInfo(ABC):
         raise NotImplemented
 
 
+    @abstractmethod
     def readUserCalibration(self) -> Optional[ByteString]:
         """ Get the recorder's user-defined calibration data as a dictionary
             of parameters.
@@ -60,6 +73,7 @@ class DeviceInfo(ABC):
         raise NotImplemented
 
 
+    @abstractmethod
     def writeUserCal(self,
                      caldata: ByteString):
         """ Write user calibration to the device.
@@ -70,15 +84,15 @@ class DeviceInfo(ABC):
         raise NotImplemented
 
 
-# ===============================================================================
+# ===========================================================================
 #
-# ===============================================================================
+# ===========================================================================
 
 class FileDeviceInfo(DeviceInfo):
     """
     A mechanism for retrieving device information from files (mostly
     firmware-generated) on the device. Its methods only read and write the raw
-    binary; any parsing is done by the caller.
+    binary; any parsing and/or encoding is done by the caller.
     """
 
     _INFO_FILE = os.path.join("SYSTEM", "DEV", "DEVINFO")
@@ -87,7 +101,20 @@ class FileDeviceInfo(DeviceInfo):
     def __init__(self, device: 'Recorder', **_kwargs):
         self.device = device
     
-    
+
+    @classmethod
+    def hasInterface(cls, device: "Recorder") -> bool:
+        """ Determine if a device supports this `DeviceInfo` type.
+
+            :param device: The recorder to check.
+            :return: `True` if the device supports the interface.
+        """
+        if device.isVirtual:
+            return
+
+        return device.path and os.path.exists(device.infoFile)
+
+
     @classmethod
     def readDevinfo(cls,
                     path: Filename,
@@ -109,18 +136,6 @@ class FileDeviceInfo(DeviceInfo):
         return info
 
 
-    def _getInfo(self, path=None) -> Optional[ByteString]:
-        """ Read a recorder's device information """
-        if path:
-            infoFile = os.path.join(path, self.device._INFO_FILE)
-        else:
-            infoFile = self.device.infoFile
-        if not os.path.isfile(infoFile):
-            return None
-        with open(infoFile, 'rb') as f:
-            return f.read()
-
-    
     def _readUserpage(self) \
             -> Tuple[Optional[ByteString], Optional[ByteString], Optional[ByteString]]:
         """ Read the device's manifest data from the EFM32 'userpage'. The
@@ -230,24 +245,80 @@ class FileDeviceInfo(DeviceInfo):
                 element..
         """
         if caldata:
-            with open(self.device.userCalFile, 'wb') as f:
-                f.write(caldata)
+            try:
+                util.makeBackup(self.device.userCalFile)
+                with open(self.device.userCalFile, 'wb') as f:
+                    f.write(caldata)
+            except Exception:
+                util.restoreBackup(self.device.userCalFile)
+                raise
 
-# ===============================================================================
+
+# ===========================================================================
 #
-# ===============================================================================
+# ===========================================================================
 
-
-class MQTTDeviceInfo(DeviceInfo):
+class SerialDeviceInfo(DeviceInfo):
     """
     A mechanism for retrieving device information from a remote device connected
-    via MQTT. Its methods only read and write the raw binary; any parsing is done
-    by the caller.
+    via a serial command interface. Its methods only read and write the raw
+    binary; any parsing and/or encoding is done by the caller.
     """
 
     # XXX: PLACEHOLDER!
     def __init__(self, device: 'Recorder', **_kwargs):
+        logger.warning('SerialDeviceInfo not implemented!', NotImplemented)
+        super().__init__(device, **_kwargs)
+
+
+    @classmethod
+    def hasInterface(cls, device: "Recorder") -> bool:
+        """ Determine if a device supports this `DeviceInfo` type.
+
+            :param device: The recorder to check.
+            :return: `True` if the device supports the interface.
+        """
+        if device.isVirtual or FileDeviceInfo.hasInterface(device):
+            return False
+
+        return isinstance(device.command, SerialCommandInterface)
+
+
+class MQTTDeviceInfo(SerialDeviceInfo):
+    """
+    A mechanism for retrieving device information from a remote device connected
+    via MQTT. Its methods only read and write the raw binary; any parsing and/or
+    encoding is done by the caller.
+    """
+
+    # Very similar to SerialDeviceInfo, in that they get data via the command
+    # interface.
+    # XXX: PLACEHOLDER!
+    def __init__(self, device: 'Recorder', **_kwargs):
         logger.warning('MQTTDeviceInfo not implemented!', NotImplemented)
-        self.device = device
+        super().__init__(device, **_kwargs)
 
 
+    @classmethod
+    def hasInterface(cls, device: "Recorder") -> bool:
+        """ Determine if a device supports this `DeviceInfo` type.
+
+            :param device: The recorder to check.
+            :return: `True` if the device supports the interface.
+        """
+        if device.isVirtual:
+            return False
+
+        return device.path and device.path.lower().startswith('mqtt')
+
+
+# ===========================================================================
+#
+# ===========================================================================
+
+#: A list of all `DeviceInfo` types, used when finding a device's  interface.
+#  New interface types defined elsewhere should append/insert themselves into
+#  this list.
+INTERFACES = [FileDeviceInfo,
+              SerialDeviceInfo,
+              MQTTDeviceInfo]
