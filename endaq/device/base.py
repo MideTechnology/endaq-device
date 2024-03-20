@@ -747,7 +747,7 @@ class Recorder:
 
 
     @property
-    def hasWifi(self) -> bool:
+    def hasWifi(self) -> Union[str, bool]:
         """ The name of the Wi-Fi hardware type, or `False` if none. The name
             will not be blank, so expressions like `if dev.hasWifi:` will work.
         """
