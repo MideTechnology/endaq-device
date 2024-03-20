@@ -1211,6 +1211,55 @@ class CommandInterface:
         return mac, ip
 
 
+    # =======================================================================
+    # General device info getting/setting
+    # =======================================================================
+
+    def _getInfo(self,
+                index: int,
+                timeout: Union[int, float] = 10,
+                interval: float = .25,
+                callback: Optional[Callable] = None) -> ByteString:
+        """ Retrieve device system information. For 'local' devices, this
+            is retrieved via the filesystem. This method is called indirectly
+            by methods in `Recorder`.
+
+            :param index: The index of the information to retrieve.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
+            :param interval: Time (in seconds) between checks for a response.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will
+                be cancelled. The callback function should require no arguments.
+            :return: The raw info, as unparsed EBML binary data. It is up to
+                the caller to know how to process the results (e.g., choose
+                the correct schema, etc.).
+        """
+        raise UnsupportedFeature(self, self._getInfo)
+
+
+    def _setInfo(self,
+                 index: int,
+                 payload: ByteString,
+                 timeout: Union[int, float] = 10,
+                 interval: float = .25,
+                 callback: Optional[Callable] = None):
+        """ Write device system information. This method is called indirectly
+            by methods in `Recorder`.
+
+            :param index: The index of the information to write.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
+            :param interval: Time (in seconds) between checks for a response.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will
+                be cancelled. The callback function should require no arguments.
+        """
+        raise UnsupportedFeature(self, self._setInfo)
+
+
 # ===========================================================================
 #
 # ===========================================================================
@@ -2024,6 +2073,69 @@ class SerialCommandInterface(CommandInterface):
                               'FileCommandInterface')
 
         return self._fileinterface.scanWifi(timeout, interval, callback)
+
+
+    # =======================================================================
+    # General device info getting/setting
+    # =======================================================================
+
+    def _getInfo(self,
+                index: int,
+                timeout: Union[int, float] = 10,
+                interval: float = .25,
+                callback: Optional[Callable] = None) -> ByteString:
+        """ Retrieve device system information. For 'local' devices, this
+            is retrieved via the filesystem. This method is called indirectly
+            by methods in `Recorder`.
+
+            :param index: The index of the information to retrieve.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
+            :param interval: Time (in seconds) between checks for a response.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will
+                be cancelled. The callback function should require no arguments.
+            :return: The raw info, as unparsed EBML binary data. It is up to
+                the caller to know how to process the results (e.g., choose
+                the correct schema, etc.).
+        """
+        cmd = {'EBMLCommand': {'GetInfo': index}}
+        response = self._sendCommand(cmd,
+                                     response=True,
+                                     timeout=timeout,
+                                     callback=callback)
+
+        # XXX: update GetInfoResp if/when element name changes to GetInfoResponse
+        try:
+            return response['GetInfoResp']['InfoPayload']
+        except KeyError:
+            if 'GetInfoResp' in response:
+                raise CommandError('Response did not contain expected GetInfoResponse element')
+            else:
+                raise CommandError('Response did not contain a payload of information')
+
+
+    def _setInfo(self,
+                 index: int,
+                 payload: ByteString,
+                 timeout: Union[int, float] = 10,
+                 interval: float = .25,
+                 callback: Optional[Callable] = None):
+        """ Write device system information. This method is called indirectly
+            by methods in `Recorder`.
+
+            :param index: The index of the information to write.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
+            :param interval: Time (in seconds) between checks for a response.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will
+                be cancelled. The callback function should require no arguments.
+        """
+        # TODO: Implement `SerialCommandInterface._setInfo()`!
+        raise NotImplementedError
 
 
 # ===========================================================================
