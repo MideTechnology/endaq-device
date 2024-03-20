@@ -170,6 +170,7 @@
             -30: Unknown command
             -40: Bad payload
             -50: EBML invalid
+            -51: Response too large, internal device error
             -60: Bad checksum
             -70: Preamble (CorBus packet header) invalid
         </IntegerElement>
