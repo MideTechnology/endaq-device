@@ -1764,7 +1764,7 @@ class SerialCommandInterface(CommandInterface):
                 dt = response['ClockTime']
                 devTime = self.device._TIME_PARSER.unpack_from(dt)[0]
             except KeyError:
-                raise CommandError("GetClock response did not contain ClockTime")
+                raise DeviceError("GetClock response did not contain ClockTime")
 
         return sysTime, devTime
 
@@ -1835,7 +1835,7 @@ class SerialCommandInterface(CommandInterface):
                                      callback=callback)
 
         if 'PingReply' not in response:
-            raise CommandError('Ping response did not contain a PingReply')
+            raise DeviceError('Ping response did not contain a PingReply')
 
         return response['PingReply']
 
@@ -2106,14 +2106,13 @@ class SerialCommandInterface(CommandInterface):
                                      timeout=timeout,
                                      callback=callback)
 
-        # XXX: update GetInfoResp if/when element name changes to GetInfoResponse
         try:
-            return response['GetInfoResp']['InfoPayload']
+            return response['GetInfoResponse']['InfoPayload']
         except KeyError:
-            if 'GetInfoResp' in response:
-                raise CommandError('Response did not contain expected GetInfoResponse element')
+            if 'GetInfoResponse' in response:
+                raise DeviceError('Response did not contain expected GetInfoResponse element')
             else:
-                raise CommandError('Response did not contain a payload of information')
+                raise DeviceError('Response did not contain a payload of information')
 
 
     def _setInfo(self,
