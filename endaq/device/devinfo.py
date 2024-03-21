@@ -265,10 +265,8 @@ class SerialDeviceInfo(DeviceInfo):
     binary; any parsing and/or encoding is done by the caller.
     """
 
-    # XXX: PLACEHOLDER!
     def __init__(self, device: 'Recorder', **_kwargs):
-        logger.warning('SerialDeviceInfo not implemented!', NotImplemented)
-        super().__init__(device, **_kwargs)
+        self.device = device
 
 
     @classmethod
@@ -283,6 +281,60 @@ class SerialDeviceInfo(DeviceInfo):
 
         return isinstance(device.command, SerialCommandInterface)
 
+
+    @classmethod
+    def readDevinfo(cls,
+                    path: Filename,
+                    info: Optional[ByteString] = None) -> Optional[ByteString]:
+        """ Retrieve a DEVINFO data.
+
+            :param path: The device's filesystem path.
+            :param info: The contents of the device's `DEVINFO` file, if
+                previously loaded. For future caching optimization.
+        """
+        # TODO: Implement way to use `SerialCommandInterface` without a `Recorder`,
+        #  or do the equivalent of doing `_getData(0)` (sending the command and
+        #  receiving the response)
+        raise NotImplemented
+
+
+    def readManifest(self) \
+            -> Tuple[Optional[ByteString], Optional[ByteString], Optional[ByteString]]:
+        """ Read the device's manifest data from the 'MANIFEST' file. The
+            data is a superset of the information returned by `getInfo()`.
+
+            Factory calibration and recorder properties are also read and
+            cached for backwards compatibility, since both are in the older
+            devices' EFM32 'userpage'.
+        """
+        manData = self.device.command._getInfo(3) or None
+        calData = self.device.command._getInfo(4) or None
+        propData = self.device.command._getInfo(1) or None
+
+        return manData, calData, propData
+
+
+    def readUserCalibration(self) -> Optional[ByteString]:
+        """ Get the recorder's user-defined calibration data as a dictionary
+            of parameters.
+        """
+        return self.device.command._getInfo(6) or None
+
+
+    def writeUserCal(self,
+                     caldata: ByteString):
+        """ Write user calibration to the device.
+
+            :param caldata: The raw binary of an EBML `<CalibrationList>`
+                element..
+        """
+        caldata = caldata or b''
+        self.device.command._setInfo(6, caldata)
+
+
+# ===========================================================================
+#
+# ===========================================================================
 
 class MQTTDeviceInfo(SerialDeviceInfo):
     """
@@ -302,6 +354,10 @@ class MQTTDeviceInfo(SerialDeviceInfo):
     @classmethod
     def hasInterface(cls, device: "Recorder") -> bool:
         """ Determine if a device supports this `DeviceInfo` type.
+
+            Note: it's likely that this interface will be instantiated
+            by the mechanism that instantiates MQTT devices, so this
+            won't be used.
 
             :param device: The recorder to check.
             :return: `True` if the device supports the interface.

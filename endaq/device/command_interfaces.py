@@ -9,6 +9,7 @@ from datetime import datetime
 import errno
 import os.path
 import shutil
+import string
 import struct
 import sys
 from time import sleep, time, struct_time
@@ -1361,16 +1362,29 @@ class SerialCommandInterface(CommandInterface):
 
 
     @classmethod
-    def findSerialPort(cls, device: "Recorder") -> Union[None, str]:
+    def findSerialPort(cls, device: Union["Recorder", int, str]) -> Union[None, str]:
         """ Find the path/name/number of a serial port corresponding to a
-            given serial number.
+            given `Recorder` or serial number.
 
-            :param device: The recorder to check.
+            :param device: The `Recorder` to check, or a recorder serial
+                number.
             :return: The corresponding serial port path/name/number, or
                 `None` if no matching port is found.
         """
-        if device.isVirtual:
-            return None
+        try:
+            if device.isVirtual:
+                return None
+            devSerial = device.serialInt
+        except AttributeError:
+            if isinstance(device, int):
+                devSerial = device
+            elif isinstance(device, str):
+                sn = device.lstrip(string.ascii_letters+"0")
+                if not sn:
+                    devSerial = 0
+                devSerial = int(sn)
+            else:
+                raise
 
         for p in serial.tools.list_ports.comports():
             # Find valid USB/serial device by vendor/product ID
@@ -1379,8 +1393,7 @@ class SerialCommandInterface(CommandInterface):
             try:
                 if not p.serial_number:
                     continue
-                sn = int(p.serial_number)
-                if sn == device.serialInt:
+                elif int(p.serial_number) == devSerial:
                     return p.device
             except ValueError as err:
                 # Probably text in serial number, ignore if so
@@ -2137,6 +2150,7 @@ class SerialCommandInterface(CommandInterface):
                 be cancelled. The callback function should require no arguments.
         """
         # TODO: Implement `SerialCommandInterface._setInfo()`!
+        #  Make sure it includes the LockID
         raise NotImplementedError
 
 
