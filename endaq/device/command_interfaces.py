@@ -1682,6 +1682,7 @@ class SerialCommandInterface(CommandInterface):
                      timeout: Union[int, float] = 10,
                      interval: float = .25,
                      index: bool = True,
+                     lock: bool = False,
                      callback: Optional[Callable] = None) -> Union[None, dict]:
         """ Send a command to the device and (optionally) retrieve the
             response.
@@ -1699,6 +1700,8 @@ class SerialCommandInterface(CommandInterface):
                 response. Not used by the serial interface.
             :param index: If `True` (default), include an incrementing
                 'command index' (for matching responses to commands).
+            :param lock: If `True`, include the current `hostId` in the
+                command, as some `SetInfo` commands require.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -1719,6 +1722,8 @@ class SerialCommandInterface(CommandInterface):
                         if index:
                             self.index += 1
                             cmd['EBMLCommand']['CommandIdx'] = self.index
+                        if lock:
+                            cmd['EBMLCommand']['LockID'] = self.hostId or (b'\x00' * 16)
 
                     packet = self._encode(cmd)
                     self.lastCommand = time(), deepcopy(cmd)
@@ -2256,6 +2261,7 @@ class SerialCommandInterface(CommandInterface):
                 index: int,
                 timeout: Union[int, float] = 10,
                 interval: float = .25,
+                lock: bool = False,
                 callback: Optional[Callable] = None) -> ByteString:
         """ Retrieve device system information. For 'local' devices, this
             is retrieved via the filesystem. This method is called indirectly
@@ -2269,14 +2275,20 @@ class SerialCommandInterface(CommandInterface):
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will
                 be cancelled. The callback function should require no arguments.
+            :param lock: If `True`, include the current `hostId` in the
+                command, as some `SetInfo` commands require.
             :return: The raw info, as unparsed EBML binary data. It is up to
                 the caller to know how to process the results (e.g., choose
                 the correct schema, etc.).
         """
+        # Note: Reading config or user calibration requires a LockID
+        # lock = index in (5, 6)
+
         cmd = {'EBMLCommand': {'GetInfo': index}}
         response = self._sendCommand(cmd,
                                      response=True,
                                      timeout=timeout,
+                                     lock=lock,
                                      callback=callback)
 
         try:
@@ -2307,6 +2319,7 @@ class SerialCommandInterface(CommandInterface):
                 be cancelled. The callback function should require no arguments.
         """
         # TODO: Implement `SerialCommandInterface._setInfo()`!
+        #  Send command with lock=True
         raise NotImplementedError
 
 

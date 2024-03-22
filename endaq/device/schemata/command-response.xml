@@ -97,8 +97,8 @@
             2: CONFIG.UI - Read Only
             3: MANIFEST - Read Only
             4: SYSCAL - Read Only
-            5: config.cfg - Read / Write
-            6: usercal.dat - Read / Write
+            5: config.cfg - Read / Write - Read requires LockID
+            6: usercal.dat - Read / Write - Read requires LockID
             7: update.pkg - Write Only
             8: update.pkg.sig - Write Only
         </IntegerElement>
