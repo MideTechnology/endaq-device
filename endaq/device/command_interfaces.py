@@ -1274,6 +1274,55 @@ class CommandInterface:
         raise UnsupportedFeature(self, self.clearLockID)
 
 
+    # =======================================================================
+    # General device info getting/setting
+    # =======================================================================
+
+    def _getInfo(self,
+                index: int,
+                timeout: Union[int, float] = 10,
+                interval: float = .25,
+                callback: Optional[Callable] = None) -> ByteString:
+        """ Retrieve device system information. For 'local' devices, this
+            is retrieved via the filesystem. This method is called indirectly
+            by methods in `Recorder`.
+
+            :param index: The index of the information to retrieve.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
+            :param interval: Time (in seconds) between checks for a response.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will
+                be cancelled. The callback function should require no arguments.
+            :return: The raw info, as unparsed EBML binary data. It is up to
+                the caller to know how to process the results (e.g., choose
+                the correct schema, etc.).
+        """
+        raise UnsupportedFeature(self, self._getInfo)
+
+
+    def _setInfo(self,
+                 index: int,
+                 payload: ByteString,
+                 timeout: Union[int, float] = 10,
+                 interval: float = .25,
+                 callback: Optional[Callable] = None):
+        """ Write device system information. This method is called indirectly
+            by methods in `Recorder`.
+
+            :param index: The index of the information to write.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
+            :param interval: Time (in seconds) between checks for a response.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will
+                be cancelled. The callback function should require no arguments.
+        """
+        raise UnsupportedFeature(self, self._setInfo)
+
+
 # ===========================================================================
 #
 # ===========================================================================
@@ -1779,7 +1828,7 @@ class SerialCommandInterface(CommandInterface):
                 dt = response['ClockTime']
                 devTime = self.device._TIME_PARSER.unpack_from(dt)[0]
             except KeyError:
-                raise CommandError("GetClock response did not contain ClockTime")
+                raise DeviceError("GetClock response did not contain ClockTime")
 
         return sysTime, devTime
 
@@ -1850,7 +1899,7 @@ class SerialCommandInterface(CommandInterface):
                                      callback=callback)
 
         if 'PingReply' not in response:
-            raise CommandError('Ping response did not contain a PingReply')
+            raise DeviceError('Ping response did not contain a PingReply')
 
         return response['PingReply']
 
@@ -2197,6 +2246,68 @@ class SerialCommandInterface(CommandInterface):
             current = current or self.hostId
             result = bool(self.setLockID(new=new, current=current))
             return result
+
+
+    # =======================================================================
+    # General device info getting/setting
+    # =======================================================================
+
+    def _getInfo(self,
+                index: int,
+                timeout: Union[int, float] = 10,
+                interval: float = .25,
+                callback: Optional[Callable] = None) -> ByteString:
+        """ Retrieve device system information. For 'local' devices, this
+            is retrieved via the filesystem. This method is called indirectly
+            by methods in `Recorder`.
+
+            :param index: The index of the information to retrieve.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
+            :param interval: Time (in seconds) between checks for a response.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will
+                be cancelled. The callback function should require no arguments.
+            :return: The raw info, as unparsed EBML binary data. It is up to
+                the caller to know how to process the results (e.g., choose
+                the correct schema, etc.).
+        """
+        cmd = {'EBMLCommand': {'GetInfo': index}}
+        response = self._sendCommand(cmd,
+                                     response=True,
+                                     timeout=timeout,
+                                     callback=callback)
+
+        try:
+            return response['GetInfoResponse']['InfoPayload']
+        except KeyError:
+            if 'GetInfoResponse' in response:
+                raise DeviceError('Response did not contain expected GetInfoResponse element')
+            else:
+                raise DeviceError('Response did not contain a payload of information')
+
+
+    def _setInfo(self,
+                 index: int,
+                 payload: ByteString,
+                 timeout: Union[int, float] = 10,
+                 interval: float = .25,
+                 callback: Optional[Callable] = None):
+        """ Write device system information. This method is called indirectly
+            by methods in `Recorder`.
+
+            :param index: The index of the information to write.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
+            :param interval: Time (in seconds) between checks for a response.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will
+                be cancelled. The callback function should require no arguments.
+        """
+        # TODO: Implement `SerialCommandInterface._setInfo()`!
+        raise NotImplementedError
 
 
 # ===========================================================================

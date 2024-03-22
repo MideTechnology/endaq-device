@@ -18,11 +18,13 @@ class DeviceStatusCode(IntEnum):
     """ The device status, returned in the response to a command. Negative
         values denote errors.
     """
-    IDLE = 0  #: Device idle, message successful.
+    IDLE = 0  #: Device idle, message successful. It is implied the device is mounted as a drive.
+    IDLE_UNMOUNTED = 1  #: Device idle, not mounted as a drive. *For future use.*
     RECORDING = 10  #: Device is currently recording.
     RESET_PENDING = 20  #: Reset pending: the device will reset soon after this response is received.
     START_PENDING = 30  #: Recording start pending: the device will start recording soon after this response is received.
     TRIGGERING = 40 #: Device is currently triggering.
+    SLEEPING = 100  #: Device is currently in sleep mode, or will enter sleep mode soon after this response is received. *For future use.*
 
     ERR_BUSY = -10  #: Communication channel is busy
     ERR_INVALID_COMMAND = -20  #: Badly formed command
@@ -31,7 +33,7 @@ class DeviceStatusCode(IntEnum):
     ERR_UNKNOWN_COMMAND = -30  #: Command not recognized
     ERR_BAD_PAYLOAD = -40  #: Command payload is bad
     ERR_BAD_EBML = -50  #: Command EBML is malformed
-    ERR_RESPONSE_TOO_LARGE = -51 #: internal device error, EBML command response too large
+    ERR_RESPONSE_TOO_LARGE = -51  #: Internal device error, EBML command response too large
     ERR_BAD_CHECKSUM = -60  #: Command checksum failed (error transmitting packet)
     ERR_BAD_PACKET = -70  #: Content of command packet bad/damaged
 
