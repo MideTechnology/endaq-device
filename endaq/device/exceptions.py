@@ -2,8 +2,9 @@
 Exceptions raised when interacting with a recording device.
 """
 
-__all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
-           'DeviceError', 'DeviceTimeout', 'UnsupportedFeature')
+__all__ = ('CommandError', 'CommunicationError', 'ConfigError',
+           'ConfigVersionError', 'DeviceError', 'DeviceTimeout',
+           'UnsupportedFeature')
 
 
 class DeviceError(Exception):
@@ -16,6 +17,10 @@ class DeviceError(Exception):
 
 
 class CommandError(RuntimeError, DeviceError):
+    """ Exception raised by a failure to process a command. """
+
+
+class CommunicationError(RuntimeError, DeviceError):
     """ Exception raised by a failure to communicate. """
 
 

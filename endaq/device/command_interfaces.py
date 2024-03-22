@@ -22,7 +22,7 @@ from ebmlite import loadSchema
 import serial
 import serial.tools.list_ports
 
-from .exceptions import DeviceError, CommandError, DeviceTimeout, UnsupportedFeature
+from .exceptions import DeviceError, CommandError, CommunicationError, DeviceTimeout, UnsupportedFeature
 from .hdlc import hdlc_decode, hdlc_encode, HDLC_BREAK_CHAR
 from .exceptions import CRCError
 from .types import Epoch, Filename
@@ -191,7 +191,20 @@ class CommandInterface:
             if 'Invalid length' not in str(err):
                 raise
 
-            raise CommandError('Response from device could not be decoded ({})'.format(err))
+            raise CommunicationError('Response from device could not be decoded '
+                                     f'({err})')
+
+
+    def _decodeCommand(self, packet:ByteString) -> Dict[str, Any]:
+        """ Translate a command packet (EBML) into a dictionary. Only used in
+            some special cases; not generally used in ordinary "Recorder"
+            communication.
+
+            :param packet: A packet of command data, in EBML with possibly
+                additional coding (varying by interface type).
+            :return: The response, as nested dictionaries.
+        """
+        return self._decode(packet)
 
 
     # =======================================================================
@@ -1560,18 +1573,14 @@ class SerialCommandInterface(CommandInterface):
 
 
     def _decode(self,
-                packet: ByteString) -> dict:
-        """
-            Translate a response packet into a dictionary. Removes additional
+                packet: ByteString) -> Dict[str, Any]:
+        """ Translate a response packet into a dictionary. Removes additional
             header data and checks the CRC (if the interface's `ignore_crc`
             attribue is `False`) before parsing the binary EBML contents.
 
             :param packet: A packet of response data.
             :return: The response, as nested dictionaries.
         """
-        # Testing note: because response headers differ from commands, this
-        # method cannot directly decode a packet created by `encode()`.
-
         # Messages are Corbus packets:
         # HDLC escaped short header, payload, crc16
         packet = hdlc_decode(packet, ignore_crc=self.ignore_crc)
@@ -1582,9 +1591,28 @@ class SerialCommandInterface(CommandInterface):
             else:
                 errname = {0x01: "Corbus command failed",
                            0x07: "bad Corbus command"}.get(resultcode, "unknown error")
-                raise CommandError("Response header indicated an error (0x{:02x}: {})".format(resultcode, errname))
+                raise CommandError(f"Response header indicated an error "
+                                   f"(0x{resultcode:02x}: {errname})")
         else:
-            raise CommandError('Response was corrupted or incomplete; did not have expected Corbus header')
+            raise CommunicationError('Response was corrupted or incomplete; '
+                                     'did not have expected Corbus header')
+
+
+    def _decodeCommand(self, packet: ByteString) -> Dict[str, Any]:
+        """ Translate a command packet (EBML) into a dictionary. Only used in
+            some special cases; not generally used in ordinary "Recorder"
+            communication.
+
+            :param packet: A packet of command data, in EBML with possibly
+                additional coding (varying by interface type).
+            :return: The command, as nested dictionaries.
+        """
+        packet = hdlc_decode(packet, ignore_crc=self.ignore_crc)
+        if packet.startswith(b'\x80\x26\x00\x0A'):
+            return super()._decodeCommand(packet[4:-2])
+        else:
+            raise CommunicationError('Received command was corrupted or incomplete; '
+                                     'did not have expected Corbus header')
 
 
     def _writeCommand(self,
