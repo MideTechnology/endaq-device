@@ -11,7 +11,7 @@ import os.path
 import shutil
 import sys
 from time import sleep, time, struct_time
-from typing import Any, AnyStr, ByteString, Dict, List, Optional, Tuple, Union, Callable, TYPE_CHECKING
+from typing import Any, AnyStr, Dict, List, Optional, Tuple, Union, Callable, TYPE_CHECKING
 from uuid import uuid4
 import warnings
 
@@ -172,7 +172,21 @@ class CommandInterface:
         return ebml
 
 
-    def _decode(self, packet: ByteString) -> dict:
+    def _encodeResponse(self, data: dict) -> Union[bytearray, bytes]:
+        """
+        Encode a packet of response data in the manner typically received
+        from devices, doing any preparation required by the interface's
+        medium. Only used in some special cases; not generally used in
+        ordinary "Recorder" communication.
+
+        :param data: The unencoded command `dict`.
+        :return: The encoded command data, with any class-specific
+            wrapping or other preparations.
+        """
+        return CommandInterface._encode(self, data, checkSize=False)
+
+
+    def _decode(self, packet: Union[bytearray, bytes]) -> dict:
         """
         Translate a response packet (EBML) into a dictionary.
 
@@ -195,7 +209,7 @@ class CommandInterface:
                                      f'({err})')
 
 
-    def _decodeCommand(self, packet:ByteString) -> Dict[str, Any]:
+    def _decodeCommand(self, packet:Union[bytearray, bytes]) -> Dict[str, Any]:
         """ Translate a command packet (EBML) into a dictionary. Only used in
             some special cases; not generally used in ordinary "Recorder"
             communication.
@@ -204,7 +218,7 @@ class CommandInterface:
                 additional coding (varying by interface type).
             :return: The response, as nested dictionaries.
         """
-        return self._decode(packet)
+        return CommandInterface._decode(self, packet)
 
 
     # =======================================================================
@@ -237,7 +251,7 @@ class CommandInterface:
         return response
 
 
-    def _writeCommand(self, packet: ByteString) -> int:
+    def _writeCommand(self, packet: Union[bytearray, bytes]) -> int:
         """
         Send an encoded EBMLCommand element. This is a low-level write; the
         data should include any transport-specific packaging. It generally
@@ -555,7 +569,7 @@ class CommandInterface:
 
 
     def ping(self,
-             data: Optional[ByteString] = None,
+             data: Union[bytearray, bytes, None] = None,
              timeout: Union[int, float] = 5,
              callback: Optional[Callable] = None) -> bytes:
         """ Verify the recorder is present and responding. Not supported on
@@ -860,7 +874,7 @@ class CommandInterface:
             return self._updateAll(secure=secure, timeout=timeout, callback=callback)
 
 
-    def setKeys(self, keys: ByteString,
+    def setKeys(self, keys: Union[bytearray, bytes],
                 timeout: Union[int, float] = 5,
                 callback: Optional[Callable] = None):
         """ Update the device's key bundle
@@ -1232,7 +1246,7 @@ class CommandInterface:
     # Lock ID: A weakly-enforced means of claiming exclusive use of a device.
     # =======================================================================
 
-    def getLockID(self, timeout: Union[int, float] = 5) -> Optional[ByteString]:
+    def getLockID(self, timeout: Union[int, float] = 5) -> Union[bytearray, bytes, None]:
         """ Get the device's current lock ID, if any. Not supported by all
             device types or firmware versions.
 
@@ -1247,9 +1261,9 @@ class CommandInterface:
 
 
     def setLockID(self,
-                  current: Optional[ByteString] = None,
-                  new: Optional[ByteString] = None,
-                  timeout: Union[int, float] = 5) -> ByteString:
+                  current: Union[bytearray, bytes, None] = None,
+                  new: Union[bytearray, bytes, None] = None,
+                  timeout: Union[int, float] = 5) -> Union[bytearray, bytes]:
         """ Set a unique 'lock' ID on the device, requesting exclusive use of
             the device.  Not supported by all devices/firmware.
 
@@ -1269,7 +1283,7 @@ class CommandInterface:
 
 
     def clearLockID(self,
-                    current: Optional[ByteString] = None,
+                    current: Union[bytearray, bytes, None] = None,
                     timeout: Union[int, float] = 5) -> bool:
         """ Clear the lock ID on the device.
 
@@ -1295,7 +1309,7 @@ class CommandInterface:
                 index: int,
                 timeout: Union[int, float] = 10,
                 interval: float = .25,
-                callback: Optional[Callable] = None) -> ByteString:
+                callback: Optional[Callable] = None) -> Union[bytearray, bytes]:
         """ Retrieve device system information. For 'local' devices, this
             is retrieved via the filesystem. This method is called indirectly
             by methods in `Recorder`.
@@ -1317,7 +1331,7 @@ class CommandInterface:
 
     def _setInfo(self,
                  index: int,
-                 payload: ByteString,
+                 payload: Union[bytearray, bytes],
                  timeout: Union[int, float] = 10,
                  interval: float = .25,
                  callback: Optional[Callable] = None):
@@ -1572,8 +1586,29 @@ class SerialCommandInterface(CommandInterface):
         return packet
 
 
+    def _encodeResponse(self, packet: dict) -> Union[bytearray, bytes]:
+        """
+        Encode a packet of response data in the manner typically received
+        from devices, doing any preparation required by the interface's
+        medium. Only used in some special cases; not generally used in
+        ordinary "Recorder" communication.
+
+        :param packet: The unencoded command `dict`.
+        :return: The encoded command data, with any class-specific
+            wrapping or other preparations.
+        """
+        ebml = super()._encodeResponse(packet)
+        responseCode = 0
+
+        # Header: address 1 (host), EBML data, immediate write.
+        packet = bytearray([0x81, 0x00, responseCode])
+        packet.extend(ebml)
+        packet = hdlc_encode(packet, crc=self.make_crc)
+        return packet
+
+
     def _decode(self,
-                packet: ByteString) -> Dict[str, Any]:
+                packet: Union[bytearray, bytes]) -> Dict[str, Any]:
         """ Translate a response packet into a dictionary. Removes additional
             header data and checks the CRC (if the interface's `ignore_crc`
             attribue is `False`) before parsing the binary EBML contents.
@@ -1598,7 +1633,7 @@ class SerialCommandInterface(CommandInterface):
                                      'did not have expected Corbus header')
 
 
-    def _decodeCommand(self, packet: ByteString) -> Dict[str, Any]:
+    def _decodeCommand(self, packet: Union[bytearray, bytes]) -> Dict[str, Any]:
         """ Translate a command packet (EBML) into a dictionary. Only used in
             some special cases; not generally used in ordinary "Recorder"
             communication.
@@ -1616,7 +1651,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def _writeCommand(self,
-                      packet: ByteString,
+                      packet: Union[bytearray, bytes],
                       timeout: Union[int, float] = 0.5) -> int:
         """ Transmit a fully formed packet (addressed, HDLC encoded, etc.)
             via serial. This is a low-level write to the medium and does not
@@ -1908,7 +1943,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def ping(self,
-             data: Optional[ByteString] = None,
+             data: Union[bytearray, bytes, None] = None,
              timeout: Union[int, float] = 10,
              interval: float = .25,
              callback: Optional[Callable] = None) -> dict:
@@ -2177,7 +2212,7 @@ class SerialCommandInterface(CommandInterface):
     # =======================================================================
 
     def getLockID(self,
-                  timeout: Union[int, float] = 5) -> Optional[ByteString]:
+                  timeout: Union[int, float] = 5) -> Union[bytearray, bytes, None]:
         """ Get the device's current lock ID, if any. Not supported by all
             device types or firmware versions.
 
@@ -2219,8 +2254,8 @@ class SerialCommandInterface(CommandInterface):
 
 
     def setLockID(self,
-                  current: Optional[ByteString] = None,
-                  new: Optional[ByteString] = None,
+                  current: Union[bytearray, bytes, None] = None,
+                  new: Union[bytearray, bytes, None] = None,
                   timeout: Union[int, float] = 5) -> bool:
         """ Set a unique 'lock' ID on the device, requesting exclusive use of
             the device.  Not supported by all devices/firmware.
@@ -2259,7 +2294,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def clearLockID(self,
-                    current: Optional[ByteString] = None,
+                    current: Union[bytearray, bytes, None] = None,
                     timeout: Union[int, float] = 5) -> bool:
         """ Clear the lock ID on the device.
 
@@ -2290,7 +2325,7 @@ class SerialCommandInterface(CommandInterface):
                 timeout: Union[int, float] = 10,
                 interval: float = .25,
                 lock: bool = False,
-                callback: Optional[Callable] = None) -> ByteString:
+                callback: Optional[Callable] = None) -> Union[bytearray, bytes]:
         """ Retrieve device system information. For 'local' devices, this
             is retrieved via the filesystem. This method is called indirectly
             by methods in `Recorder`.
@@ -2330,7 +2365,7 @@ class SerialCommandInterface(CommandInterface):
 
     def _setInfo(self,
                  index: int,
-                 payload: ByteString,
+                 payload: Union[bytearray, bytes],
                  timeout: Union[int, float] = 10,
                  interval: float = .25,
                  callback: Optional[Callable] = None):
@@ -2361,7 +2396,7 @@ class FileCommandInterface(CommandInterface):
     """
 
     def _writeCommand(self,
-                      packet: Union[AnyStr, ByteString]) -> int:
+                      packet: Union[AnyStr, bytearray]) -> int:
         """
         Send an encoded EBMLCommand element. This is a low-level write; the
         data should include any transport-specific packaging. It generally
