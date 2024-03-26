@@ -97,10 +97,10 @@
             2: CONFIG.UI - Read Only
             3: MANIFEST - Read Only
             4: SYSCAL - Read Only
-            5: config.cfg - Read / Write - Read requires LockID
-            6: usercal.dat - Read / Write - Read requires LockID
-            7: update.pkg - Write Only
-            8: update.pkg.sig - Write Only
+            5: config.cfg - Read / Write - requires LockID
+            6: usercal.dat - Read / Write - requires LockID
+            7: update.pkg - Write Only - requires LockID
+            8: update.pkg.sig - Write Only - requires LockID
         </IntegerElement>
         <MasterElement name="SetInfo" id="0x5B07" mandatory="0" multiple="0" >
             <IntegerElement name="InfoIndex" id="0x5B02" mandatory="1" multiple="0"> See GetInfo for index value</IntegerElement>
