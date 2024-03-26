@@ -1593,6 +1593,10 @@ class SerialCommandInterface(CommandInterface):
         medium. Only used in some special cases; not generally used in
         ordinary "Recorder" communication.
 
+        Note that the encoded results may not exactly match those generated
+        by a device, as the enDAQ firmware uses fixed lengths for element
+        size indicators some cases.
+
         :param packet: The unencoded command `dict`.
         :return: The encoded command data, with any class-specific
             wrapping or other preparations.
