@@ -285,7 +285,7 @@ class SerialDeviceInfo(DeviceInfo):
 
     @classmethod
     def readDevinfo(cls,
-                    path: Union[Filename, Recorder],
+                    path: Union[Filename, "Recorder"],
                     info: Optional[ByteString] = None) -> Optional[ByteString]:
         """ Retrieve a DEVINFO data.
 
@@ -296,7 +296,7 @@ class SerialDeviceInfo(DeviceInfo):
         # TODO: Implement way to use `SerialCommandInterface` without a `Recorder`,
         #  or do the equivalent of doing `_getData(0)` (sending the command and
         #  receiving the response)
-        if isinstance(path, Recorder):
+        if isinstance(getattr(path, 'command', None), SerialCommandInterface):
             return info or path.command._getInfo(0)
         return info
 
