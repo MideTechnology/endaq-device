@@ -184,7 +184,6 @@ class EndaqW(EndaqS):
 
     def updateESP32(self,
                     firmware: str,
-                    destination: Optional[str] = None,
                     timeout: float = 10,
                     callback: Optional[Callable] = None):
         """ Update the ESP32 firmware.
@@ -193,9 +192,6 @@ class EndaqW(EndaqS):
             instead.
 
             :param firmware: The name of the ESP32 firmware package (.bin).
-            :param destination: The name of the firmware package after being
-                copied to the device, an alternative to the default.
-                Optional; primarily for testing purposes.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
@@ -209,6 +205,5 @@ class EndaqW(EndaqS):
                       "recorder.command.updateESP32()", DeprecationWarning)
 
         return self.command.updateESP32(firmware=firmware,
-                                        destination=destination,
                                         timeout=timeout,
                                         callback=callback)

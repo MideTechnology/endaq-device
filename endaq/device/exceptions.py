@@ -2,12 +2,26 @@
 Exceptions raised when interacting with a recording device.
 """
 
-__all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
-           'DeviceError', 'DeviceTimeout', 'UnsupportedFeature')
+__all__ = ('CommandError', 'CommunicationError', 'ConfigError',
+           'ConfigVersionError', 'DeviceError', 'DeviceTimeout',
+           'UnsupportedFeature')
 
 
 class DeviceError(Exception):
     """ Base class for device-related exceptions. """
+    @property
+    def errno(self):
+        if len(self.args) > 1:
+            return self.args[0]
+        return None
+
+
+class CommandError(RuntimeError, DeviceError):
+    """ Exception raised by a failure to process a command. """
+
+
+class CommunicationError(RuntimeError, DeviceError):
+    """ Exception raised by a failure to communicate. """
 
 
 class ConfigError(ValueError, DeviceError):
@@ -27,10 +41,6 @@ class DeviceTimeout(TimeoutError, DeviceError):
     """
 
 
-class CommandError(RuntimeError, DeviceError):
-    """ Exception raised by a failure to communicate. """
-
-
 class UnsupportedFeature(DeviceError):
     """ Exception raised when a device does not support a given feature
         (e.g., attempting to execute Wi-Fi commands on a device without
@@ -41,12 +51,15 @@ class UnsupportedFeature(DeviceError):
         string) or with two (the object raising the exception, and the
         offending method).
     """
+    @property
+    def errno(self):
+        return None
 
     def __str__(self):
         try:
             if len(self.args) == 2:
-                return "{} does not support {}".format(type(self.args[0]).__name__,
-                                                       self.args[1].__name__)
+                return "{}.{}".format(type(self.args[0]).__name__,
+                                      self.args[1].__name__)
         except (AttributeError, IndexError, TypeError):
             pass
 
