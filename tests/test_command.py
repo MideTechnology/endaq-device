@@ -8,7 +8,7 @@ import pytest
 
 import endaq.device
 from endaq.device import getRecorder, UnsupportedFeature
-from endaq.device.command_interfaces import CommandInterface, FileCommandInterface, SerialCommandInterface, LegacyFileCommandInterface
+from endaq.device.command_interfaces import CommandInterface, FileCommandInterface, SerialCommandInterface
 
 from .fake_recorders import RECORDER_PATHS
 from .mock_hardware import applyMockCommandIO, MockCommandSerialIO
@@ -18,13 +18,27 @@ endaq.device.RECORDERS.clear()
 
 # Create parameters, mainly to provide an ID, making the results readable
 DEVICES = [pytest.param(getRecorder(path, strict=False), id=os.path.basename(path)) for path in RECORDER_PATHS]
-FILE_DEVICES = [param for param in DEVICES if param[0][0].hasCommandInterface and isinstance(param[0][0].command, FileCommandInterface)]
-SERIAL_DEVICES = [param for param in DEVICES if param[0][0].hasCommandInterface and isinstance(param[0][0].command, SerialCommandInterface)]
 NO_COMMAND_DEVICES = [param for param in DEVICES if not param[0][0].hasCommandInterface]
+COMMAND_DEVICES = [param for param in DEVICES if param[0][0].hasCommandInterface]
+FILE_DEVICES = [param for param in COMMAND_DEVICES if isinstance(param[0][0].command, FileCommandInterface)]
+SERIAL_DEVICES = [param for param in COMMAND_DEVICES if isinstance(param[0][0].command, SerialCommandInterface)]
 
 # NOTE: This should be changed to get devices from DEVICES - see note in fake_recorders.py
 WIFI_DEVICES = [param for param in SERIAL_DEVICES if param[0][0].hasWifi]
 
+# Simple example command
+TEST_COMMAND = {
+    'EBMLCommand': {
+        'SendPing': b'hello world',
+        'CommandIdx': 2}}
+
+# Simple example response to simple example command
+TEST_RESPONSE = {
+    'EBMLResponse': {
+        'ResponseIdx': 2,
+        'CMDQueueDepth': 1,
+        'DeviceStatusCode': 0,
+        'PingReply': b'hello world'}}
 
 # Response to a `scanWifi()` command
 WIFI_SCAN = {'EBMLResponse': {
@@ -75,6 +89,17 @@ def test_command_basics(dev):
     else:
         with pytest.raises(UnsupportedFeature):
             _ = dev.command
+
+
+@pytest.mark.parametrize("dev", COMMAND_DEVICES)
+def test_command_encoding(dev):
+    """ Test basic encoding and decoding of command messages.
+    """
+    command = dev.command._encode(TEST_COMMAND)
+    response = dev.command._encodeResponse(TEST_RESPONSE)
+
+    assert dev.command._decodeCommand(command) == TEST_COMMAND
+    assert dev.command._decode(response) == TEST_RESPONSE
 
 
 @pytest.mark.parametrize("dev", SERIAL_DEVICES)
