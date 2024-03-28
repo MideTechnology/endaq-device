@@ -36,7 +36,7 @@ elif sys.platform == 'linux':
 from . import config
 from .config import ConfigInterface
 from . import devinfo
-from .devinfo import DeviceInfo, FileDeviceInfo, MQTTDeviceInfo
+from .devinfo import DeviceInfo, FileDeviceInfo
 from . import measurement
 from .measurement import MeasurementType
 from . import command_interfaces
@@ -527,7 +527,13 @@ class Recorder:
         mideSchema = loadSchema("mide_ide.xml")
         with self._busy:
             if not self._info:
-                self._rawinfo = self._rawinfo or self._getDevinfo().readDevinfo(self.path)
+                if not self._rawinfo:
+                    try:
+                        self._rawinfo = self._getDevinfo().readDevinfo(self.path)
+                    except DeviceError:
+                        # Serial/MQTT _getInfo() command failed
+                        # TODO: This may not be necessary, depending on how remote devices are handled (in progress)
+                        pass
                 if self._rawinfo:
                     self._hash = hash(self._rawinfo)
                     infoFile = mideSchema.loads(self._rawinfo)
@@ -574,7 +580,9 @@ class Recorder:
         """ Is this device not directly connected to this computer? """
         if self.isVirtual:
             return False
-        return self._path.lower().startswith(('mqtt',))
+        elif not self._path:
+            return True
+        return str(self._path).lower().startswith(('mqtt',))
 
 
     @property

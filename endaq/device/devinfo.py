@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 import logging
 import os.path
 import struct
-from typing import ByteString, Optional, Tuple, TYPE_CHECKING
+from typing import ByteString, Optional, Tuple, Union, TYPE_CHECKING
 
 from .types import Drive, Filename
 from .command_interfaces import SerialCommandInterface
@@ -279,12 +279,13 @@ class SerialDeviceInfo(DeviceInfo):
         if device.isVirtual or FileDeviceInfo.hasInterface(device):
             return False
 
-        return isinstance(device.command, SerialCommandInterface)
+        # return isinstance(device.command, SerialCommandInterface)
+        return SerialCommandInterface.hasInterface(device)
 
 
     @classmethod
     def readDevinfo(cls,
-                    path: Filename,
+                    path: Union[Filename, Recorder],
                     info: Optional[ByteString] = None) -> Optional[ByteString]:
         """ Retrieve a DEVINFO data.
 
@@ -295,7 +296,9 @@ class SerialDeviceInfo(DeviceInfo):
         # TODO: Implement way to use `SerialCommandInterface` without a `Recorder`,
         #  or do the equivalent of doing `_getData(0)` (sending the command and
         #  receiving the response)
-        raise NotImplemented
+        if isinstance(path, Recorder):
+            return info or path.command._getInfo(0)
+        return info
 
 
     def readManifest(self) \
@@ -365,6 +368,7 @@ class MQTTDeviceInfo(SerialDeviceInfo):
         if device.isVirtual:
             return False
 
+        # TODO: Better mechanism for identifying MQTT devices
         return device.path and device.path.lower().startswith('mqtt')
 
 
