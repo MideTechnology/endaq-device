@@ -156,7 +156,7 @@ class CommandInterface:
 
 
     def _encode(self, data: dict,
-                checkSize: bool = True) -> Union[bytearray, bytes]:
+                checkSize: bool = True) -> bytes:
         """
         Prepare a packet of command data for transmission, doing any
         preparation required by the interface's medium.
@@ -176,7 +176,7 @@ class CommandInterface:
         return ebml
 
 
-    def _encodeResponse(self, data: dict) -> Union[bytearray, bytes]:
+    def _encodeResponse(self, data: dict) -> bytearray:
         """
         Encode a packet of response data in the manner typically received
         from devices, doing any preparation required by the interface's
@@ -878,7 +878,8 @@ class CommandInterface:
             return self._updateAll(secure=secure, timeout=timeout, callback=callback)
 
 
-    def setKeys(self, keys: Union[bytearray, bytes],
+    def setKeys(self,
+                keys: Union[bytearray, bytes],
                 timeout: Union[int, float] = 5,
                 callback: Optional[Callable] = None):
         """ Update the device's key bundle
@@ -1313,7 +1314,7 @@ class CommandInterface:
                 index: int,
                 timeout: Union[int, float] = 10,
                 interval: float = .25,
-                callback: Optional[Callable] = None) -> Union[bytearray, bytes]:
+                callback: Optional[Callable] = None) -> bytes:
         """ Retrieve device system information. For 'local' devices, this
             is retrieved via the filesystem. This method is called indirectly
             by methods in `Recorder`.
@@ -1600,7 +1601,7 @@ class SerialCommandInterface(CommandInterface):
         return packet
 
 
-    def _encodeResponse(self, packet: dict) -> Union[bytearray, bytes]:
+    def _encodeResponse(self, packet: dict) -> bytearray:
         """
         Encode a packet of response data in the manner typically received
         from devices, doing any preparation required by the interface's
@@ -1626,7 +1627,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def _decode(self,
-                packet: Union[bytearray, bytes]) -> Dict[str, Any]:
+                packet: bytearray) -> Dict[str, Any]:
         """ Translate a response packet into a dictionary. Removes additional
             header data and checks the CRC (if the interface's `ignore_crc`
             attribue is `False`) before parsing the binary EBML contents.
@@ -2343,7 +2344,7 @@ class SerialCommandInterface(CommandInterface):
                 timeout: Union[int, float] = 10,
                 interval: float = .25,
                 lock: bool = False,
-                callback: Optional[Callable] = None) -> Union[bytearray, bytes]:
+                callback: Optional[Callable] = None) -> bytes:
         """ Retrieve device system information. For 'local' devices, this
             is retrieved via the filesystem. This method is called indirectly
             by methods in `Recorder`.
@@ -2372,12 +2373,19 @@ class SerialCommandInterface(CommandInterface):
                                      callback=callback)
 
         try:
-            return response['GetInfoResponse']['InfoPayload']
+            info = response['GetInfoResponse']['InfoPayload']
         except KeyError:
             if 'GetInfoResponse' in response:
                 raise DeviceError('Response did not contain expected GetInfoResponse element')
             else:
                 raise DeviceError('Response did not contain a payload of information')
+
+        try:
+            return bytes(info)
+        except ValueError:
+            logger.debug('_getInfo() got unexpected payload: '
+                         f"{response['GetInfoResponse']['InfoPayload']!r}")
+            return info
 
 
     def _setInfo(self,

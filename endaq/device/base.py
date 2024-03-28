@@ -15,7 +15,7 @@ import re
 import sys
 from threading import RLock
 from time import struct_time
-from typing import Any, AnyStr, ByteString, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, AnyStr, Callable, Dict, List, Optional, Tuple, Union
 import warnings
 
 from idelib.dataset import Dataset, Channel, SubChannel, Sensor
@@ -95,7 +95,7 @@ class Recorder:
     def __init__(self,
                  path: Optional[Filename],
                  strict: bool = True,
-                 devinfo: Optional[ByteString] = None,
+                 devinfo: Optional[bytes] = None,
                  virtual: bool = False):
         """ A representation of an enDAQ/SlamStick data recorder. Typically,
             instantiation should be done indirectly, using functions such as
@@ -124,7 +124,7 @@ class Recorder:
         self._config: Optional[ConfigInterface] = None
         self._path: Optional[Filename] = None
         self._devinfo: Optional[DeviceInfo] = None
-        self._rawinfo: Optional[ByteString] = devinfo
+        self._rawinfo: Optional[bytes] = devinfo
         self._info: Optional[Dict] = None
 
         self.refresh(force=False)
@@ -303,7 +303,7 @@ class Recorder:
     @classmethod
     def _getHash(cls,
                  path: Filename,
-                 info: Optional[ByteString] = None) -> int:
+                 info: Optional[bytes] = None) -> int:
         """ Calculate the device's hash. Separated from `__hash__()` so it
             can be used by `getDevices()` to find known recorders.
 
@@ -344,10 +344,10 @@ class Recorder:
             self._sensors: Optional[Dict] = None
             self._channels: Optional[Dict] = None
             self._channelRanges = {}
-            self._propData: Optional[ByteString] = None
+            self._propData: Optional[bytes] = None
             self._manifest: Optional[Dict] = None
             self._calibration: Optional[Dict] = None
-            self._calData: Optional[ByteString] = None
+            self._calData: Optional[bytes] = None
             self._calPolys: Optional[Dict] = None
             self._userCalPolys: Optional[Dict] = None
             self._userCalDict: Optional[Dict] = None

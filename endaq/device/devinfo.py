@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 import logging
 import os.path
 import struct
-from typing import ByteString, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Optional, Tuple, Union, TYPE_CHECKING
 
 from .types import Drive, Filename
 from .command_interfaces import SerialCommandInterface
@@ -45,7 +45,7 @@ class DeviceInfo(ABC):
 
     @classmethod
     @abstractmethod
-    def readDevinfo(cls, path: Filename, info=None) -> Optional[ByteString]:
+    def readDevinfo(cls, path: Filename, info=None) -> Union[None, bytearray, bytes]:
         """ Calculate the device's hash. Separated from `__hash__()` so it
             can be used by `getDevices()` to find known recorders.
 
@@ -58,7 +58,7 @@ class DeviceInfo(ABC):
 
     @abstractmethod
     def readManifest(self) \
-            -> Tuple[Optional[ByteString], Optional[ByteString], Optional[ByteString]]:
+            -> Tuple[Union[None, bytearray, bytes], Union[None, bytearray, bytes], Union[None, bytearray, bytes]]:
         """ Read the device's manifest data. The data is a superset of the
             information returned by `getInfo()`.
         """
@@ -66,7 +66,7 @@ class DeviceInfo(ABC):
 
 
     @abstractmethod
-    def readUserCalibration(self) -> Optional[ByteString]:
+    def readUserCalibration(self) -> Union[None, bytearray, bytes]:
         """ Get the recorder's user-defined calibration data as a dictionary
             of parameters.
         """
@@ -75,7 +75,7 @@ class DeviceInfo(ABC):
 
     @abstractmethod
     def writeUserCal(self,
-                     caldata: ByteString):
+                     caldata: Union[None, bytearray, bytes]):
         """ Write user calibration to the device.
 
             :param caldata: The raw binary of an EBML `<CalibrationList>`
@@ -118,7 +118,7 @@ class FileDeviceInfo(DeviceInfo):
     @classmethod
     def readDevinfo(cls,
                     path: Filename,
-                    info: Optional[ByteString] = None) -> Optional[ByteString]:
+                    info: Union[None, bytearray, bytes] = None) -> Union[None, bytearray, bytes]:
         """ Retrieve a DEVINFO data. Calculate the device's hash. Separated from `__hash__()` so it
             can be used by `getDevices()` to find known recorders.
 
@@ -137,7 +137,7 @@ class FileDeviceInfo(DeviceInfo):
 
 
     def _readUserpage(self) \
-            -> Tuple[Optional[ByteString], Optional[ByteString], Optional[ByteString]]:
+            -> Tuple[Union[None, bytearray, bytes], Union[None, bytearray, bytes], Union[None, bytearray, bytes]]:
         """ Read the device's manifest data from the EFM32 'userpage'. The
             data is a superset of the information returned by `getInfo()`.
             Factory calibration and recorder properties are also read
@@ -176,7 +176,7 @@ class FileDeviceInfo(DeviceInfo):
 
 
     def _readManifest(self) \
-            -> Tuple[Optional[ByteString], Optional[ByteString], Optional[ByteString]]:
+            -> Tuple[Union[None, bytearray, bytes], Union[None, bytearray, bytes], Union[None, bytearray, bytes]]:
         """ Read the device's manifest data from the 'MANIFEST' file. The
             data is a superset of the information returned by `getInfo()`.
 
@@ -214,7 +214,7 @@ class FileDeviceInfo(DeviceInfo):
 
 
     def readManifest(self) \
-            -> Tuple[Optional[ByteString], Optional[ByteString], Optional[ByteString]]:
+            -> Tuple[Union[None, bytearray, bytes], Union[None, bytearray, bytes], Union[None, bytearray, bytes]]:
         """ Read the device's manifest data. The data is a superset of the
             information returned by `getInfo()`.
         """
@@ -226,7 +226,7 @@ class FileDeviceInfo(DeviceInfo):
         return None, None, None
 
 
-    def readUserCalibration(self) -> Optional[ByteString]:
+    def readUserCalibration(self) -> Union[None, bytearray, bytes]:
         """ Get the recorder's user-defined calibration data as a dictionary
             of parameters.
         """
@@ -238,7 +238,7 @@ class FileDeviceInfo(DeviceInfo):
 
 
     def writeUserCal(self,
-                     caldata: ByteString):
+                     caldata: Union[None, bytearray, bytes]):
         """ Write user calibration to the device.
 
             :param caldata: The raw binary of an EBML `<CalibrationList>`
@@ -286,7 +286,7 @@ class SerialDeviceInfo(DeviceInfo):
     @classmethod
     def readDevinfo(cls,
                     path: Union[Filename, "Recorder"],
-                    info: Optional[ByteString] = None) -> Optional[ByteString]:
+                    info: Optional[bytes] = None) -> Optional[bytes]:
         """ Retrieve a DEVINFO data.
 
             :param path: The device's filesystem path.
@@ -296,13 +296,15 @@ class SerialDeviceInfo(DeviceInfo):
         # TODO: Implement way to use `SerialCommandInterface` without a `Recorder`,
         #  or do the equivalent of doing `_getData(0)` (sending the command and
         #  receiving the response)
+        if isinstance(info, bytearray):
+            info = bytes(info)
         if isinstance(getattr(path, 'command', None), SerialCommandInterface):
             return info or path.command._getInfo(0)
         return info
 
 
     def readManifest(self) \
-            -> Tuple[Optional[ByteString], Optional[ByteString], Optional[ByteString]]:
+            -> Tuple[Optional[bytes], Optional[bytes], Optional[bytes]]:
         """ Read the device's manifest data from the 'MANIFEST' file. The
             data is a superset of the information returned by `getInfo()`.
 
@@ -317,7 +319,7 @@ class SerialDeviceInfo(DeviceInfo):
         return manData, calData, propData
 
 
-    def readUserCalibration(self) -> Optional[ByteString]:
+    def readUserCalibration(self) -> Union[None, bytearray, bytes]:
         """ Get the recorder's user-defined calibration data as a dictionary
             of parameters.
         """
@@ -325,7 +327,7 @@ class SerialDeviceInfo(DeviceInfo):
 
 
     def writeUserCal(self,
-                     caldata: ByteString):
+                     caldata: Union[None, bytearray, bytes]):
         """ Write user calibration to the device.
 
             :param caldata: The raw binary of an EBML `<CalibrationList>`
