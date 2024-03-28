@@ -136,6 +136,8 @@ class Recorder:
 
 
     def _getDevinfo(self) -> Optional[DeviceInfo]:
+        """ Retrieve the appropriate `DeviceInfo` for the `Recorder`.
+        """
         if self._devinfo is not None:
             return self._devinfo
 
