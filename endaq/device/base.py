@@ -110,9 +110,9 @@ class Recorder:
                 with the standard contents on a device. Primarily for
                 testing.
             :param devinfo: The necessary data to instantiate a `Recorder`.
-                If `None`, the data will be read from the device. For
-                creating `Recorder` instances when the hardware isn't
-                physically present on the host computer.
+                For creating `Recorder` instances when the hardware isn't
+                physically present on the host computer. If `None`, the
+                data will be read from the device.
             :param virtual: `True` if the device is not actual hardware
                 (e.g., constructed from data in a recording).
         """
@@ -320,7 +320,7 @@ class Recorder:
         """ Return hash(self). """
         with self._busy:
             if self._hash is None:
-                self.getInfo(self._rawinfo)
+                self.getInfo()
             return self._hash
 
 
