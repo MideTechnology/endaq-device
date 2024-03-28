@@ -110,7 +110,7 @@ class FileDeviceInfo(DeviceInfo):
             :return: `True` if the device supports the interface.
         """
         if device.isVirtual:
-            return
+            return False
 
         return device.path and os.path.exists(device.infoFile)
 
