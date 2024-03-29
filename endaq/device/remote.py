@@ -2,6 +2,7 @@
 Functions for discovering and instantiating devices that are not connected
 and mounted as storage devices.
 """
+
 import logging
 from typing import Dict, List, Optional
 

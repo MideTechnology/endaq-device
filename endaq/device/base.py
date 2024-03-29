@@ -127,6 +127,27 @@ class Recorder:
         self._rawinfo: Optional[bytes] = devinfo
         self._info: Optional[Dict] = None
 
+        self._hash: Optional[int] = None
+        self._configData: Optional[Dict] = None
+        self._sn: Optional[str] = None
+        self._snInt: Optional[int] = None
+        self._chipId: Optional[int] = None
+        self._sensors: Optional[Dict[int, Sensor]] = None
+        self._channels: Optional[Dict[int, Channel]] = None
+        self._channelRanges = {}
+        self._propData: Optional[bytes] = None
+        self._manifest: Optional[Dict[str, Any]] = None
+        self._calibration: Optional[Dict[str, Any]] = None
+        self._calData: Optional[bytes] = None
+        self._calPolys: Optional[Dict[int, Any]] = None
+        self._userCalPolys: Optional[Dict] = None
+        self._userCalDict: Optional[Dict] = None
+        self._factoryCalPolys: Optional[Dict] = None
+        self._factoryCalDict: Optional[Dict] = None
+        self._properties: Optional[Dict] = None
+        self._volumeName: Optional[str] = None
+        self._wifi: Optional[str] = None  # Cached name of the manifest's Wi-Fi element
+
         self.refresh(force=False)
         self.path = path
         self.getInfo()
@@ -135,7 +156,7 @@ class Recorder:
         self._source: Optional[Dataset] = None
 
 
-    def _getDevinfo(self) -> Optional[DeviceInfo]:
+    def _getDevinfo(self) -> DeviceInfo:
         """ Retrieve the appropriate `DeviceInfo` for the `Recorder`.
         """
         if self._devinfo is not None:
@@ -333,31 +354,36 @@ class Recorder:
                 rather than use cached data.
         """
         with self._busy:
-            if force and not self.isVirtual:
-                self._rawinfo = None
-
+            # Data derived from DEVINFO
             self._devinfo = None
-            self._info: Optional[Dict] = None
-            self._hash: Optional[int] = None
-            self._configData: Optional[Dict] = None
-            self._sn: Optional[str] = None
-            self._snInt: Optional[int] = None
-            self._chipId: Optional[int] = None
-            self._sensors: Optional[Dict] = None
-            self._channels: Optional[Dict] = None
-            self._channelRanges = {}
-            self._propData: Optional[bytes] = None
-            self._manifest: Optional[Dict] = None
-            self._calibration: Optional[Dict] = None
-            self._calData: Optional[bytes] = None
-            self._calPolys: Optional[Dict] = None
-            self._userCalPolys: Optional[Dict] = None
-            self._userCalDict: Optional[Dict] = None
-            self._factoryCalPolys: Optional[Dict] = None
-            self._factoryCalDict: Optional[Dict] = None
-            self._properties: Optional[Dict] = None
-            self._volumeName: Optional[str] = None
-            self._wifi: Optional[str] = None  # Cached name of the manifest's Wi-Fi element
+            self._info = None
+            self._hash = None
+            self._sn = None
+            self._snInt = None
+            self._chipId = None
+
+            if not self.isVirtual:
+                # Data derived from things virtual devices can't read; virtual
+                # devices only get a subset of this data upon instantiation
+                if force:
+                    self._rawinfo = None
+
+                self._sensors = None
+                self._channels = None
+                self._channelRanges.clear()
+                self._configData = None
+                self._propData = None
+                self._manifest = None
+                self._calibration = None
+                self._calData = None
+                self._calPolys = None
+                self._userCalPolys = None
+                self._userCalDict = None
+                self._factoryCalPolys = None
+                self._factoryCalDict = None
+                self._properties = None
+                self._volumeName = None
+                self._wifi = None
 
             if self._command:
                 try:
