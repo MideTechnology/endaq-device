@@ -13,7 +13,7 @@ import string
 import struct
 import sys
 from time import sleep, time, struct_time
-from typing import Any, AnyStr, Dict, List, Optional, Tuple, Union, Callable, TYPE_CHECKING
+from typing import Any, AnyStr, Dict, Generator, List, Optional, Tuple, Union, Callable, TYPE_CHECKING
 from uuid import uuid4
 import warnings
 
@@ -40,6 +40,7 @@ elif sys.platform == 'linux':
 
 if TYPE_CHECKING:
     from .base import Recorder
+    from serial.tools.list_ports_common import ListPortInfo
 
 
 # ===========================================================================
@@ -1453,12 +1454,42 @@ class SerialCommandInterface(CommandInterface):
 
 
     @classmethod
-    def findSerialPort(cls, device: Union["Recorder", int, str]) -> Union[None, str]:
+    def _possibleRecorders(cls,
+                           strict: bool = True) -> Generator[Tuple[str, int], None, None]:
+        """ Find all serial ports that might be `Recorder` serial command
+            interfaces.
+
+            :param strict: If `True`, check the USB serial port VID and PID
+                to see if they belong to a known type of device.
+            :yields: Tuples of port name and serial number.
+        """
+        # Find valid USB/serial device by vendor/product ID
+        for port in serial.tools.list_ports.comports():
+            sn = port.serial_number
+            if not sn or len(sn) != 8:
+               continue
+            try:
+                if strict and (port.vid, port.pid) not in cls.USB_IDS:
+                    continue
+                yield port.device, int(sn)
+            except ValueError as err:
+                # Probably text in serial number, ignore if so
+                if 'invalid literal' not in str(err).lower():
+                    raise
+
+
+    @classmethod
+    def findSerialPort(cls,
+                       device: Union["Recorder", int, str],
+                       strict: bool = True) -> Union[None, str]:
         """ Find the path/name/number of a serial port corresponding to a
             given serial number.
 
             :param device: The `Recorder` to check, or a recorder serial
                 number.
+            :param strict: If `True`, check the USB serial port VID and PID
+                to see if they belong to a known type of device. If `False`,
+                only the serial number is checked.
             :return: The corresponding serial port path/name/number, or
                 `None` if no matching port is found.
         """
@@ -1475,19 +1506,9 @@ class SerialCommandInterface(CommandInterface):
             else:
                 raise
 
-        for p in serial.tools.list_ports.comports():
-            # Find valid USB/serial device by vendor/product ID
-            # if (p.vid, p.pid) not in cls.USB_IDS:
-            #     continue
-            try:
-                if not p.serial_number:
-                    continue
-                elif int(p.serial_number) == devSerial:
-                    return p.device
-            except ValueError as err:
-                # Probably text in serial number, ignore if so
-                if 'invalid literal' not in str(err).lower():
-                    raise
+        for sn, port in cls._possibleRecorders(strict=strict):
+            if sn == devSerial:
+                return port
 
 
     def getSerialPort(self,

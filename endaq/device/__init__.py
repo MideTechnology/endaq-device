@@ -65,6 +65,8 @@ RECORDER_TYPES = [SlamStickC, EndaqS, EndaqW, SlamStickS, SlamStickX, Recorder]
 # Keyed by the hash of the recorders DEVINFO (or equivalent).
 RECORDERS = {}
 
+RECORDERS_BY_SN = {}
+
 # Max number of cached recorders. Probably not needed, but just in case.
 RECORDER_CACHE_SIZE = 100
 
