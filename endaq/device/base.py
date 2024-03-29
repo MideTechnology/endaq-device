@@ -12,7 +12,6 @@ import logging
 import os
 from pathlib import Path
 import re
-import struct
 import sys
 from threading import RLock
 from time import struct_time
@@ -36,9 +35,12 @@ elif sys.platform == 'linux':
 
 from . import config
 from .config import ConfigInterface
+from . import devinfo
+from .devinfo import DeviceInfo, FileDeviceInfo
 from . import measurement
 from .measurement import MeasurementType
 from . import command_interfaces
+from .command_interfaces import CommandInterface
 from .exceptions import *
 from .types import Drive, Filename, Epoch
 
@@ -47,10 +49,10 @@ logger = logging.getLogger('endaq.device')
 
 __all__ = ('Recorder', 'os_specific')
 
+
 # ===============================================================================
 #
 # ===============================================================================
-
 
 class Recorder:
     """ A representation of an enDAQ/SlamStick data recorder. Some devices
@@ -79,14 +81,6 @@ class Recorder:
     _USERPAGE_UPDATE_FILE = os.path.join("SYSTEM", 'userpage.bin')
     _ESP_UPDATE_FILE = os.path.join('SYSTEM', 'esp32.bin')
 
-    _TIME_PARSER = struct.Struct("<L")
-
-    # TODO: This really belongs in the configuration UI
-    _POST_CONFIG_MSG = ("When ready...\n"
-                        "    1. Disconnect the recorder\n"
-                        "    2. Mount to surface\n"
-                        "    3. Press the recorder's primary button ")
-
     # These should eventually be read from the device
     SN_FORMAT = "%d"
     manufacturer = None
@@ -98,33 +92,66 @@ class Recorder:
     _NAME_PATTERN = re.compile(r'')
 
 
-    def __init__(self, path: Optional[Filename], strict=True):
-        """ Constructor. Typically, instantiation should be done indirectly,
-            using functions such as `endaq.device.getDevices()` or
-            `endaq.device.fromRecording()`. Explicitly instantiating a
-            `Recorder` or `Recorder` subclass is rarely (if ever) necessary.
+    def __init__(self,
+                 path: Optional[Filename],
+                 strict: bool = True,
+                 devinfo: Optional[bytes] = None,
+                 virtual: bool = False):
+        """ A representation of an enDAQ/SlamStick data recorder. Typically,
+            instantiation should be done indirectly, using functions such as
+            `endaq.device.getDevices()` or `endaq.device.fromRecording()`.
+            Explicitly instantiating a `Recorder` or `Recorder` subclass is
+            rarely (if ever) necessary.
 
             :param path: The filesystem path to the recorder, or `None` if
-                it is a 'virtual' device (e.g., constructed from data in a
-                recording).
+                it is a 'virtual' or remote device.
             :param strict: If `True`, only allow real device paths. If
-                `False`, allow any path that contains the standard contents
-                of a recorder's ``SYSTEM`` directory. Primarily for testing.
+                `False`, allow any path that contains a ``SYSTEM`` directory
+                with the standard contents on a device. Primarily for
+                testing.
+            :param devinfo: The necessary data to instantiate a `Recorder`.
+                For creating `Recorder` instances when the hardware isn't
+                physically present on the host computer. If `None`, the
+                data will be read from the device.
+            :param virtual: `True` if the device is not actual hardware
+                (e.g., constructed from data in a recording).
         """
-        # self.mideSchema = loadSchema("mide_ide.xml")
-        # self.manifestSchema = loadSchema("mide_manifest.xml")
-
         self._busy = RLock()
-        self.strict = strict
+        self.strict: bool = strict
 
-        self._virtual = False
-        self._command = None
-        self._path = None
-        self.refresh(force=True)
+        self._virtual: bool = virtual
+        self._command: Optional[CommandInterface] = None
+        self._config: Optional[ConfigInterface] = None
+        self._path: Optional[Filename] = None
+        self._devinfo: Optional[DeviceInfo] = None
+        self._rawinfo: Optional[bytes] = devinfo
+        self._info: Optional[Dict] = None
+
+        self.refresh(force=False)
         self.path = path
+        self.getInfo()
 
         # The source IDE `Dataset` used for 'virtual' devices.
-        self._source = None
+        self._source: Optional[Dataset] = None
+
+
+    def _getDevinfo(self) -> DeviceInfo:
+        """ Retrieve the appropriate `DeviceInfo` for the `Recorder`.
+        """
+        if self._devinfo is not None:
+            return self._devinfo
+
+        elif self.isVirtual:
+            raise DeviceError('Device information cannot be read from virtual devices')
+
+        for interface in devinfo.INTERFACES:
+            if interface.hasInterface(self):
+                self._devinfo = interface(self)
+
+        if self._devinfo is None:
+            raise DeviceError('Cannot find information reader for device')
+
+        return self._devinfo
 
 
     @property
@@ -260,7 +287,7 @@ class Recorder:
         return path != self.path
 
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """ Return repr(self). """
         if self.isVirtual:
             path = "virtual"
@@ -276,7 +303,9 @@ class Recorder:
 
 
     @classmethod
-    def _getHash(cls, path: Filename, info=None) -> int:
+    def _getHash(cls,
+                 path: Filename,
+                 info: Optional[bytes] = None) -> int:
         """ Calculate the device's hash. Separated from `__hash__()` so it
             can be used by `getDevices()` to find known recorders.
 
@@ -284,13 +313,8 @@ class Recorder:
             :param info: The contents of the device's `DEVINFO` file, if
                 previously loaded. For future caching optimization.
         """
-        if path and not info:
-            path = os.path.realpath(path.path if isinstance(path, Drive) else path)
-            infoFile = os.path.join(path, cls._INFO_FILE)
-            if os.path.exists(infoFile):
-                with open(infoFile, 'rb') as f:
-                    info = f.read()
-
+        if not info:
+            info = FileDeviceInfo.readDevinfo(path)
         return hash(info)
 
 
@@ -302,32 +326,38 @@ class Recorder:
             return self._hash
 
 
-    def refresh(self, force=False):
+    def refresh(self, force: bool = False):
         """ Clear cached device information, ensuring the data is up-to-date.
+
+            :param force: If `True`, reread information from the device,
+                rather than use cached data.
         """
         with self._busy:
-            if self._path and not force:
-                return
-            self._info = None
-            self._hash = None
-            self._config = None
-            self._sn = None
-            self._snInt = None
-            self._chipId = None
-            self._sensors = None
-            self._channels = None
+            if force and not self.isVirtual:
+                self._rawinfo = None
+
+            self._devinfo = None
+            self._info: Optional[Dict] = None
+            self._hash: Optional[int] = None
+            self._configData: Optional[Dict] = None
+            self._sn: Optional[str] = None
+            self._snInt: Optional[int] = None
+            self._chipId: Optional[int] = None
+            self._sensors: Optional[Dict] = None
+            self._channels: Optional[Dict] = None
             self._channelRanges = {}
-            self._manifest = None
-            self._calibration = None
-            self._calData = None  # Note: unlike _manData, _calData is raw
-            self._calPolys = None
-            self._userCalPolys = None
-            self._userCalDict = None
-            self._factoryCalPolys = None
-            self._factoryCalDict = None
-            self._properties = None
-            self._volumeName = None
-            self._wifi = None  # Cached name of the manifest's Wi-Fi element
+            self._propData: Optional[bytes] = None
+            self._manifest: Optional[Dict] = None
+            self._calibration: Optional[Dict] = None
+            self._calData: Optional[bytes] = None
+            self._calPolys: Optional[Dict] = None
+            self._userCalPolys: Optional[Dict] = None
+            self._userCalDict: Optional[Dict] = None
+            self._factoryCalPolys: Optional[Dict] = None
+            self._factoryCalDict: Optional[Dict] = None
+            self._properties: Optional[Dict] = None
+            self._volumeName: Optional[str] = None
+            self._wifi: Optional[str] = None  # Cached name of the manifest's Wi-Fi element
 
             if self._command:
                 try:
@@ -337,7 +367,13 @@ class Recorder:
                                  '{!r}'.format(self._command, err))
                 self._command = None
 
-            self._configInterface = None
+            if self._config:
+                try:
+                    self._config.close()
+                except (AttributeError, IOError) as err:
+                    logger.debug('Ignoring exception closing {}: '
+                                 '{!r}'.format(self._config, err))
+                self._config = None
 
 
     @property
@@ -349,16 +385,26 @@ class Recorder:
 
 
     @path.setter
-    def path(self, dev: Union[Filename, None]):
+    def path(self, newpath: Union[Filename, None]):
         """ The recorder's filesystem path (e.g., drive letter or mount point).
         """
         with self._busy:
-            if dev is not None:
-                if self.strict and not self.isRecorder(dev):
-                    raise IOError("Specified path isn't a %s: %r" %
-                                  (self.__class__.__name__, dev))
+            path = None
+            self._volumeName = ''
+            self.configFile = self.infoFile = None
+            self.clockFile = self.userCalFile = self.configUIFile = None
+            self.recpropFile = self.commandFile = None
 
-                path = os.path.realpath(dev.path if isinstance(dev, Drive) else dev)
+            if str(newpath).lower().startswith("mqtt"):
+                path = None
+
+            elif newpath is not None:
+                newpath = newpath.path if isinstance(newpath, Drive) else newpath
+                if self.strict and not self.isRecorder(newpath):
+                    raise IOError("Specified path isn't a %s: %r" %
+                                  (self.__class__.__name__, newpath))
+
+                path = os.path.realpath(newpath)
                 self.configFile = os.path.join(path, self._CONFIG_FILE)
                 self.infoFile = os.path.join(path, self._INFO_FILE)
                 self.clockFile = os.path.join(path, self._CLOCK_FILE)
@@ -367,12 +413,6 @@ class Recorder:
                 self.recpropFile = os.path.join(path, self._RECPROP_FILE)
                 self.commandFile = os.path.join(path, self._COMMAND_FILE)
                 self._volumeName = None
-            else:
-                path = None
-                self._volumeName = ''
-                self.configFile = self.infoFile = None
-                self.clockFile = self.userCalFile = self.configUIFile = None
-                self.recpropFile = self.commandFile = None
 
             self._path = path
 
@@ -383,11 +423,12 @@ class Recorder:
         if self.isVirtual:
             return False
 
-        if self._path and self._volumeName is None:
+        if self._path and os.path.exists(self._path) and self._volumeName is None:
             try:
                 self._volumeName = os_specific.getDriveInfo(self.path).label
             except (AttributeError, IOError, TypeError) as err:
                 logger.debug("Getting volumeName raised a possibly-allowed exception: %r" % err)
+
         return self._volumeName
 
 
@@ -470,18 +511,6 @@ class Recorder:
         return False
 
 
-    def _getInfo(self, path=None):
-        """ Read a recorder's device information """
-        if path:
-            infoFile = os.path.join(path, self._INFO_FILE)
-        else:
-            infoFile = self.infoFile
-        if not os.path.isfile(infoFile):
-            return None
-        with open(infoFile, 'rb') as f:
-            return f.read()
-
-
     def getInfo(self,
                 name: Optional[str] = None,
                 default=None) -> Any:
@@ -499,21 +528,26 @@ class Recorder:
         """
         mideSchema = loadSchema("mide_ide.xml")
         with self._busy:
-            if self._info is None:
-                if self.path is not None:
-                    data = self._getInfo()
-                    self._hash = self._getHash(self.path, data)
-                    infoFile = mideSchema.loads(data)
+            if not self._info:
+                if not self._rawinfo:
+                    try:
+                        self._rawinfo = self._getDevinfo().readDevinfo(self.path)
+                    except DeviceError:
+                        # Serial/MQTT _getInfo() command failed
+                        # TODO: This may not be necessary, depending on how remote devices are handled (in progress)
+                        pass
+                if self._rawinfo:
+                    self._hash = hash(self._rawinfo)
+                    infoFile = mideSchema.loads(self._rawinfo)
                     try:
                         props = infoFile.dump().get('RecordingProperties', '')
-                        if 'RecorderInfo' in props:
-                            self._info = props.get('RecorderInfo', {})
-                            for k, v in self._info.items():
-                                if isinstance(v, bytes):
-                                    # Nothing in the device info should be binary,
-                                    # but as of ebmlite 3.0.1, StringElements are
-                                    # read as bytes. Convert.
-                                    self._info[k] = str(v, 'utf8')
+                        self._info = props.get('RecorderInfo', {})
+                        for k, v in self._info.items():
+                            if isinstance(v, bytes):
+                                # Nothing in the device info should be binary,
+                                # but as of ebmlite 3.0.1, StringElements are
+                                # read as bytes. Convert.
+                                self._info[k] = str(v, 'utf8')
                     except (IOError, KeyError) as err:
                         logger.debug("getInfo() raised a possibly-allowed exception: %r" % err)
                         pass
@@ -541,6 +575,16 @@ class Recorder:
     def isVirtual(self):
         """ Is this actual hardware, or a virtual recorder? """
         return self._virtual
+
+
+    @property
+    def isRemote(self):
+        """ Is this device not directly connected to this computer? """
+        if self.isVirtual:
+            return False
+        elif not self._path:
+            return True
+        return str(self._path).lower().startswith(('mqtt',))
 
 
     @property
@@ -691,7 +735,7 @@ class Recorder:
         """ The message to be displayed after configuration. """
         if not self.isVirtual and self.config and self.config.postConfigMsg:
             return self.config.postConfigMsg
-        return self._POST_CONFIG_MSG
+        return config._POST_CONFIG_MSG
 
 
     @property
@@ -713,7 +757,7 @@ class Recorder:
 
 
     @property
-    def hasWifi(self) -> bool:
+    def hasWifi(self) -> Union[str, bool]:
         """ The name of the Wi-Fi hardware type, or `False` if none. The name
             will not be blank, so expressions like `if dev.hasWifi:` will work.
         """
@@ -881,14 +925,16 @@ class Recorder:
                 `datetime.datetime` object.
             :return: The system time and the device time. Both are UTC.
         """
-        if self.isVirtual or not self.path:
+        if self.isVirtual:
             raise UnsupportedFeature('Virtual devices do not have clocks')
-
-        if self.hasCommandInterface:
-            return self.command.getTime(epoch=epoch)
-        else:
+        elif self.hasCommandInterface:
+            ci = self.command
+        elif self.path and os.path.exists(self.path):
             ci = command_interfaces.FileCommandInterface(self)
-            return ci.getTime(epoch=epoch)
+        else:
+            raise UnsupportedFeature(f'Cannot set time on device {self}')
+
+        return ci.getTime(epoch=epoch)
 
 
     def setTime(self,
@@ -911,14 +957,16 @@ class Recorder:
                 fail. Random filesystem things can potentially cause hiccups.
             :return: The time that was set, as integer seconds since the epoch.
         """
-        if self.isVirtual or not self.path:
+        if self.isVirtual:
             raise UnsupportedFeature('Virtual devices do not have clocks')
-
-        if self.hasCommandInterface:
-            return self.command.setTime(t=t, pause=pause, retries=retries)
-        else:
+        elif self.hasCommandInterface:
+            ci = self.command
+        elif self.path and os.path.exists(self.path):
             ci = command_interfaces.FileCommandInterface(self)
-            return ci.setTime(t=t, pause=pause, retries=retries)
+        else:
+            raise UnsupportedFeature(f'Cannot set time on device {self}')
+
+        return ci.setTime(t=t, pause=pause, retries=retries)
 
 
     def getClockDrift(self,
@@ -935,14 +983,16 @@ class Recorder:
                 fail. Random filesystem things can potentially cause hiccups.
             :return: The length of the drift, in seconds.
         """
-        if self.isVirtual or not self.path:
+        if self.isVirtual:
             raise UnsupportedFeature('Virtual devices do not have clocks')
-
-        if self.hasCommandInterface:
-            return self.command.getClockDrift(pause=pause, retries=retries)
-        else:
+        elif self.hasCommandInterface:
+            ci = self.command
+        elif self.path and os.path.exists(self.path):
             ci = command_interfaces.FileCommandInterface(self)
-            return ci.getClockDrift(pause=pause, retries=retries)
+        else:
+            raise UnsupportedFeature(f'Cannot get time on device {self}')
+
+        return ci.getClockDrift(pause=pause, retries=retries)
 
 
     def _parsePolynomials(self, cal: MasterElement) -> Dict[int, Transform]:
@@ -960,125 +1010,78 @@ class Recorder:
             pass
 
 
-    def _readUserpage(self) -> Union[Dict[str, Any], None]:
-        """ Read the device's manifest data from the EFM32 'userpage'. The
-            data is a superset of the information returned by `getInfo()`.
-            Factory calibration and recorder properties are also read
-            and cached, since one or both are in the userpage.
-        """
-        if self._manifest is not None:
-            return self._manifest
-
-        # Recombine all the 'user page' files
-        data = bytearray()
-        for i in range(4):
-            filename = os.path.join(self.path, self._USERPAGE_FILE % i)
-            with open(filename, 'rb') as fs:
-                data.extend(fs.read())
-
-        (manOffset, manSize,
-         calOffset, calSize,
-         propOffset, propSize) = struct.unpack_from("<HHHHHH", data)
-
-        manData = data[manOffset:manOffset + manSize]
-        calData = data[calOffset:calOffset + calSize]
-
-        # _propData is read and cached here but parsed in `getSensors()`.
-        # New devices use a dynamically-generated properties file, which
-        # overrides any property data in the USERPAGE.
-        if os.path.exists(self.recpropFile):
-            with open(self.recpropFile, 'rb') as f:
-                self._propData = f.read()
-        else:
-            # Zero offset means no property data (very old devices). For new
-            # devices, a size of 1 also means no data (it's a null byte).
-            propSize = 0 if (propOffset == 0 or propSize <= 1) else propSize
-            self._propData = data[propOffset:propOffset + propSize]
-
-        try:
-            self._manData = loadSchema("mide_manifest.xml").loads(manData)
-            self._manifest = self._manData.dump().get('DeviceManifest')
-
-            self._calData = loadSchema("mide_ide.xml").loads(calData)
-            self._calibration = self._calData.dump().get('CalibrationList')
-
-        except (AttributeError, KeyError) as err:
-            logger.debug("_readUserpage() raised a possibly-allowed exception: %r" % err)
-            pass
-
-        return self._manifest
-
-
-    def _readManifest(self) -> Union[Dict[str, Any], None]:
-        """ Read the device's manifest data from the 'MANIFEST' file. The
-            data is a superset of the information returned by `getInfo()`.
-
-            Factory calibration and recorder properties are also read and
-            cached for backwards compatibility, since both are in the older
-            devices' EFM32 'userpage'.
-        """
-        manFile = os.path.join(self.path, self._MANIFEST_FILE)
-        calFile = os.path.join(self.path, self._SYSCAL_FILE)
-
-        try:
-            with open(manFile, 'rb') as f:
-                self._manData = loadSchema("mide_manifest.xml").loads(f.read())
-            self._manifest = self._manData.dump().get('DeviceManifest')
-        except (FileNotFoundError, AttributeError, KeyError) as err:
-            logger.debug(f"Possibly-allowed exception when reading {manFile}: {err!r}")
-
-        try:
-            with loadSchema("mide_ide.xml").load(calFile) as doc:
-                self._calData = doc.schema.loads(doc.getRaw())
-                self._calibration = self._calData[0].dump()
-        except (FileNotFoundError, AttributeError, IndexError) as err:
-            logger.debug(f"Possibly-allowed exception when reading {calFile}: {err!r}")
-
-        try:
-            # _propData is read and cached here but parsed in `getSensors()`.
-            # Old EFM32 recorders stored this w/ the manifest in the USERPAGE.
-            with open(self.recpropFile, 'rb') as f:
-                self._propData = f.read()
-        except (FileNotFoundError, AttributeError, KeyError) as err:
-            logger.debug(f"Possibly-allowed exception when reading {self.recpropFile}: {err!r}")
-
-        return self._manifest
-
-
     def getManifest(self) -> Union[Dict[str, Any], None]:
         """ Read the device's manifest data. The data is a superset of the
             information returned by `getInfo()`.
         """
+        # Note: This method sets `Recorder._propData`, `Recorder._manData`,
+        # `Recorder._calData`, `Recorder._manifest`, and `Recorder._calibration`.
+
         with self._busy:
-            if self.isVirtual or self._manifest is not None:
+            if self._manifest is not None or self.isVirtual:
                 return self._manifest
 
-            if os.path.exists(os.path.join(self.path, self._USERPAGE_FILE % 0)):
-                self._readUserpage()
-            elif os.path.exists(os.path.join(self.path, self._MANIFEST_FILE)):
-                self._readManifest()
+            manSchema = loadSchema('mide_manifest.xml')
+            calSchema = loadSchema('mide_ide.xml')
+            manData, calData, propData = self._getDevinfo().readManifest()
+
+            if manData:
+                self._manData = manData
+                try:
+                    self._manifest = manSchema.loads(manData)[0].dump()
+                except IndexError:
+                    logger.warning(f'No manifest data for {self}!')
+                    self._manifest = None
+            else:
+                logger.warning(f'No manifest data for {self}!')
+                self._manData = self._manifest = None
+
+            if calData:
+                self._calData = calSchema.loads(calData)
+                try:
+                    self._calibration = self._calData[0].dump()
+                except IndexError:
+                    logger.warning(f'No system calibration for {self}!')
+                    self._calibration = None
+            else:
+                logger.warning(f'No system calibration for {self}!')
+                self._calData = self._calibration = None
+
+            if propData:
+                self._propData = propData
 
             return self._manifest
 
 
+    def _readCalFile(self,
+                     filename: Optional[Filename] = None) -> Optional[MasterElement]:
+        """ Read a file of calibration data.
+        """
+        if filename:
+            with open(filename, 'rb') as f:
+                caldata = f.read()
+        else:
+            caldata = self._getDevinfo().readUserCalibration()
+
+        if caldata:
+            return loadSchema("mide_ide.xml").loads(caldata)
+
+        return None
+
+
     def getUserCalibration(self,
-                           filename: Optional[Filename] = None) -> Union[Dict[str, Any], None]:
+                           filename: Optional[Filename] = None) -> Optional[Dict[str, Any]]:
         """ Get the recorder's user-defined calibration data as a dictionary
             of parameters.
         """
-        if self.isVirtual:
+        if self.isVirtual or (self._userCalDict and not filename):
             return self._userCalDict
 
-        filename = self.userCalFile if filename is None else filename
-        if filename is None or not os.path.exists(filename):
-            return None
-        if filename != self.userCalFile:
-            self._userCalDict = None
+        data = self._readCalFile(filename)
 
-        if self._userCalDict is None:
-            with open(self.userCalFile, 'rb') as f:
-                d = loadSchema("mide_ide.xml").load(f).dump()
-                self._userCalDict = d.get('CalibrationList', None)
+        if data:
+            self._userCalDict = data.dump().get('CalibrationList', None)
+
         return self._userCalDict
 
 
@@ -1091,15 +1094,14 @@ class Recorder:
                 `.dat` file to read (as opposed to the device's standard
                 user calibration).
         """
-        if self.isVirtual and not filename:
-            return None
+        if self.isVirtual or (self._userCalPolys and not filename):
+            return self._userCalPolys
 
-        filename = self.userCalFile if filename is None else filename
-        if filename is None or not os.path.exists(filename):
-            return None
-        if self._userCalPolys is None:
-            with loadSchema('mide_ide.xml').load(filename) as doc:
-                self._userCalPolys = self._parsePolynomials(doc)
+        data = self._readCalFile(filename)
+
+        if data:
+            self._userCalPolys = self._parsePolynomials(data)
+
         return self._userCalPolys
 
 
@@ -1370,7 +1372,7 @@ class Recorder:
     def writeUserCal(self,
                      transforms: Union[List[Transform], Dict[int, Transform]],
                      filename: Union[str, Path, None] = None):
-        """ Write user calibration to the SSX.
+        """ Write user calibration to the device.
 
             :param transforms: A dictionary or list of `idelib.calibration`
                 objects.
@@ -1381,10 +1383,12 @@ class Recorder:
             raise ConfigError('Could not write user calibration data: '
                               'Not a real recorder!')
 
-        filename = self.userCalFile if filename is None else filename
         cal = self.generateCalEbml(transforms)
-        with open(filename, 'wb') as f:
-            f.write(cal)
+        if filename:
+            with open(filename, 'wb') as f:
+                f.write(cal)
+        else:
+            self._getDevinfo().writeUserCal(cal)
 
 
     # ===========================================================================
@@ -1421,23 +1425,23 @@ class Recorder:
             read and/or write device config.
         """
         with self._busy:
-            if self._configInterface is None:
+            if self._config is None:
                 for interface in config.INTERFACES:
                     if interface.hasInterface(self):
                         # logger.debug('Instantiating config interface: {!r}'.format(interface))
-                        self._configInterface = interface(self)
+                        self._config = interface(self)
                         break
 
-                if self._configInterface is None:
+                if self._config is None:
                     raise UnsupportedFeature("Device has no configuration interface")
 
-            return self._configInterface
+            return self._config
 
 
     @config.setter
     def config(self, interface: ConfigInterface):
         with self._busy:
-            self._configInterface = interface
+            self._config = interface
 
 
     @property
@@ -1459,14 +1463,8 @@ class Recorder:
         """ Create a 'virtual' recorder from the recorder description in a
             recording.
         """
-        dev = cls(None)
-        dev._virtual = True
-        dev._source = dataset
-        dev._info = dataset.recorderInfo.copy()
-        dev._calPolys = dataset.transforms.copy()
-        dev._channels = dataset.channels.copy()
-        dev._warnings = dataset.warningRanges.copy()
-        dev._sensors = dataset.sensors.copy()
+        rawinfo = None
+        config = configUi = None
 
         # Crawl the Dataset's EBML document for config-related data.
         # Usually pretty quick.
@@ -1474,14 +1472,26 @@ class Recorder:
             if el.name.endswith('DataBlock'):
                 # End of the metadata
                 break
+            elif el.name == 'RecordingProperties':
+                rawinfo = el.getRaw()
             elif el.name.startswith('RecorderConfiguration'):
                 # This will eventually be unnecessary; see issue:
                 # https://github.com/MideTechnology/idelib/issues/112
-                dev._config = dataset.ebmldoc.schema.loads(el.getRaw())
+                config = dataset.ebmldoc.schema.loads(el.getRaw())
             elif el.name == 'ConfigUI':
                 # Proposed, but not yet in IDE files.
                 # No longer strictly required due to `ui_defaults`.
-                dev._configUi = loadSchema('mide_config_ui.xml').loads(el.value)
+                configUi = loadSchema('mide_config_ui.xml').loads(el.value)
+
+        dev = cls(None, virtual=True, devinfo=rawinfo)
+        dev._source = dataset
+        dev._devinfo = None
+        dev._calPolys = dataset.transforms.copy()
+        dev._channels = dataset.channels.copy()
+        dev._warnings = dataset.warningRanges.copy()
+        dev._sensors = dataset.sensors.copy()
+        dev._configUi = configUi
+        dev._configData = config
 
         # Datasets merge calibration info into recorderInfo; separate them.
         dev._calibration = {}

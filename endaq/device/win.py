@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 import sys
 from time import time
-from typing import ByteString, List, Optional, Tuple
+from typing import List, Optional, Tuple
 import warnings
 
 from .types import Drive, Epoch, Filename
@@ -75,7 +75,7 @@ def getDriveInfo(dev: Filename) -> Drive:
                  fs=fs, type=win32file.GetDriveType(dev))
     
 
-def readUncachedFile(filename: Filename) -> ByteString:
+def readUncachedFile(filename: Filename) -> bytes:
     """ Read a file, circumventing the disk cache. Returns the data read.
     """
     if isinstance(filename, Path):

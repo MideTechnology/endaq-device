@@ -4,7 +4,7 @@ HDLC encoding and checksum-related code.
 In this application, 'HDLC encoding' amounts to using HDLC escaping and
 break characters.
 """
-from typing import ByteString, Union
+from typing import Union
 
 from logging import getLogger
 logger = getLogger('endaq.device')
@@ -143,7 +143,7 @@ def hdlc_encode(in_payload: Union[bytearray, bytes, str],
     return out_payload
 
 
-def hdlc_decode(in_payload: ByteString,
+def hdlc_decode(in_payload: Union[bytearray, bytes],
                 ignore_crc: bool = False) -> bytearray:
     """ Decode an HDLC-encoded packet into raw data.
 

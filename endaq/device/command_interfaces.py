@@ -9,6 +9,8 @@ from datetime import datetime
 import errno
 import os.path
 import shutil
+import string
+import struct
 import sys
 from time import sleep, time, struct_time
 from typing import Any, AnyStr, Dict, List, Optional, Tuple, Union, Callable, TYPE_CHECKING
@@ -61,6 +63,8 @@ class CommandInterface:
     # Default maximum encoded command length (bytes). Only applicable to
     # certain interfaces.
     DEFAULT_MAX_COMMAND_SIZE = None
+
+    _TIME_PARSER = struct.Struct("<L")
 
 
     def __init__(self,
@@ -152,7 +156,7 @@ class CommandInterface:
 
 
     def _encode(self, data: dict,
-                checkSize: bool = True) -> Union[bytearray, bytes]:
+                checkSize: bool = True) -> bytes:
         """
         Prepare a packet of command data for transmission, doing any
         preparation required by the interface's medium.
@@ -172,7 +176,7 @@ class CommandInterface:
         return ebml
 
 
-    def _encodeResponse(self, data: dict) -> Union[bytearray, bytes]:
+    def _encodeResponse(self, data: dict) -> bytearray:
         """
         Encode a packet of response data in the manner typically received
         from devices, doing any preparation required by the interface's
@@ -874,7 +878,8 @@ class CommandInterface:
             return self._updateAll(secure=secure, timeout=timeout, callback=callback)
 
 
-    def setKeys(self, keys: Union[bytearray, bytes],
+    def setKeys(self,
+                keys: Union[bytearray, bytes],
                 timeout: Union[int, float] = 5,
                 callback: Optional[Callable] = None):
         """ Update the device's key bundle
@@ -1309,7 +1314,7 @@ class CommandInterface:
                 index: int,
                 timeout: Union[int, float] = 10,
                 interval: float = .25,
-                callback: Optional[Callable] = None) -> Union[bytearray, bytes]:
+                callback: Optional[Callable] = None) -> bytes:
         """ Retrieve device system information. For 'local' devices, this
             is retrieved via the filesystem. This method is called indirectly
             by methods in `Recorder`.
@@ -1418,7 +1423,7 @@ class SerialCommandInterface(CommandInterface):
             :param device: The recorder to check.
             :return: `True` if the device supports the interface.
         """
-        if device.isVirtual:
+        if device.isVirtual or device.isRemote:
             return False
 
         # If the DEVINFO explicitly indicates a serial command interface,
@@ -1448,16 +1453,27 @@ class SerialCommandInterface(CommandInterface):
 
 
     @classmethod
-    def findSerialPort(cls, device: "Recorder") -> Union[None, str]:
+    def findSerialPort(cls, device: Union["Recorder", int, str]) -> Union[None, str]:
         """ Find the path/name/number of a serial port corresponding to a
             given serial number.
 
-            :param device: The recorder to check.
+            :param device: The `Recorder` to check, or a recorder serial
+                number.
             :return: The corresponding serial port path/name/number, or
                 `None` if no matching port is found.
         """
-        if device.isVirtual:
-            return None
+        try:
+            if device.isVirtual:
+                return None
+            devSerial = device.serialInt
+        except AttributeError:
+            if isinstance(device, int):
+                devSerial = device
+            elif isinstance(device, str):
+                sn = device.lstrip(string.ascii_letters+"0")
+                devSerial = int(sn) if sn else 0
+            else:
+                raise
 
         for p in serial.tools.list_ports.comports():
             # Find valid USB/serial device by vendor/product ID
@@ -1466,8 +1482,7 @@ class SerialCommandInterface(CommandInterface):
             try:
                 if not p.serial_number:
                     continue
-                sn = int(p.serial_number)
-                if sn == device.serialInt:
+                elif int(p.serial_number) == devSerial:
                     return p.device
             except ValueError as err:
                 # Probably text in serial number, ignore if so
@@ -1586,7 +1601,7 @@ class SerialCommandInterface(CommandInterface):
         return packet
 
 
-    def _encodeResponse(self, packet: dict) -> Union[bytearray, bytes]:
+    def _encodeResponse(self, packet: dict) -> bytearray:
         """
         Encode a packet of response data in the manner typically received
         from devices, doing any preparation required by the interface's
@@ -1612,7 +1627,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def _decode(self,
-                packet: Union[bytearray, bytes]) -> Dict[str, Any]:
+                packet: bytearray) -> Dict[str, Any]:
         """ Translate a response packet into a dictionary. Removes additional
             header data and checks the CRC (if the interface's `ignore_crc`
             attribue is `False`) before parsing the binary EBML contents.
@@ -1898,7 +1913,7 @@ class SerialCommandInterface(CommandInterface):
             response = self._sendCommand(command, timeout=timeout)
             try:
                 dt = response['ClockTime']
-                devTime = self.device._TIME_PARSER.unpack_from(dt)[0]
+                devTime = self._TIME_PARSER.unpack_from(dt)[0]
             except KeyError:
                 raise DeviceError("GetClock response did not contain ClockTime")
 
@@ -1933,7 +1948,7 @@ class SerialCommandInterface(CommandInterface):
             pause = False
 
         t = int(t)
-        payload = self.device._TIME_PARSER.pack(t)
+        payload = self._TIME_PARSER.pack(t)
 
         t0 = time()
         if pause:
@@ -2329,7 +2344,7 @@ class SerialCommandInterface(CommandInterface):
                 timeout: Union[int, float] = 10,
                 interval: float = .25,
                 lock: bool = False,
-                callback: Optional[Callable] = None) -> Union[bytearray, bytes]:
+                callback: Optional[Callable] = None) -> bytes:
         """ Retrieve device system information. For 'local' devices, this
             is retrieved via the filesystem. This method is called indirectly
             by methods in `Recorder`.
@@ -2350,7 +2365,6 @@ class SerialCommandInterface(CommandInterface):
         """
         # Note: Reading config or user calibration requires a LockID
         # lock = index in (5, 6)
-
         cmd = {'EBMLCommand': {'GetInfo': index}}
         response = self._sendCommand(cmd,
                                      response=True,
@@ -2359,12 +2373,19 @@ class SerialCommandInterface(CommandInterface):
                                      callback=callback)
 
         try:
-            return response['GetInfoResponse']['InfoPayload']
+            info = response['GetInfoResponse']['InfoPayload']
         except KeyError:
             if 'GetInfoResponse' in response:
                 raise DeviceError('Response did not contain expected GetInfoResponse element')
             else:
                 raise DeviceError('Response did not contain a payload of information')
+
+        try:
+            return bytes(info)
+        except ValueError:
+            logger.debug('_getInfo() got unexpected payload: '
+                         f"{response['GetInfoResponse']['InfoPayload']!r}")
+            return info
 
 
     def _setInfo(self,
@@ -2423,7 +2444,7 @@ class FileCommandInterface(CommandInterface):
             :param device: The recorder to check.
             :return: `True` if the device supports the interface.
         """
-        if device.isVirtual or not device.path:
+        if device.isVirtual or device.isRemote or not device.path:
             return False
 
         # Old SlamStick devices may not support COMMAND. They should get
@@ -2504,7 +2525,7 @@ class FileCommandInterface(CommandInterface):
                 while int(time()) == t:
                     pass
             sysTime, devTime = os_specific.readRecorderClock(self.device.clockFile)
-            devTime = self.device._TIME_PARSER.unpack_from(devTime)[0]
+            devTime = self._TIME_PARSER.unpack_from(devTime)[0]
 
         return sysTime, devTime
 
@@ -2536,7 +2557,7 @@ class FileCommandInterface(CommandInterface):
             pause = False
 
         t = int(t)
-        payload = self.device._TIME_PARSER.pack(t)
+        payload = self._TIME_PARSER.pack(t)
 
         t0 = time()
         with open(self.device.clockFile, 'wb') as f:
@@ -2770,6 +2791,9 @@ class LegacyFileCommandInterface(FileCommandInterface):
             :param device: The recorder to check.
             :return: `True` if the device supports the interface.
         """
+        if device.isRemote:
+            return False
+
         if device.getInfo('McuType', "EFM32GG330") != "EFM32GG330":
             return False
 

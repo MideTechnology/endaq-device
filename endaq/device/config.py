@@ -35,6 +35,16 @@ logger = logging.getLogger('endaq.device')
 #
 # ===========================================================================
 
+# Default post-configuration message. Will (eventually) be in CONFIG.UI data.
+_POST_CONFIG_MSG = ("When ready...\n"
+                    "    1. Disconnect the recorder\n"
+                    "    2. Mount to surface\n"
+                    "    3. Press the recorder's primary button ")
+
+# ===========================================================================
+#
+# ===========================================================================
+
 class ConfigItem:
     """ A single configuration item/field, read from Config UI data, e.g., a
         device's ``CONFIG.UI`` file. It keeps track of the item's data type
@@ -459,6 +469,17 @@ class ConfigInterface:
         self._supportedConfigVersions = None
 
 
+    def close(self) -> bool:
+        """
+        Close the interface. Only applicable to subclasses with a persistent
+        connection. Fails silently.
+
+        :return: `True` if the connection was reset (or the interface type
+            has no persistent connection).
+        """
+        return True
+
+
     @property
     def supportedConfigVersions(self):
         """ A tuple of configuration data format versions supported by
@@ -501,6 +522,8 @@ class ConfigInterface:
             :param device: The Recorder to check.
             :return: `True` if the device supports the interface.
         """
+        if device.isRemote:
+            return False
         if getattr(device, "_config", None) is not None:
             return True
         return ui_defaults.getDefaultConfigUI(device) is not None
@@ -579,8 +602,8 @@ class ConfigInterface:
         """
         config = {} if default is None else default.copy()
 
-        root = origConfig.get('RecorderConfigurationList', None)
-        if root is None:
+        root = origConfig.get('RecorderConfigurationList', {})
+        if not root:
             return None
 
         for item in root.get('RecorderConfigurationItem', []):
@@ -1205,7 +1228,7 @@ class VirtualConfigInterface(ConfigInterface):
             the contents of a real device's ``config.cfg`` file), if any.
         """
         # This will have been cached when Recorder.fromRecording() was called
-        return self.device._config
+        return self.device._configData
 
 
     def applyConfig(self, **kwargs):
@@ -1256,7 +1279,7 @@ class FileConfigInterface(ConfigInterface):
         :param device: The Recorder to check.
         :return: `True` if the device supports the interface.
         """
-        if device.isVirtual:
+        if device.isVirtual or device.isRemote:
             return False
 
         # Very simple initial check: is there a CONFIG.UI file?
