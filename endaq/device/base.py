@@ -452,6 +452,32 @@ class Recorder:
 
 
     @classmethod
+    def _isRecorder(cls,
+                    info: bytes) -> bool:
+        """ Test whether the given ``DEVINFO`` describes a device matching
+            this class. Used internally by `isRecorder()` and externally when
+            instantiating remote devices.
+
+            :param info: Raw device metadata, as read from a ``DEVINFO``
+                file, retrieved via a command interface, etc.
+            :return: `True` if the info is a match for this `Recorder` class.
+        """
+        try:
+            if not info:
+                return False
+            devinfo = loadSchema('mide_ide.xml').loads(info).dump()
+            name = devinfo['RecordingProperties']['RecorderInfo']['ProductName']
+            if isinstance(name, bytes):
+                # In ebmlite < 3.1, StringElements are read as bytes.
+                name = str(name, 'utf8')
+
+            return cls._matchName(name)
+        except (KeyError, IOError) as err:
+            logger.debug("_isRecorder() raised a possibly-allowed exception: %r" % err)
+            return False
+
+
+    @classmethod
     def isRecorder(cls,
                    path: Filename,
                    strict: bool = True,
@@ -476,12 +502,12 @@ class Recorder:
             else:
                 fs = ''
 
-            path = os.path.realpath(path)
-            infoFile = os.path.join(path, cls._INFO_FILE)
+            realpath = os.path.realpath(path)
+            infoFile = os.path.join(realpath, cls._INFO_FILE)
 
             if strict:
                 if not fs:
-                    info = os_specific.getDriveInfo(path)
+                    info = os_specific.getDriveInfo(realpath)
                     if not info:
                         return False
                     fs = info.fs
@@ -489,26 +515,18 @@ class Recorder:
                     return False
 
             if 'info' in kwargs:
-                devinfo = loadSchema('mide_ide.xml').loads(kwargs['info']).dump()
+                devinfo = kwargs['info']
             elif os.path.isfile(infoFile):
-                with loadSchema('mide_ide.xml').load(infoFile) as doc:
-                    devinfo = doc.dump()
+                with open(infoFile, 'rb') as f:
+                    devinfo = f.read()
             else:
                 return False
 
-            props = devinfo['RecordingProperties']['RecorderInfo']
-            name = props['ProductName']
-            if isinstance(name, bytes):
-                # In ebmlite < 3.1, StringElements are read as bytes.
-                name = str(name, 'utf8')
-
-            return cls._matchName(name)
+            return cls._isRecorder(devinfo)
 
         except (KeyError, TypeError, AttributeError, IOError) as err:
             logger.debug("isRecorder() raised a possibly-allowed exception: %r" % err)
-            pass
-
-        return False
+            return False
 
 
     def getInfo(self,

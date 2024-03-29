@@ -1312,13 +1312,15 @@ class CommandInterface:
     # =======================================================================
 
     def _getInfo(self,
-                index: int,
-                timeout: Union[int, float] = 10,
-                interval: float = .25,
-                callback: Optional[Callable] = None) -> bytes:
+                 index: int,
+                 timeout: Union[int, float] = 10,
+                 interval: float = .25,
+                 callback: Optional[Callable] = None,
+                  **kwargs) -> bytes:
         """ Retrieve device system information. For 'local' devices, this
             is retrieved via the filesystem. This method is called indirectly
-            by methods in `Recorder`.
+            by methods in `Recorder`. Different subclasses may have
+            additional keyword arguments.
 
             :param index: The index of the information to retrieve.
             :param timeout: Time (in seconds) to wait for a response before
@@ -1424,6 +1426,8 @@ class SerialCommandInterface(CommandInterface):
             :param device: The recorder to check.
             :return: `True` if the device supports the interface.
         """
+        # Virtual devices have no CommandInterface.
+        # Remote devices get theirs through another method.
         if device.isVirtual or device.isRemote:
             return False
 
@@ -1506,7 +1510,7 @@ class SerialCommandInterface(CommandInterface):
             else:
                 raise
 
-        for sn, port in cls._possibleRecorders(strict=strict):
+        for port, sn in cls._possibleRecorders(strict=strict):
             if sn == devSerial:
                 return port
 
@@ -1876,7 +1880,7 @@ class SerialCommandInterface(CommandInterface):
                             logger.debug('Command queue full, retrying.')
                         else:
                             respIdx = resp.get('ResponseIdx')
-                            if respIdx == self.index:
+                            if not index or respIdx == self.index:
                                 return resp if response else None
                             else:
                                 logger.debug('Bad ResponseIdx; expected {}, got {}. '
@@ -2361,16 +2365,17 @@ class SerialCommandInterface(CommandInterface):
     # =======================================================================
 
     def _getInfo(self,
-                index: int,
-                timeout: Union[int, float] = 10,
-                interval: float = .25,
-                lock: bool = False,
-                callback: Optional[Callable] = None) -> bytes:
+                 infoIdx: int,
+                 timeout: Union[int, float] = 10,
+                 interval: float = .25,
+                 lock: bool = False,
+                 index: bool = True,
+                 callback: Optional[Callable] = None) -> bytes:
         """ Retrieve device system information. For 'local' devices, this
             is retrieved via the filesystem. This method is called indirectly
             by methods in `Recorder`.
 
-            :param index: The index of the information to retrieve.
+            :param infoIdx: The index of the information to retrieve.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
                 `None` or -1 will wait indefinitely.
@@ -2380,17 +2385,20 @@ class SerialCommandInterface(CommandInterface):
                 be cancelled. The callback function should require no arguments.
             :param lock: If `True`, include the current `hostId` in the
                 command, as some `SetInfo` commands require.
+            :param index: If `True`, include a ``CommandIdx`` in the command,
+                and use it to validate the response (if any).
             :return: The raw info, as unparsed EBML binary data. It is up to
                 the caller to know how to process the results (e.g., choose
                 the correct schema, etc.).
         """
         # Note: Reading config or user calibration requires a LockID
         # lock = index in (5, 6)
-        cmd = {'EBMLCommand': {'GetInfo': index}}
+        cmd = {'EBMLCommand': {'GetInfo': infoIdx}}
         response = self._sendCommand(cmd,
                                      response=True,
                                      timeout=timeout,
                                      lock=lock,
+                                     index=index,
                                      callback=callback)
 
         try:
@@ -2410,7 +2418,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def _setInfo(self,
-                 index: int,
+                 infoIdx: int,
                  payload: Union[bytearray, bytes],
                  timeout: Union[int, float] = 10,
                  interval: float = .25,
@@ -2418,7 +2426,7 @@ class SerialCommandInterface(CommandInterface):
         """ Write device system information. This method is called indirectly
             by methods in `Recorder`.
 
-            :param index: The index of the information to write.
+            :param infoIdx: The index of the information to write.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
                 `None` or -1 will wait indefinitely.
@@ -2607,6 +2615,8 @@ class FileCommandInterface(CommandInterface):
                 indefinitely.
             :param interval: Time (in seconds) between checks for a
                 response.
+            :param index: If `True`, include a ``CommandIdx`` in the command,
+                and use it to validate the response (if any).
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a response
                 will be cancelled. The callback function should require no
