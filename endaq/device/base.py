@@ -358,9 +358,13 @@ class Recorder:
             self._devinfo = None
             self._info = None
             self._hash = None
-            self._sn = None
-            self._snInt = None
-            self._chipId = None
+
+            if not self.isRemote:
+                # Also from DEVINFO, but required for finding remote devices.
+                # Outside of manufacturing, the device SN shouldn't change.
+                self._sn = None
+                self._snInt = None
+                self._chipId = None
 
             if not self.isVirtual:
                 # Data derived from things virtual devices can't read; virtual
@@ -446,7 +450,7 @@ class Recorder:
     @property
     def volumeName(self):
         """ The recorder's user-specified filesystem label. """
-        if self.isVirtual:
+        if self.isVirtual or self.isRemote:
             return False
 
         if self._path and os.path.exists(self._path) and self._volumeName is None:

@@ -25,38 +25,42 @@ def getSerialDevices(known: Optional[Dict[int, Recorder]] = None,
             see if they belong to a known type of device.
         :return: A list of `Recorder` instances found.
     """
-    from . import RECORDER_TYPES
+    from . import RECORDER_TYPES, _module_busy
 
     if known is None:
         known = {}
 
     devices = []
 
+    # Dummy recorder and command interface to retrieve DEVINFO
     fake = Recorder(None)
     fake.command = SerialCommandInterface(fake)
 
     for port, sn in SerialCommandInterface._possibleRecorders(strict=strict):
         if sn in known:
-            devices.append(known[sn])
+            # devices.append(known[sn])
             continue
+
+        logger.debug(f'Getting info for SN {sn}')
 
         fake.command.port = None
         fake._snInt, fake._sn = sn, str(sn)
 
-        try:
-            info = fake.command._getInfo(0, index=False)
-            if not info:
+        with _module_busy:
+            try:
+                info = fake.command._getInfo(0, index=False)
+                if not info:
+                    continue
+                for devtype in RECORDER_TYPES:
+                    if devtype._isRecorder(info):
+                        device = devtype(None, devinfo=info)
+                        device.command = SerialCommandInterface(device)
+                        device._devinfo = SerialDeviceInfo(device)
+                        devices.append(device)
+                        break
+            except CommandError as err:
+                if err.errno != DeviceStatusCode.ERR_INVALID_COMMAND:
+                    logger.debug(f'Unexpected {type(err).__name__} getting info for {sn}: {err}')
                 continue
-            for devtype in RECORDER_TYPES:
-                if devtype._isRecorder(info):
-                    device = devtype(None, devinfo=info)
-                    device.command = SerialCommandInterface(device)
-                    device._devinfo = SerialDeviceInfo(device)
-                    devices.append(device)
-                    break
-        except CommandError as err:
-            if err.errno != DeviceStatusCode.ERR_INVALID_COMMAND:
-                logger.debug(f'Unexpected {type(err).__name__} getting info for {sn}: {err}')
-            continue
 
     return devices

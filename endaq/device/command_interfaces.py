@@ -13,7 +13,7 @@ import string
 import struct
 import sys
 from time import sleep, time, struct_time
-from typing import Any, AnyStr, Dict, Generator, List, Optional, Tuple, Union, Callable, TYPE_CHECKING
+from typing import Any, AnyStr, Dict, Generator, List, Optional, Tuple, Union, Callable
 from uuid import uuid4
 import warnings
 
@@ -38,9 +38,9 @@ elif 'win' in sys.platform:
 elif sys.platform == 'linux':
     from . import linux as os_specific
 
+from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .base import Recorder
-    from serial.tools.list_ports_common import ListPortInfo
 
 
 # ===========================================================================
@@ -170,7 +170,7 @@ class CommandInterface:
         """
         ebml = self.schema.encodes(data, headers=False)
 
-        if checkSize and self.maxCommandSize is not None and len(ebml) > self.maxCommandSize:
+        if checkSize and self.maxCommandSize and len(ebml) > self.maxCommandSize:
             raise CommandError("Command too large ({}); max size is {}".format(
                     len(ebml), self.maxCommandSize))
 

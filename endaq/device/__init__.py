@@ -11,6 +11,7 @@ from pathlib import Path
 import string
 from threading import RLock
 from typing import List, Optional, Union
+from weakref import WeakValueDictionary
 
 import ebmlite.core
 from idelib.dataset import Dataset
@@ -19,6 +20,7 @@ from .base import Recorder, os_specific
 from .command_interfaces import SerialCommandInterface
 from .exceptions import *
 from .endaq import EndaqS, EndaqW
+from .remote import getSerialDevices
 from .slamstick import SlamStickX, SlamStickC, SlamStickS
 from .types import Drive, Filename, Epoch
 
@@ -65,13 +67,16 @@ RECORDER_TYPES = [SlamStickC, EndaqS, EndaqW, SlamStickS, SlamStickX, Recorder]
 # Keyed by the hash of the recorders DEVINFO (or equivalent).
 RECORDERS = {}
 
-RECORDERS_BY_SN = {}
+# Another cache of recorders, keyed by serial number. Used when discovering
+# remote devices that don't immediately have DEVINFO accessible.
+RECORDERS_BY_SN = WeakValueDictionary()
 
 # Max number of cached recorders. Probably not needed, but just in case.
 RECORDER_CACHE_SIZE = 100
 
-# Lock to prevent contention (primarily with the recorder cache)
-_busy = RLock()
+# Lock to prevent contention (primarily with the recorder cache). Several
+# classes have their own 'busy' locks as well.
+_module_busy = RLock()
 
 #===============================================================================
 # Platform-specific stuff. 
@@ -93,11 +98,11 @@ def getRecorder(path: Filename,
         :return: An instance of a :class:`~.endaq.device.Recorder` subclass,
             or `None` if the path is not a recorder.
     """
-    global RECORDERS
+    global RECORDERS, RECORDERS_BY_SN
 
     dev = None
 
-    with _busy:
+    with _module_busy:
         for rtype in RECORDER_TYPES:
             if rtype.isRecorder(path, strict=strict):
                 # Get existing recorder if it has already been instantiated.
@@ -114,6 +119,9 @@ def getRecorder(path: Filename,
                     # different mount point/drive letter.
                     if update and dev.path != path:
                         dev.path = path
+
+                RECORDERS_BY_SN.pop(dev.serialInt, None)
+                RECORDERS_BY_SN[dev.serialInt] = dev
 
                 break
 
@@ -141,8 +149,8 @@ def deviceChanged(recordersOnly: bool = True,
 
 
 def getDeviceList(strict: bool = True) -> List[Drive]:
-    """ Get a list of data recorders, as their respective path (or the drive
-        letter under Windows).
+    """ Get a list of local data recorders, as their respective path (or the
+        drive letter under Windows).
 
         :param strict: If `False`, only the directory structure is used
             to identify a recorder. If `True`, non-FAT file systems will
@@ -154,7 +162,7 @@ def getDeviceList(strict: bool = True) -> List[Drive]:
 
 
 def getDevices(paths: Optional[List[Filename]] = None,
-               unmounted: bool = False,
+               unmounted: bool = True,
                update: bool = True,
                strict: bool = True) -> List[Recorder]:
     """ Get a list of data recorder objects.
@@ -164,9 +172,7 @@ def getDevices(paths: Optional[List[Filename]] = None,
             :meth:`~.endaq.device.getDeviceList`).
         :param unmounted: If `True`, include devices connected by USB
             and responsive to commands but not appearing as drives.
-            Currently, this only applies to devices that had previously been
-            mounted and been found by `getDevices` (e.g. ones that were given
-            the command to start recording).
+            Note: Not all devices/firmware versions support this.
         :param update: If `True`, update the path of known devices if they
             have changed (e.g., their drive letter or mount point changed
             after a device reset).
@@ -175,9 +181,9 @@ def getDevices(paths: Optional[List[Filename]] = None,
             non-removable media will be automatically rejected.
         :return: A list of instances of `Recorder` subclasses.
     """
-    global RECORDERS
+    global RECORDERS, RECORDERS_BY_SN
 
-    with _busy:
+    with _module_busy:
         if paths is None:
             paths = getDeviceList(strict=strict)
         else:
@@ -200,6 +206,11 @@ def getDevices(paths: Optional[List[Filename]] = None,
                 if isinstance(dev._command, SerialCommandInterface):
                     if dev._command.findSerialPort(dev):
                         result.append(dev)
+                        RECORDERS_BY_SN[dev.serialInt] = dev
+
+            for dev in getSerialDevices(known=RECORDERS_BY_SN):
+                result.append(dev)
+                RECORDERS_BY_SN[dev.serialInt] = dev
 
         return result
 
@@ -227,9 +238,7 @@ def findDevice(sn: Optional[Union[str, int]] = None,
             :meth:`~.endaq.device.getDeviceList`).
         :param unmounted: If `True`, include devices connected by USB
             and responsive to commands but not appearing as drives.
-            Currently, this only applies to devices that had previously been
-            mounted and been found by `getDevices` (e.g. ones that were given
-            the command to start recording).
+            Note: Not all devices/firmware versions support this.
         :param update: If `True`, update the path of known devices if they
             have changed (e.g., their drive letter or mount point changed
             after a device reset).
@@ -240,7 +249,7 @@ def findDevice(sn: Optional[Union[str, int]] = None,
             representing the device with the specified serial number or chip
             ID, or `None` if it cannot be found.
     """
-    with _busy:
+    with _module_busy:
         if sn and chipId:
             raise ValueError('Either a serial number or chip ID is required, not both')
         elif sn is None and chipId is None:
@@ -275,7 +284,7 @@ def isRecorder(path: Filename,
             is used to identify a recorder. If `True`, non-FAT file systems
             will be automatically rejected.
     """
-    with _busy:
+    with _module_busy:
         for t in RECORDER_TYPES:
             if t.isRecorder(path, strict=strict):
                 return True
@@ -311,12 +320,17 @@ def onRecorder(path: Filename, strict: bool = True) -> bool:
 def fromRecording(doc: Dataset) -> Recorder:
     """ Create a 'virtual' recorder from the data contained in a recording
         file.
+
+        :param doc: An imported IDE recording. Note that very old IDE files
+            may not contain the metadata requires to create a `virtual`
+            device.
     """
     productName = doc.recorderInfo.get('ProductName')
     if not productName:
         productName = doc.recorderInfo.get('PartNumber')
     if productName is None:
-        raise TypeError("Could not create virtual recorder from file (no ProductName)")
+        raise TypeError("Could not create virtual recorder from file "
+                        "(no ProductName or PartNumber in metadata)")
     recType = None
     for rec in RECORDER_TYPES:
         if rec._matchName(productName):
