@@ -6,11 +6,12 @@ data-logging devices.
 __author__ = "David Stokes"
 __copyright__ = "Copyright 2024 Mide Technology Corporation"
 
+import logging
 import os
 from pathlib import Path
 import string
 from threading import RLock
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 from weakref import WeakValueDictionary
 
 import ebmlite.core
@@ -18,13 +19,19 @@ from idelib.dataset import Dataset
 
 from .base import Recorder, os_specific
 from .command_interfaces import SerialCommandInterface
+from .devinfo import SerialDeviceInfo
 from .exceptions import *
 from .endaq import EndaqS, EndaqW
-from .remote import getSerialDevices
+from .response_codes import DeviceStatusCode
 from .slamstick import SlamStickX, SlamStickC, SlamStickS
 from .types import Drive, Filename, Epoch
 
-from . import schemata
+logger = logging.getLogger('endaq.device')
+logger.setLevel(logging.DEBUG)
+
+# ============================================================================
+#
+# ============================================================================
 
 __version__ = "1.2.0b1"
 
@@ -35,9 +42,9 @@ __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'Recorder', 'EndaqS', 'EndaqW', 'SlamStickX', 'SlamStickC',
            'SlamStickS')
 
-#===============================================================================
+# ============================================================================
 # EBML schema path modification
-#===============================================================================
+# ============================================================================
 
 SCHEMA_PATH = "{endaq.device}/schemata"
 
@@ -52,9 +59,9 @@ if SCHEMA_PATH not in ebmlite.core.SCHEMA_PATH:
     _idx = ebmlite.core.SCHEMA_PATH.index("{idelib}/schemata") + 1
     ebmlite.core.SCHEMA_PATH.insert(_idx, SCHEMA_PATH)
 
-#===============================================================================
+# ============================================================================
 #
-#===============================================================================
+# ============================================================================
 
 # Known classes or recorder. Checks are performed in the specified order, so
 # put the ones with more general `isRecorder()` methods (i.e. superclasses)
@@ -78,10 +85,10 @@ RECORDER_CACHE_SIZE = 100
 # classes have their own 'busy' locks as well.
 _module_busy = RLock()
 
-#===============================================================================
-# Platform-specific stuff. 
-#===============================================================================
 
+# ============================================================================
+# Platform-specific stuff. 
+# ============================================================================
 
 def getRecorder(path: Filename,
                 update: bool = False,
@@ -110,6 +117,9 @@ def getRecorder(path: Filename,
                 dev = RECORDERS.pop(devhash, None)
                 if not dev:
                     dev = rtype(path, strict=strict)
+                else:
+                    # Clear DEVINFO-getter, in case device was previously remote
+                    dev._devinfo = None
 
                 if devhash:
                     RECORDERS[devhash] = dev
@@ -120,14 +130,13 @@ def getRecorder(path: Filename,
                     if update and dev.path != path:
                         dev.path = path
 
-                RECORDERS_BY_SN.pop(dev.serialInt, None)
                 RECORDERS_BY_SN[dev.serialInt] = dev
 
                 break
 
         # Remove old cached devices. Ordered dictionaries assumed!
         if len(RECORDERS) > RECORDER_CACHE_SIZE:
-            for k in list(RECORDERS.keys())[:-RECORDER_CACHE_SIZE]:
+            for k in list(RECORDERS.keys())[-RECORDER_CACHE_SIZE:]:
                 del RECORDERS[k]
 
         return dev
@@ -190,29 +199,23 @@ def getDevices(paths: Optional[List[Filename]] = None,
             if isinstance(paths, (str, bytes, bytearray, Path)):
                 paths = [paths]
 
-        result = []
+        result = set()
 
         for path in paths:
             dev = getRecorder(path, update=update, strict=strict)
             if dev is not None:
-                result.append(dev)
+                result.add(dev)
 
         if unmounted:
-            # Get previously-seen, dismounted devices that are still
-            # connected via USB/serial
-            for dev in (d for d in RECORDERS.values() if d not in result):
+            for dev in getSerialDevices(known=RECORDERS_BY_SN):
                 if not dev.available:
                     dev.path = None
-                if isinstance(dev._command, SerialCommandInterface):
-                    if dev._command.findSerialPort(dev):
-                        result.append(dev)
-                        RECORDERS_BY_SN[dev.serialInt] = dev
-
-            for dev in getSerialDevices(known=RECORDERS_BY_SN):
-                result.append(dev)
+                result.add(dev)
+                RECORDERS.pop(hash(dev), None)
+                RECORDERS[hash(dev)] = dev
                 RECORDERS_BY_SN[dev.serialInt] = dev
 
-        return result
+        return sorted(result, key=lambda x: x.path or '\uffff')
 
 
 def findDevice(sn: Optional[Union[str, int]] = None,
@@ -271,9 +274,9 @@ def findDevice(sn: Optional[Union[str, int]] = None,
         return None
 
 
-#===============================================================================
+# ============================================================================
 # 
-#===============================================================================
+# ============================================================================
 
 def isRecorder(path: Filename,
                strict: bool = True) -> bool:
@@ -339,3 +342,57 @@ def fromRecording(doc: Dataset) -> Recorder:
     if recType is None:
         return None
     return recType.fromRecording(doc)
+
+
+# ============================================================================
+# 
+# ============================================================================
+
+def getSerialDevices(known: Optional[Dict[int, Recorder]] = None,
+                     strict: bool = True) -> List[Recorder]:
+    """ Find all recorders with a serial command interface (and firmware
+        that supports retrieving device metadata via that interface).
+
+        :param known: A dictionary of known `Recorder` instances, keyed by
+            device serial number.
+        :param strict: If `True`, check the USB serial port VID and PID to
+            see if they belong to a known type of device.
+        :return: A list of `Recorder` instances found.
+    """
+    if known is None:
+        known = {}
+
+    devices = []
+
+    # Dummy recorder and command interface to retrieve DEVINFO
+    fake = Recorder(None)
+    fake.command = SerialCommandInterface(fake)
+
+    for port, sn in SerialCommandInterface._possibleRecorders(strict=strict):
+        if sn in known:
+            devices.append(known[sn])
+            continue
+
+        fake.command.port = None
+        fake._snInt, fake._sn = sn, str(sn)
+
+        with _module_busy:
+            try:
+                logger.debug(f'Getting info for SN {sn} via serial')
+                info = fake.command._getInfo(0, index=False)
+                if not info:
+                    logger.debug(f'No info returned by SN {sn}, continuing')
+                    continue
+                for devtype in RECORDER_TYPES:
+                    if devtype._isRecorder(info):
+                        device = devtype(None, devinfo=info)
+                        device.command = SerialCommandInterface(device)
+                        device._devinfo = SerialDeviceInfo(device)
+                        devices.append(device)
+                        break
+            except CommandError as err:
+                if err.errno != DeviceStatusCode.ERR_INVALID_COMMAND:
+                    logger.debug(f'Unexpected {type(err).__name__} getting info for {sn}: {err}')
+                continue
+
+    return devices
