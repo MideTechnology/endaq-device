@@ -150,7 +150,9 @@ class Recorder:
 
         self.refresh(force=False)
         self.path = path
-        self.getInfo()
+
+        # XXX: Make sure this isn't necessary. It caused an infinite loop w/ hasInterface()
+        # self.getInfo()
 
         # The source IDE `Dataset` used for 'virtual' devices.
         self._source: Optional[Dataset] = None
@@ -282,7 +284,7 @@ class Recorder:
 
         # Imported here to avoid circular references.
         # I don't like doing this, but I think this case is okay.
-        from . import RECORDERS, findDevice, _busy
+        from . import RECORDERS, findDevice, _module_busy
 
         # See if a device with the same chip ID (or serial number for older
         # devices) can be found anywhere. This will also update the paths
@@ -296,7 +298,7 @@ class Recorder:
 
         if dev and dev != self:
             # Device's DEVINFO has changed, change in place
-            with _busy:
+            with _module_busy:
                 RECORDERS[hash(dev)] = self
                 RECORDERS.pop(hash(self), None)
                 self._virtual = False

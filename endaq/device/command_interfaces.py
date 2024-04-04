@@ -1428,7 +1428,7 @@ class SerialCommandInterface(CommandInterface):
         """
         # Virtual devices have no CommandInterface.
         # Remote devices get theirs through another method.
-        if device.isVirtual or device.isRemote:
+        if device.isVirtual:
             return False
 
         # If the DEVINFO explicitly indicates a serial command interface,
@@ -1572,7 +1572,12 @@ class SerialCommandInterface(CommandInterface):
             continue
 
         self.port = None
-        raise CommandError('No serial port found for {}'.format(self.device))
+
+        if sys.platform == 'linux':
+            raise CommandError('No serial port found for device '
+                               "('sudo' may be required to access serial ports)")
+        else:
+            raise CommandError('No serial port found for device')
 
 
     # =======================================================================
