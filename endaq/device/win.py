@@ -184,12 +184,15 @@ def getDeviceList(types: dict, strict: bool = True) -> List[Drive]:
                         if t.isRecorder(info, strict=strict):
                             result.append(info)
                             break
+
         except IOError as err:
-            # Rare error, may be caused by flaky device or USB.
-            msg = ("getDeviceList(): Could not access {}:/ ({}); "
-                   "ignoring error and continuing".format(letter, err))
-            warnings.warn(msg)
-            logger.error(msg)
+            # WindowsError 433 is not uncommon for devices that just started recording.
+            # Ignore it, warn about any others.
+            if getattr(err, 'winerror', None) != 433:
+                msg = ("getDeviceList(): Could not access {}:/ ({}); "
+                       "ignoring error and continuing".format(letter, err))
+                warnings.warn(msg)
+                logger.error(msg)
 
         drivebits >>= 1
     return result

@@ -127,9 +127,32 @@ class Recorder:
         self._rawinfo: Optional[bytes] = devinfo
         self._info: Optional[Dict] = None
 
+        self._hash: Optional[int] = None
+        self._configData: Optional[Dict] = None
+        self._sn: Optional[str] = None
+        self._snInt: Optional[int] = None
+        self._chipId: Optional[int] = None
+        self._sensors: Optional[Dict[int, Sensor]] = None
+        self._channels: Optional[Dict[int, Channel]] = None
+        self._channelRanges = {}
+        self._propData: Optional[bytes] = None
+        self._manifest: Optional[Dict[str, Any]] = None
+        self._calibration: Optional[Dict[str, Any]] = None
+        self._calData: Optional[bytes] = None
+        self._calPolys: Optional[Dict[int, Any]] = None
+        self._userCalPolys: Optional[Dict] = None
+        self._userCalDict: Optional[Dict] = None
+        self._factoryCalPolys: Optional[Dict] = None
+        self._factoryCalDict: Optional[Dict] = None
+        self._properties: Optional[Dict] = None
+        self._volumeName: Optional[str] = None
+        self._wifi: Optional[str] = None  # Cached name of the manifest's Wi-Fi element
+
         self.refresh(force=False)
         self.path = path
-        self.getInfo()
+
+        # XXX: Make sure this isn't necessary. It caused an infinite loop w/ hasInterface()
+        # self.getInfo()
 
         # The source IDE `Dataset` used for 'virtual' devices.
         self._source: Optional[Dataset] = None
@@ -261,7 +284,7 @@ class Recorder:
 
         # Imported here to avoid circular references.
         # I don't like doing this, but I think this case is okay.
-        from . import RECORDERS, findDevice, _busy
+        from . import RECORDERS, findDevice, _module_busy
 
         # See if a device with the same chip ID (or serial number for older
         # devices) can be found anywhere. This will also update the paths
@@ -275,7 +298,7 @@ class Recorder:
 
         if dev and dev != self:
             # Device's DEVINFO has changed, change in place
-            with _busy:
+            with _module_busy:
                 RECORDERS[hash(dev)] = self
                 RECORDERS.pop(hash(self), None)
                 self._virtual = False
@@ -333,31 +356,40 @@ class Recorder:
                 rather than use cached data.
         """
         with self._busy:
-            if force and not self.isVirtual:
-                self._rawinfo = None
-
+            # Data derived from DEVINFO
             self._devinfo = None
-            self._info: Optional[Dict] = None
-            self._hash: Optional[int] = None
-            self._configData: Optional[Dict] = None
-            self._sn: Optional[str] = None
-            self._snInt: Optional[int] = None
-            self._chipId: Optional[int] = None
-            self._sensors: Optional[Dict] = None
-            self._channels: Optional[Dict] = None
-            self._channelRanges = {}
-            self._propData: Optional[bytes] = None
-            self._manifest: Optional[Dict] = None
-            self._calibration: Optional[Dict] = None
-            self._calData: Optional[bytes] = None
-            self._calPolys: Optional[Dict] = None
-            self._userCalPolys: Optional[Dict] = None
-            self._userCalDict: Optional[Dict] = None
-            self._factoryCalPolys: Optional[Dict] = None
-            self._factoryCalDict: Optional[Dict] = None
-            self._properties: Optional[Dict] = None
-            self._volumeName: Optional[str] = None
-            self._wifi: Optional[str] = None  # Cached name of the manifest's Wi-Fi element
+            self._info = None
+            self._hash = None
+
+            if not self.isRemote:
+                # Also from DEVINFO, but required for finding remote devices.
+                # Outside of manufacturing, the device SN shouldn't change.
+                self._sn = None
+                self._snInt = None
+                self._chipId = None
+
+            if not self.isVirtual:
+                # Data derived from things virtual devices can't read; virtual
+                # devices only get a subset of this data upon instantiation
+                if force:
+                    self._rawinfo = None
+
+                self._sensors = None
+                self._channels = None
+                self._channelRanges.clear()
+                self._configData = None
+                self._propData = None
+                self._manifest = None
+                self._calibration = None
+                self._calData = None
+                self._calPolys = None
+                self._userCalPolys = None
+                self._userCalDict = None
+                self._factoryCalPolys = None
+                self._factoryCalDict = None
+                self._properties = None
+                self._volumeName = None
+                self._wifi = None
 
             if self._command:
                 try:
@@ -420,7 +452,7 @@ class Recorder:
     @property
     def volumeName(self):
         """ The recorder's user-specified filesystem label. """
-        if self.isVirtual:
+        if self.isVirtual or self.isRemote:
             return False
 
         if self._path and os.path.exists(self._path) and self._volumeName is None:
@@ -452,6 +484,32 @@ class Recorder:
 
 
     @classmethod
+    def _isRecorder(cls,
+                    info: bytes) -> bool:
+        """ Test whether the given ``DEVINFO`` describes a device matching
+            this class. Used internally by `isRecorder()` and externally when
+            instantiating remote devices.
+
+            :param info: Raw device metadata, as read from a ``DEVINFO``
+                file, retrieved via a command interface, etc.
+            :return: `True` if the info is a match for this `Recorder` class.
+        """
+        try:
+            if not info:
+                return False
+            devinfo = loadSchema('mide_ide.xml').loads(info).dump()
+            name = devinfo['RecordingProperties']['RecorderInfo']['ProductName']
+            if isinstance(name, bytes):
+                # In ebmlite < 3.1, StringElements are read as bytes.
+                name = str(name, 'utf8')
+
+            return cls._matchName(name)
+        except (KeyError, IOError) as err:
+            logger.debug("_isRecorder() raised a possibly-allowed exception: %r" % err)
+            return False
+
+
+    @classmethod
     def isRecorder(cls,
                    path: Filename,
                    strict: bool = True,
@@ -476,12 +534,12 @@ class Recorder:
             else:
                 fs = ''
 
-            path = os.path.realpath(path)
-            infoFile = os.path.join(path, cls._INFO_FILE)
+            realpath = os.path.realpath(path)
+            infoFile = os.path.join(realpath, cls._INFO_FILE)
 
             if strict:
                 if not fs:
-                    info = os_specific.getDriveInfo(path)
+                    info = os_specific.getDriveInfo(realpath)
                     if not info:
                         return False
                     fs = info.fs
@@ -489,26 +547,18 @@ class Recorder:
                     return False
 
             if 'info' in kwargs:
-                devinfo = loadSchema('mide_ide.xml').loads(kwargs['info']).dump()
+                devinfo = kwargs['info']
             elif os.path.isfile(infoFile):
-                with loadSchema('mide_ide.xml').load(infoFile) as doc:
-                    devinfo = doc.dump()
+                with open(infoFile, 'rb') as f:
+                    devinfo = f.read()
             else:
                 return False
 
-            props = devinfo['RecordingProperties']['RecorderInfo']
-            name = props['ProductName']
-            if isinstance(name, bytes):
-                # In ebmlite < 3.1, StringElements are read as bytes.
-                name = str(name, 'utf8')
-
-            return cls._matchName(name)
+            return cls._isRecorder(devinfo)
 
         except (KeyError, TypeError, AttributeError, IOError) as err:
             logger.debug("isRecorder() raised a possibly-allowed exception: %r" % err)
-            pass
-
-        return False
+            return False
 
 
     def getInfo(self,

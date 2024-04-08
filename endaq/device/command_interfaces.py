@@ -13,7 +13,7 @@ import string
 import struct
 import sys
 from time import sleep, time, struct_time
-from typing import Any, AnyStr, Dict, List, Optional, Tuple, Union, Callable, TYPE_CHECKING
+from typing import Any, AnyStr, Dict, Generator, List, Optional, Tuple, Union, Callable
 from uuid import uuid4
 import warnings
 
@@ -38,6 +38,7 @@ elif 'win' in sys.platform:
 elif sys.platform == 'linux':
     from . import linux as os_specific
 
+from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .base import Recorder
 
@@ -169,7 +170,7 @@ class CommandInterface:
         """
         ebml = self.schema.encodes(data, headers=False)
 
-        if checkSize and self.maxCommandSize is not None and len(ebml) > self.maxCommandSize:
+        if checkSize and self.maxCommandSize and len(ebml) > self.maxCommandSize:
             raise CommandError("Command too large ({}); max size is {}".format(
                     len(ebml), self.maxCommandSize))
 
@@ -1311,13 +1312,15 @@ class CommandInterface:
     # =======================================================================
 
     def _getInfo(self,
-                index: int,
-                timeout: Union[int, float] = 10,
-                interval: float = .25,
-                callback: Optional[Callable] = None) -> bytes:
+                 index: int,
+                 timeout: Union[int, float] = 10,
+                 interval: float = .25,
+                 callback: Optional[Callable] = None,
+                  **kwargs) -> bytes:
         """ Retrieve device system information. For 'local' devices, this
             is retrieved via the filesystem. This method is called indirectly
-            by methods in `Recorder`.
+            by methods in `Recorder`. Different subclasses may have
+            additional keyword arguments.
 
             :param index: The index of the information to retrieve.
             :param timeout: Time (in seconds) to wait for a response before
@@ -1423,7 +1426,9 @@ class SerialCommandInterface(CommandInterface):
             :param device: The recorder to check.
             :return: `True` if the device supports the interface.
         """
-        if device.isVirtual or device.isRemote:
+        # Virtual devices have no CommandInterface.
+        # Remote devices get theirs through another method.
+        if device.isVirtual:
             return False
 
         # If the DEVINFO explicitly indicates a serial command interface,
@@ -1453,12 +1458,42 @@ class SerialCommandInterface(CommandInterface):
 
 
     @classmethod
-    def findSerialPort(cls, device: Union["Recorder", int, str]) -> Union[None, str]:
+    def _possibleRecorders(cls,
+                           strict: bool = True) -> Generator[Tuple[str, int], None, None]:
+        """ Find all serial ports that might be `Recorder` serial command
+            interfaces.
+
+            :param strict: If `True`, check the USB serial port VID and PID
+                to see if they belong to a known type of device.
+            :yields: Tuples of port name and serial number.
+        """
+        # Find valid USB/serial device by vendor/product ID
+        for port in serial.tools.list_ports.comports():
+            sn = port.serial_number
+            if not sn or len(sn) != 8:
+               continue
+            try:
+                if strict and (port.vid, port.pid) not in cls.USB_IDS:
+                    continue
+                yield port.device, int(sn)
+            except ValueError as err:
+                # Probably text in serial number, ignore if so
+                if 'invalid literal' not in str(err).lower():
+                    raise
+
+
+    @classmethod
+    def findSerialPort(cls,
+                       device: Union["Recorder", int, str],
+                       strict: bool = True) -> Union[None, str]:
         """ Find the path/name/number of a serial port corresponding to a
             given serial number.
 
             :param device: The `Recorder` to check, or a recorder serial
                 number.
+            :param strict: If `True`, check the USB serial port VID and PID
+                to see if they belong to a known type of device. If `False`,
+                only the serial number is checked.
             :return: The corresponding serial port path/name/number, or
                 `None` if no matching port is found.
         """
@@ -1475,19 +1510,9 @@ class SerialCommandInterface(CommandInterface):
             else:
                 raise
 
-        for p in serial.tools.list_ports.comports():
-            # Find valid USB/serial device by vendor/product ID
-            # if (p.vid, p.pid) not in cls.USB_IDS:
-            #     continue
-            try:
-                if not p.serial_number:
-                    continue
-                elif int(p.serial_number) == devSerial:
-                    return p.device
-            except ValueError as err:
-                # Probably text in serial number, ignore if so
-                if 'invalid literal' not in str(err).lower():
-                    raise
+        for port, sn in cls._possibleRecorders(strict=strict):
+            if sn == devSerial:
+                return port
 
 
     def getSerialPort(self,
@@ -1547,7 +1572,12 @@ class SerialCommandInterface(CommandInterface):
             continue
 
         self.port = None
-        raise CommandError('No serial port found for {}'.format(self.device))
+
+        if sys.platform == 'linux':
+            raise CommandError('No serial port found for device '
+                               "('sudo' may be required to access serial ports)")
+        else:
+            raise CommandError('No serial port found for device')
 
 
     # =======================================================================
@@ -1855,7 +1885,7 @@ class SerialCommandInterface(CommandInterface):
                             logger.debug('Command queue full, retrying.')
                         else:
                             respIdx = resp.get('ResponseIdx')
-                            if respIdx == self.index:
+                            if not index or respIdx == self.index:
                                 return resp if response else None
                             else:
                                 logger.debug('Bad ResponseIdx; expected {}, got {}. '
@@ -2340,16 +2370,17 @@ class SerialCommandInterface(CommandInterface):
     # =======================================================================
 
     def _getInfo(self,
-                index: int,
-                timeout: Union[int, float] = 10,
-                interval: float = .25,
-                lock: bool = False,
-                callback: Optional[Callable] = None) -> bytes:
+                 infoIdx: int,
+                 timeout: Union[int, float] = 10,
+                 interval: float = .25,
+                 lock: bool = False,
+                 index: bool = True,
+                 callback: Optional[Callable] = None) -> bytes:
         """ Retrieve device system information. For 'local' devices, this
             is retrieved via the filesystem. This method is called indirectly
             by methods in `Recorder`.
 
-            :param index: The index of the information to retrieve.
+            :param infoIdx: The index of the information to retrieve.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
                 `None` or -1 will wait indefinitely.
@@ -2359,17 +2390,20 @@ class SerialCommandInterface(CommandInterface):
                 be cancelled. The callback function should require no arguments.
             :param lock: If `True`, include the current `hostId` in the
                 command, as some `SetInfo` commands require.
+            :param index: If `True`, include a ``CommandIdx`` in the command,
+                and use it to validate the response (if any).
             :return: The raw info, as unparsed EBML binary data. It is up to
                 the caller to know how to process the results (e.g., choose
                 the correct schema, etc.).
         """
         # Note: Reading config or user calibration requires a LockID
         # lock = index in (5, 6)
-        cmd = {'EBMLCommand': {'GetInfo': index}}
+        cmd = {'EBMLCommand': {'GetInfo': infoIdx}}
         response = self._sendCommand(cmd,
                                      response=True,
                                      timeout=timeout,
                                      lock=lock,
+                                     index=index,
                                      callback=callback)
 
         try:
@@ -2389,7 +2423,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def _setInfo(self,
-                 index: int,
+                 infoIdx: int,
                  payload: Union[bytearray, bytes],
                  timeout: Union[int, float] = 10,
                  interval: float = .25,
@@ -2397,7 +2431,7 @@ class SerialCommandInterface(CommandInterface):
         """ Write device system information. This method is called indirectly
             by methods in `Recorder`.
 
-            :param index: The index of the information to write.
+            :param infoIdx: The index of the information to write.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
                 `None` or -1 will wait indefinitely.
@@ -2586,6 +2620,8 @@ class FileCommandInterface(CommandInterface):
                 indefinitely.
             :param interval: Time (in seconds) between checks for a
                 response.
+            :param index: If `True`, include a ``CommandIdx`` in the command,
+                and use it to validate the response (if any).
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a response
                 will be cancelled. The callback function should require no
