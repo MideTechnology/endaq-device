@@ -1565,8 +1565,12 @@ class SerialCommandInterface(CommandInterface):
                     return self.port
 
             except (IOError, serial.SerialException) as err:
-                logger.debug("Ignoring exception when opening {} (probably okay): "
-                             "{!r}".format(type(self).__name__, err))
+                # A ClearComError/PermissionError comes up while device resets
+                # (the driver doesn't immediately recognize the device is gone?)
+                # It clears after a couple of seconds; ignore it.
+                if 'ClearCommError' not in repr(err):
+                    logger.debug("Ignoring exception when opening {} (probably okay): "
+                                 "{!r}".format(type(self).__name__, err))
 
             sleep(0.1)
             continue
@@ -1605,8 +1609,12 @@ class SerialCommandInterface(CommandInterface):
                 return not self.port.is_open
         except (IOError, OSError, serial.SerialException) as err:
             # Disconnected device can cause this.
-            logger.debug("Ignoring exception when closing {} (probably okay): "
-                         "{!r}".format(type(self).__name__, err))
+            # A ClearComError/PermissionError comes up while device resets
+            # (the driver doesn't immediately recognize the device is gone?)
+            # It clears after a couple of seconds; ignore it.
+            if 'ClearCommError' not in repr(err):
+                logger.debug("Ignoring exception when closing {} (probably okay): "
+                             "{!r}".format(type(self).__name__, err))
         return True
 
 
@@ -1725,8 +1733,12 @@ class SerialCommandInterface(CommandInterface):
                 return port.write(packet)
 
             except (IOError, OSError, serial.SerialException) as err:
-                logger.debug("Ignoring exception when closing {} (probably okay): "
-                             "{!r}".format(type(self).__name__, err))
+                # A ClearComError/PermissionError comes up while device resets
+                # (the driver doesn't immediately recognize the device is gone?)
+                # It clears after a couple of seconds; ignore it.
+                if 'ClearCommError' not in repr(err):
+                    logger.debug("Ignoring exception when closing {} (probably okay): "
+                                 "{!r}".format(type(self).__name__, err))
 
             sleep(0.1)
             continue
@@ -1780,8 +1792,12 @@ class SerialCommandInterface(CommandInterface):
                     sleep(.01)
 
             except (IOError, OSError, serial.SerialException) as err:
-                logger.debug("Ignoring exception when reading response (probably okay): "
-                             "{!r}".format(err))
+                # A ClearComError/PermissionError comes up while device resets
+                # (the driver doesn't immediately recognize the device is gone?)
+                # It clears after a couple of seconds; ignore it.
+                if 'ClearCommError' not in repr(err):
+                    logger.debug("Ignoring exception when reading response (probably okay): "
+                                 "{!r}".format(err))
                 sleep(0.1)
 
         return None
