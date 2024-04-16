@@ -293,9 +293,6 @@ class SerialDeviceInfo(DeviceInfo):
             :param info: The contents of the device's `DEVINFO` file, if
                 previously loaded. For future caching optimization.
         """
-        # TODO: Implement way to use `SerialCommandInterface` without a `Recorder`,
-        #  or do the equivalent of doing `_getData(0)` (sending the command and
-        #  receiving the response)
         if isinstance(info, bytearray):
             info = bytes(info)
         if isinstance(getattr(path, 'command', None), SerialCommandInterface):
