@@ -33,7 +33,7 @@ logger.setLevel(logging.DEBUG)
 #
 # ============================================================================
 
-__version__ = "1.2.0b1"
+__version__ = "1.2.0"
 
 __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'DeviceError', 'DeviceTimeout', 'UnsupportedFeature',
