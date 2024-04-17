@@ -15,7 +15,7 @@ import mmap
 import math
 import re
 from time import time
-from typing import ByteString, Tuple, Union
+from typing import Tuple, Union
 import warnings
 
 import psutil
@@ -73,7 +73,7 @@ def getDriveInfo(dev: Filename) -> Union[Drive, None]:
     return Drive(path=dev, label=label, sn=serial, fs=disk.fstype, type=None)
 
 
-def readUncachedFile(filename: Filename) -> ByteString:
+def readUncachedFile(filename: Filename) -> bytes:
     """ Read a file, circumventing the disk cache. Returns the data read.
     """
     filename = os.path.realpath(filename)

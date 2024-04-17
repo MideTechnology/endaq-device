@@ -57,7 +57,13 @@ class MockPort:
     def flushInput(self):
         pass
 
+    def reset_input_buffer(self):
+        pass
+
     def flushOutput(self):
+        pass
+
+    def reset_output_buffer(self):
         pass
 
     def flush(self):

@@ -59,11 +59,15 @@ def test_getDevices():
         fake recorder directories.
     """
     endaq.device.RECORDERS.clear()
-    devs = endaq.device.getDevices(paths=fake_recorders.RECORDER_PATHS, strict=False)
+    devs = endaq.device.getDevices(paths=fake_recorders.RECORDER_PATHS,
+                                   strict=False,
+                                   unmounted=False)
     assert sorted(dev.path for dev in devs) == sorted(fake_recorders.RECORDER_PATHS)
 
     # Just one path provided should return just one device
-    devs = endaq.device.getDevices(paths=fake_recorders.RECORDER_PATHS[0], strict=False)
+    devs = endaq.device.getDevices(paths=fake_recorders.RECORDER_PATHS[0],
+                                   strict=False,
+                                   unmounted=False)
     assert len(devs) == 1
 
 
@@ -85,4 +89,3 @@ def test_findDevice(path):
     endaq.device.RECORDERS.clear()
     assert endaq.device.findDevice(dev.serialInt, paths=fake_recorders.RECORDER_PATHS, strict=False)
     assert endaq.device.findDevice(dev.serial, paths=fake_recorders.RECORDER_PATHS, strict=False)
-

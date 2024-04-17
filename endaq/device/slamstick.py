@@ -28,12 +28,6 @@ class SlamStickX(Recorder):
 
     _FW_UPDATE_FILE = os.path.join("SYSTEM", 'firmware.bin')
 
-    # TODO: This really belongs in the configuration UI
-    _POST_CONFIG_MSG = ('When ready...\n'
-                        '    1. Disconnect the recorder\n'
-                        '    2. Mount to surface\n'
-                        '    3. Press the recorder\'s "X" button ')
-
     manufacturer = "Midé Technology Corporation"
     homepage = "https://endaq.com/collections/endaq-shock-recorders-vibration-data-logger-sensors"
 
@@ -47,7 +41,6 @@ class SlamStickC(SlamStickX):
         sold as enDAQ Sx-D16.
     """
     SN_FORMAT = "SSC%07d"
-    _POST_CONFIG_MSG = SlamStickX._POST_CONFIG_MSG.replace(' "X" ', ' "C" ')
     _NAME_PATTERN = re.compile(r"(^Slam Stick C.*)|(^S[234]-D16)")
 
     @property
@@ -88,5 +81,4 @@ class SlamStickS(SlamStickX):
     """ A Slam Stick S data recorder from Mide Technology Corporation.
     """
     SN_FORMAT = "SSS%07d"
-    _POST_CONFIG_MSG = SlamStickX._POST_CONFIG_MSG.replace(' "X" ', ' "S" ')
     _NAME_PATTERN = re.compile("^Slam Stick S.*")
