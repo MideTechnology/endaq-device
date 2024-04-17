@@ -27,13 +27,13 @@ from .slamstick import SlamStickX, SlamStickC, SlamStickS
 from .types import Drive, Filename, Epoch
 
 logger = logging.getLogger('endaq.device')
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 # ============================================================================
 #
 # ============================================================================
 
-__version__ = "1.2.0b1"
+__version__ = "1.2.0"
 
 __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'DeviceError', 'DeviceTimeout', 'UnsupportedFeature',
