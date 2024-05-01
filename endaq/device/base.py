@@ -1544,6 +1544,7 @@ class Recorder:
         dev._configData = config
 
         # Datasets merge calibration info into recorderInfo; separate them.
+        dev.getInfo()
         dev._calibration = {}
         for k in ('CalibrationDate',
                   'CalibrationExpiry',
