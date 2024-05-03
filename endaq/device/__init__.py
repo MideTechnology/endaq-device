@@ -33,7 +33,7 @@ logger = logging.getLogger('endaq.device')
 #
 # ============================================================================
 
-__version__ = "1.2.0"
+__version__ = "1.2.1b1"
 
 __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'DeviceError', 'DeviceTimeout', 'UnsupportedFeature',
