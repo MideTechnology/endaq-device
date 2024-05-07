@@ -10,7 +10,7 @@ the device.
 __all__ = ('exportConfig', 'importConfig')
 
 from pathlib import Path
-from typing import Union
+from typing import List, Optional, Union
 
 from ebmlite import loadSchema, MasterElement
 
@@ -41,7 +41,8 @@ def deviceFromExport(export: Union[str, Path, MasterElement]) -> Recorder:
         if el.name == "RecorderConfigurationList":
             dev._config = el
         elif el.name == "RecordingProperties":
-            dev._info = el.dump()['RecorderInfo']
+            dev._rawinfo = el.dump()['RecorderInfo']
+            dev.getInfo()
         elif el.name == "ConfigUI":
             dev._configUi = loadSchema('mide_config_ui.xml').loads(el.value)
 
@@ -81,7 +82,8 @@ def exportConfig(device: Recorder, filename: Union[str, Path]) -> dict:
 
 def importConfig(device: Recorder,
                  filename: Union[str, Path],
-                 merge: bool = False):
+                 merge: bool = False,
+                 exclude: Optional[List[int]] = None):
     """ Import configuration data from a ``.xcg`` file.
 
         Note: User calibration and Wi-Fi setting are *not* included in
@@ -93,10 +95,16 @@ def importConfig(device: Recorder,
         :param filename: The name of an exported config file (``.xcg``).
         :param merge: If `True`, keep any device config values not
             explicitly set in the imported configuration data.
+        :param exclude: An optional list of configuration IDs to ignore.
+            These will neither be imported from the file, nor set to default
+            if `merge` is `True`.
         :return:
     """
+    exclude = tuple() if exclude is None else exclude
     imported = deviceFromExport(filename)
     for configId, item in device.config.items.items():
+        if configId in exclude:
+            continue
         if configId in imported.config.items:
             item.value = imported.config.items[configId].value
         elif not merge:
