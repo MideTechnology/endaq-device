@@ -151,9 +151,6 @@ class Recorder:
         self.refresh(force=False)
         self.path = path
 
-        # XXX: Make sure this isn't necessary. It caused an infinite loop w/ hasInterface()
-        # self.getInfo()
-
         # The source IDE `Dataset` used for 'virtual' devices.
         self._source: Optional[Dataset] = None
 
@@ -641,7 +638,7 @@ class Recorder:
     def name(self) -> str:
         """ The recording device's (user-assigned) name. """
         try:
-            return self.config.name
+            return self.getInfo('UserDeviceName', '') or self.config.name
         except (AttributeError, KeyError, UnsupportedFeature):
             return ''
 
@@ -1544,6 +1541,7 @@ class Recorder:
         dev._configData = config
 
         # Datasets merge calibration info into recorderInfo; separate them.
+        dev.getInfo()
         dev._calibration = {}
         for k in ('CalibrationDate',
                   'CalibrationExpiry',
