@@ -15,6 +15,7 @@ from typing import List, Optional, Union
 from ebmlite import loadSchema, MasterElement
 
 from .base import Recorder
+from .exceptions import ConfigError
 from .util import cleanProps
 
 
@@ -61,8 +62,12 @@ def exportConfig(device: Recorder, filename: Union[str, Path]) -> dict:
         :param device: The device from which to export the config.
         :param filename: The name of the file to write.
     """
+    configdata = device.config.getConfig()
+    if not configdata:
+        raise ConfigError("No configuration data to export; all values are defaults.")
+
+    config = configdata.dump()
     configUi = device.config.getConfigUI()
-    config = device.config.getConfig().dump()
     props = device.getProperties()
 
     # Get contents; the outer element is added on encoding.

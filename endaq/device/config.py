@@ -20,7 +20,7 @@ from ebmlite.core import loadSchema
 from ebmlite.core import Document, Element, MasterElement
 from idelib.dataset import Channel, SubChannel
 
-from .exceptions import ConfigError, UnsupportedFeature
+from .exceptions import ConfigError, DeviceError, UnsupportedFeature
 from . import legacy
 from . import ui_defaults
 from . import util
@@ -658,7 +658,7 @@ class ConfigInterface:
         raise NotImplementedError("getConfigUI() not implemented")
 
 
-    def getConfig(self) -> Union[Document, MasterElement]:
+    def getConfig(self) -> Union[None, Document, MasterElement]:
         """ Low-level method that retrieves the device's config EBML (e.g.,
             the contents of a real device's `config.cfg` file), if any.
         """
@@ -1223,7 +1223,7 @@ class VirtualConfigInterface(ConfigInterface):
         return self.configUi
 
 
-    def getConfig(self) -> Union[Document, MasterElement]:
+    def getConfig(self) -> Union[None, Document, MasterElement]:
         """ Low-level method that retrieves the device's config EBML (e.g.,
             the contents of a real device's ``config.cfg`` file), if any.
         """
@@ -1363,21 +1363,25 @@ class FileConfigInterface(ConfigInterface):
         return self.configUi
 
 
-    def getConfig(self) -> Union[Document, MasterElement]:
+    def getConfig(self) -> Union[None, Document, MasterElement]:
         """ Low-level method that retrieves the device's config EBML (e.g.,
             the contents of a real device's `config.cfg` file), if any.
         """
+        devinfo = self.device._getDevinfo()
         try:
-            if not os.path.isfile(self.device.configFile):
-                return b''
+            data = devinfo.readConfig()
+            if data:
+                return loadSchema('mide_ide.xml').loads(data)
+            else:
+                logger.debug('No config data could be read (device not configured?), ignoring')
 
-            with open(self.device.configFile, 'rb') as f:
-                return loadSchema('mide_ide.xml').loads(f.read())
-
-        except IOError as err:
+        except NotImplementedError:
+            logger.warning(f"{type(devinfo).__name__} cannot retrieve config data")
+        except (DeviceError, IOError) as err:
             warnings.warn("{}.getConfig(): ignoring possibly expected exception {!r}"
                           .format(type(self).__name__, err))
-            return b''
+
+        return None
 
 
     def loadConfig(self, config: Optional[MasterElement] = None):

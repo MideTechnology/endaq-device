@@ -40,7 +40,7 @@ class DeviceInfo(ABC):
             :param device: The recorder to check.
             :return: `True` if the device supports the interface.
         """
-        raise NotImplemented
+        raise NotImplementedError
 
 
     @classmethod
@@ -53,7 +53,7 @@ class DeviceInfo(ABC):
             :param info: The contents of the device's `DEVINFO` file, if
                 previously loaded. For future caching optimization.
         """
-        raise NotImplemented
+        raise NotImplementedError
 
 
     @abstractmethod
@@ -62,7 +62,7 @@ class DeviceInfo(ABC):
         """ Read the device's manifest data. The data is a superset of the
             information returned by `getInfo()`.
         """
-        raise NotImplemented
+        raise NotImplementedError
 
 
     @abstractmethod
@@ -70,7 +70,7 @@ class DeviceInfo(ABC):
         """ Get the recorder's user-defined calibration data as a dictionary
             of parameters.
         """
-        raise NotImplemented
+        raise NotImplementedError
 
 
     @abstractmethod
@@ -81,7 +81,14 @@ class DeviceInfo(ABC):
             :param caldata: The raw binary of an EBML `<CalibrationList>`
                 element..
         """
-        raise NotImplemented
+        raise NotImplementedError
+
+
+    @abstractmethod
+    def readConfig(self) -> Union[None, bytearray, bytes]:
+        """ Retrieve the device's user configuration data.
+        """
+        raise NotImplementedError
 
 
 # ===========================================================================
@@ -254,6 +261,15 @@ class FileDeviceInfo(DeviceInfo):
                 raise
 
 
+    def readConfig(self) -> Union[None, bytearray, bytes]:
+        """ Retrieve the device's user configuration data.
+        """
+        if not os.path.isfile(self.device.configFile):
+            return None
+        with open(self.device.configFile, 'rb') as f:
+            return f.read()
+
+
 # ===========================================================================
 #
 # ===========================================================================
@@ -332,6 +348,16 @@ class SerialDeviceInfo(DeviceInfo):
         """
         caldata = caldata or b''
         self.device.command._setInfo(6, caldata)
+
+
+    def readConfig(self) -> Union[None, bytearray, bytes]:
+        """ Retrieve the device's user configuration data.
+        """
+        # If the device is an MSD, read the file.
+        if self.device.available:
+            return FileDeviceInfo.readConfig(self)
+
+        raise NotImplementedError(f"{type(self).__name__}.readConfig() not implemented (yet)")
 
 
 # ===========================================================================
