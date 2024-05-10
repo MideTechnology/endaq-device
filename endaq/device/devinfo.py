@@ -84,13 +84,6 @@ class DeviceInfo(ABC):
         raise NotImplementedError
 
 
-    @abstractmethod
-    def readConfig(self) -> Union[None, bytearray, bytes]:
-        """ Retrieve the device's user configuration data.
-        """
-        raise NotImplementedError
-
-
 # ===========================================================================
 #
 # ===========================================================================
@@ -261,15 +254,6 @@ class FileDeviceInfo(DeviceInfo):
                 raise
 
 
-    def readConfig(self) -> Union[None, bytearray, bytes]:
-        """ Retrieve the device's user configuration data.
-        """
-        if not os.path.isfile(self.device.configFile):
-            return None
-        with open(self.device.configFile, 'rb') as f:
-            return f.read()
-
-
 # ===========================================================================
 #
 # ===========================================================================
@@ -348,16 +332,6 @@ class SerialDeviceInfo(DeviceInfo):
         """
         caldata = caldata or b''
         self.device.command._setInfo(6, caldata)
-
-
-    def readConfig(self) -> Union[None, bytearray, bytes]:
-        """ Retrieve the device's user configuration data.
-        """
-        # If the device is an MSD, read the file.
-        if self.device.available:
-            return FileDeviceInfo.readConfig(self)
-
-        raise NotImplementedError(f"{type(self).__name__}.readConfig() not implemented (yet)")
 
 
 # ===========================================================================

@@ -1367,16 +1367,21 @@ class FileConfigInterface(ConfigInterface):
         """ Low-level method that retrieves the device's config EBML (e.g.,
             the contents of a real device's `config.cfg` file), if any.
         """
+        if not os.path.isfile(self.device.configFile):
+            return None
+
         devinfo = self.device._getDevinfo()
         try:
-            data = devinfo.readConfig()
+            with open(self.device.configFile, 'rb') as f:
+                data = f.read()
             if data:
                 return loadSchema('mide_ide.xml').loads(data)
-            else:
-                logger.debug('No config data could be read (device not configured?), ignoring')
+
+            logger.debug('No config data could be read (device not configured?), ignoring')
 
         except NotImplementedError:
             logger.warning(f"{type(devinfo).__name__} cannot retrieve config data")
+
         except (DeviceError, IOError) as err:
             warnings.warn("{}.getConfig(): ignoring possibly expected exception {!r}"
                           .format(type(self).__name__, err))
