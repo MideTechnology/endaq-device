@@ -1314,7 +1314,9 @@ class FileConfigInterface(ConfigInterface):
         return vers
 
 
-    def _makeConfig(self, unknown: bool = True, version: Optional[int] = None,
+    def _makeConfig(self,
+                    unknown: bool = True,
+                    version: Optional[int] = None,
                     defaults: bool = False) -> Dict[str, Any]:
         """ Generate a dictionary of configuration data, suitable for EBML
             encoding.
@@ -1328,6 +1330,8 @@ class FileConfigInterface(ConfigInterface):
                 configuration file but have IDs that do not correspond to
                 fields in the device's ``ConfigUI`` data.
             :param version: The version of configuration data to use.
+            :param defaults: If `True`, include config values that have not
+                been explicitly set (i.e. still their default value).
             :return: A dictionary of configuration values, ready for encoding
                 as EBML.
         """

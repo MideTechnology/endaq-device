@@ -387,6 +387,8 @@ class Recorder:
                 self._properties = None
                 self._volumeName = None
                 self._wifi = None
+            else:
+                self.getInfo()
 
             if self._command:
                 try:
@@ -587,7 +589,7 @@ class Recorder:
                     self._hash = hash(self._rawinfo)
                     infoFile = mideSchema.loads(self._rawinfo)
                     try:
-                        props = infoFile.dump().get('RecordingProperties', '')
+                        props = infoFile.dump().get('RecordingProperties', {})
                         self._info = props.get('RecorderInfo', {})
                         for k, v in self._info.items():
                             if isinstance(v, bytes):

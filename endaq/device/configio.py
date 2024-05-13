@@ -35,22 +35,32 @@ def deviceFromExport(export: Union[str, Path, MasterElement]) -> Recorder:
     if export[0].name == "ExportedConfigurationData":
         export = export[0]
 
-    dev = Recorder(None)
-    dev._source = export
+    configData = None
+    rawinfo = None
+    configUi = None
 
     for el in export:
         if el.name == "RecorderConfigurationList":
-            dev._config = el
+            configData = el
         elif el.name == "RecordingProperties":
-            dev._rawinfo = el.dump()['RecorderInfo']
-            dev.getInfo()
+            rawinfo = el.getRaw()
         elif el.name == "ConfigUI":
-            dev._configUi = loadSchema('mide_config_ui.xml').loads(el.value)
+            configUi = loadSchema('mide_config_ui.xml').loads(el.value)
+
+    dev = Recorder(None, virtual=True, devinfo=rawinfo)
+    dev._devinfo = None
+    dev._source = export
+    dev._configUi = configUi
+    dev._configData = configData
+    dev.getInfo()
 
     return dev
 
 
-def exportConfig(device: Recorder, filename: Union[str, Path]) -> dict:
+def exportConfig(device: Recorder,
+                 filename: Union[str, Path],
+                 unknown: bool = False,
+                 defaults: bool = False) -> dict:
     """ Generate a configuration export file (``.xcg``). Writes the device's
         current information and configuration data by default.
 
@@ -61,12 +71,12 @@ def exportConfig(device: Recorder, filename: Union[str, Path]) -> dict:
 
         :param device: The device from which to export the config.
         :param filename: The name of the file to write.
+        :param unknown: If `True`, include values read from the config
+            file that did not correspond to known configuration items.
+        :param defaults: If `True`, include config values that have not
+            been explicitly set (i.e. still their default value).
     """
-    configdata = device.config.getConfig()
-    if not configdata:
-        raise ConfigError("No configuration data to export; all values are defaults.")
-
-    config = configdata.dump()
+    config = device.config._makeConfig(unknown=unknown, defaults=defaults)
     configUi = device.config.getConfigUI()
     props = device.getProperties()
 
