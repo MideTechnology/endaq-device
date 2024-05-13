@@ -1370,7 +1370,6 @@ class FileConfigInterface(ConfigInterface):
         if not os.path.isfile(self.device.configFile):
             return None
 
-        devinfo = self.device._getDevinfo()
         try:
             with open(self.device.configFile, 'rb') as f:
                 data = f.read()
@@ -1379,10 +1378,7 @@ class FileConfigInterface(ConfigInterface):
 
             logger.debug('No config data could be read (device not configured?), ignoring')
 
-        except NotImplementedError:
-            logger.warning(f"{type(devinfo).__name__} cannot retrieve config data")
-
-        except (DeviceError, IOError) as err:
+        except (DeviceError, IOError, NotImplementedError) as err:
             warnings.warn("{}.getConfig(): ignoring possibly expected exception {!r}"
                           .format(type(self).__name__, err))
 
