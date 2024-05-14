@@ -28,7 +28,7 @@ def deviceFromExport(export: Union[str, Path, MasterElement]) -> Recorder:
             EBML data containing an ``ExportedConfigurationData`` element.
         :return: A minimal 'virtual' `Recorder` instance.
     """
-    if isinstance(export, (Path, str)):
+    if not isinstance(export, MasterElement):
         with open(export, 'rb') as f:
             export = loadSchema('mide_ide.xml').loads(f.read())
 
@@ -78,11 +78,10 @@ def exportConfig(device: Recorder,
     """
     config = device.config._makeConfig(unknown=unknown, defaults=defaults)
     configUi = device.config.getConfigUI()
-    props = device.getProperties()
+    props = {'RecorderInfo': device.getInfo()}
 
     # Get contents; the outer element is added on encoding.
     config = config.get('RecorderConfigurationList', config)
-    props = props.get('RecordingProperties', props)
 
     # Encode and write
     data = {'RecorderConfigurationList': config,
