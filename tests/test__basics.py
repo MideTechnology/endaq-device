@@ -3,6 +3,8 @@ Initial 'sanity check' identification and instantiation tests. Perform early.
 """
 
 import os.path
+from glob import glob
+import idelib.importer
 import pytest
 
 import endaq.device
@@ -12,6 +14,10 @@ from . import fake_recorders
 # Create parameters, mainly to provide an ID, making the results more readable
 RECORDER_PATHS = [pytest.param(path, id=os.path.basename(path))
                   for path in fake_recorders.RECORDER_PATHS]
+
+
+TEST_ROOT = os.path.dirname(__file__)
+IDE_FILES = glob(os.path.join(TEST_ROOT, 'recordings', '*.IDE'))
 
 
 @pytest.mark.parametrize("path", RECORDER_PATHS)
@@ -89,3 +95,14 @@ def test_findDevice(path):
     endaq.device.RECORDERS.clear()
     assert endaq.device.findDevice(dev.serialInt, paths=fake_recorders.RECORDER_PATHS, strict=False)
     assert endaq.device.findDevice(dev.serial, paths=fake_recorders.RECORDER_PATHS, strict=False)
+
+
+@pytest.mark.parametrize("filename", IDE_FILES)
+def test_fromRecording(filename):
+    """ Test instantiation from an IDE file.
+    """
+    doc = idelib.importer.importFile(filename, quiet=True)
+    dev = endaq.device.fromRecording(doc)
+
+    assert dev.partNumber == os.path.basename(filename).split('_')[0]
+    assert dev.partNumber in filename

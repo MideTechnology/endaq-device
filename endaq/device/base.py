@@ -1527,6 +1527,8 @@ class Recorder:
                 # This will eventually be unnecessary; see issue:
                 # https://github.com/MideTechnology/idelib/issues/112
                 config = dataset.ebmldoc.schema.loads(el.getRaw())
+                if len(config) > 0 and config[0].name == 'RecorderConfigurationList':
+                    config = config[0]
             elif el.name == 'ConfigUI':
                 # Proposed, but not yet in IDE files.
                 # No longer strictly required due to `ui_defaults`.
