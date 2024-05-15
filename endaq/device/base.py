@@ -387,6 +387,8 @@ class Recorder:
                 self._properties = None
                 self._volumeName = None
                 self._wifi = None
+            else:
+                self.getInfo()
 
             if self._command:
                 try:
@@ -587,7 +589,7 @@ class Recorder:
                     self._hash = hash(self._rawinfo)
                     infoFile = mideSchema.loads(self._rawinfo)
                     try:
-                        props = infoFile.dump().get('RecordingProperties', '')
+                        props = infoFile.dump().get('RecordingProperties', {})
                         self._info = props.get('RecorderInfo', {})
                         for k, v in self._info.items():
                             if isinstance(v, bytes):
@@ -1525,6 +1527,8 @@ class Recorder:
                 # This will eventually be unnecessary; see issue:
                 # https://github.com/MideTechnology/idelib/issues/112
                 config = dataset.ebmldoc.schema.loads(el.getRaw())
+                if len(config) > 0 and config[0].name == 'RecorderConfigurationList':
+                    config = config[0]
             elif el.name == 'ConfigUI':
                 # Proposed, but not yet in IDE files.
                 # No longer strictly required due to `ui_defaults`.

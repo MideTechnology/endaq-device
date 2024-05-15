@@ -268,7 +268,9 @@ def findDevice(sn: Optional[Union[str, int]] = None,
             chipId = int(chipId, 16)
 
         for d in getDevices(paths, update=update, strict=strict, unmounted=unmounted):
-            if d.serialInt == sn or d.chipId == chipId:
+            if sn is not None and d.serialInt == sn:
+                return d
+            elif chipId is not None and d.chipId == chipId:
                 return d
 
         return None

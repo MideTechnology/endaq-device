@@ -54,7 +54,7 @@ def _getGenericName(pn: str) -> str:
 
     elif pn.startswith('LOG-'):
         # For ancient Slam Stick X recorders without digital accel
-        return pn + "-DC"
+        return pn + "_DC"
 
     family, sep, model = pn.partition('-')
     return "{}x{}{}".format(family[0], sep, model)
