@@ -25,7 +25,12 @@ Note: While `endaq-device` installs into the same `endaq` 'namespace' as
 [endaq-python](https://docs.endaq.com/en/latest/index.html), it is
 otherwise separate; the two packages are not interdependent, and one can
 be installed without the other. The packages do distinctly different
-things, and have very different use-cases.
+things, and have very different use-cases. However, both packages (and any
+future `endaq.*` packages) should be installed in the same location
+(i.e., both installed for the current user, or both installed 'for all users',
+*not* a combination). If you receive an `ImportError` trying to import 
+`endaq.device`, you may need to remove and reinstall `endaq.device` (and/or 
+other `endaq` packages).
 
 ## Documentation
 *Note: the documentation is currently a work in progress.*
