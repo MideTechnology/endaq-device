@@ -45,15 +45,17 @@ def test_basic_export_import(path, dev_copy_dir):
     exportName = dev_copy_dir / f'{dev.partNumber}.xcg'
 
     originalName = dev.config.name
-    config = dev.config.getConfigValues(defaults=True, none=True)
+    # config = dev.config.getConfigValues(defaults=True, none=True)
     endaq.device.configio.exportConfig(dev, exportName)
-
     assert os.path.exists(exportName)
 
     foo = endaq.device.configio.deviceFromExport(exportName)
     assert foo.partNumber == dev.partNumber
 
     dev.config.name = "Changed name"
+    assert dev.name != originalName
+
     endaq.device.configio.importConfig(dev, exportName)
     assert dev.name == originalName
 
+    # TODO: Test more actual config values

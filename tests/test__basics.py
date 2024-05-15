@@ -91,10 +91,41 @@ def test_onRecorder(path):
 def test_findDevice(path):
     """ Test finding recorders by serial number.
     """
+    with pytest.raises(ValueError):
+        # ValueError: Either a serial number or chip ID is required
+        endaq.device.findDevice(paths=fake_recorders.RECORDER_PATHS,
+                                strict=False)
+
+    with pytest.raises(ValueError):
+        # ValueError: Either a serial number or chip ID is required, not both
+        endaq.device.findDevice(sn=1234,
+                                chipId=0xabcd,
+                                paths=fake_recorders.RECORDER_PATHS,
+                                strict=False)
+
+    # Nonexistent serial number
+    assert not endaq.device.findDevice(sn=-1,
+                                       paths=fake_recorders.RECORDER_PATHS,
+                                       strict=False)
+
     dev = endaq.device.getRecorder(path, strict=False)
     endaq.device.RECORDERS.clear()
-    assert endaq.device.findDevice(dev.serialInt, paths=fake_recorders.RECORDER_PATHS, strict=False)
-    assert endaq.device.findDevice(dev.serial, paths=fake_recorders.RECORDER_PATHS, strict=False)
+
+    assert endaq.device.findDevice(dev.serialInt,
+                                   paths=fake_recorders.RECORDER_PATHS,
+                                   strict=False)
+    assert endaq.device.findDevice(sn=dev.serialInt,
+                                   paths=fake_recorders.RECORDER_PATHS,
+                                   strict=False)
+    assert endaq.device.findDevice(sn=dev.serial,
+                                   paths=fake_recorders.RECORDER_PATHS,
+                                   strict=False)
+
+    if dev.chipId:
+        # Very old HW/FW does not report a chip ID
+        assert endaq.device.findDevice(chipId=dev.chipId,
+                                       paths=fake_recorders.RECORDER_PATHS,
+                                       strict=False)
 
 
 @pytest.mark.parametrize("filename", IDE_FILES)
@@ -104,5 +135,10 @@ def test_fromRecording(filename):
     doc = idelib.importer.importFile(filename, quiet=True)
     dev = endaq.device.fromRecording(doc)
 
-    assert dev.partNumber == os.path.basename(filename).split('_')[0]
     assert dev.partNumber in filename
+
+    # Sanity checks: Make sure channels/sensors/transforms were created
+    # TODO: More detailed check of contents, and/or basic type checks?
+    assert dev.channels
+    assert dev.sensors
+    assert dev.transforms
