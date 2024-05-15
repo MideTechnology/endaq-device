@@ -1,4 +1,6 @@
-# `endaq.device`
+# `endaq.device`: Represent, control, and configure enDAQ™ data recorders
+[![PyPI Latest Release](https://img.shields.io/pypi/v/endaq-device.svg)](https://pypi.org/project/endaq-device/) ![example workflow](https://github.com/MideTechnology/endaq-device/actions/workflows/unit-tests.yml/badge.svg)
+
 `endaq.device` (formerly `endaqlib`) provides a means of representing, accessing, configuring
 and controlling [enDAQ™ data
 recorders](https://endaq.com/collections/endaq-shock-recorders-vibration-data-logger-sensors).
