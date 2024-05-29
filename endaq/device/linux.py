@@ -98,7 +98,9 @@ def readUncachedFile(filename: Filename) -> bytes:
     return m.read()
 
 
-def readRecorderClock(clockFile: Filename, pause: bool = True) -> Tuple[Epoch, Epoch]:
+def readRecorderClock(clockFile: Filename,
+                      pause: bool = True,
+                      timeout: Union[int, float] = 3) -> Tuple[Epoch, Epoch]:
     """ Read a (recorder) clock file, circumventing the disk cache. Returns
         the system time and the encoded device time.
 
@@ -107,6 +109,8 @@ def readRecorderClock(clockFile: Filename, pause: bool = True) -> Tuple[Epoch, E
         :param pause: If `True` (default), wait until the data in the clock
             file changes (e.g. a new tick/second has started) before
             returning. This is a means to maximize accuracy.
+        :param timeout: Seconds to wait for a successful read, when `pause`
+            is `True`.
         :return: The host time, and the unparsed contents of the device clock
             file.
     """
@@ -123,12 +127,15 @@ def readRecorderClock(clockFile: Filename, pause: bool = True) -> Tuple[Epoch, E
 
     thisTime = lastTime
     sysTime = time()
+    deadline = sysTime + timeout
     os.lseek(f, 0, os.SEEK_SET)
     m.seek(0)
 
     if pause:
         while lastTime == thisTime:
             sysTime = time()
+            if timeout > 0 and sysTime > deadline:
+                raise TimeoutError('Timed out waiting for CLOCK file to update')
             os.readv(f, [m])
             thisTime = m.read()
             sysTime = (time() + sysTime)/2
