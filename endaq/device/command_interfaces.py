@@ -312,7 +312,8 @@ class CommandInterface:
 
     def _setTime(self,
                  t: Optional[int] = None,
-                 pause: bool = True) -> Tuple[Epoch, Epoch]:
+                 pause: bool = True,
+                 timeout: Union[int, float] = 3) -> Tuple[Epoch, Epoch]:
         """
         Called by `Recorder.setTime()`.
 
@@ -331,6 +332,9 @@ class CommandInterface:
             improve accuracy across multiple recorders, but may take up
             to a second to run. Not applicable if a specific time is
             provided (i.e. `t` is not `None`).
+        :param timeout: Seconds to wait for a successful read, when `pause`
+            is `True`, before raising a `TimeoutError`. Not used by all
+            interface types.
         :return: The system time (float) and time that was set (integer).
             Both are UNIX epoch time (seconds since 1970-01-01T00:00:00).
         """
@@ -339,19 +343,20 @@ class CommandInterface:
 
     def getTime(self,
                 epoch: bool = True,
-                timeout: Union[int, float] = 3) -> Union[Tuple[datetime, datetime], Tuple[Epoch, Epoch]]:
+                timeout: Union[int, float] = 3
+                ) -> Union[Tuple[datetime, datetime], Tuple[Epoch, Epoch]]:
         """ Read the date/time from the device. Also returns the current system
             time for comparison.
 
             :param epoch: If `True`, return the date/time as integer seconds
                 since the epoch ('Unix time'). If `False`, return a Python
                 `datetime.datetime` object.
-            :param timeout: Seconds to wait for a successful read, when `pause`
-                is `True`, before raising a `TimeoutError`.
+            :param timeout: Seconds to wait for a successful read before
+                raising a `TimeoutError`. Not used by all interface types.
             :return: The system time and the device time. Both are UTC.
         """
         with self.device._busy:
-            sysTime, devTime = self._getTime(pause=False)
+            sysTime, devTime = self._getTime(pause=False, timeout=timeout)
 
         if epoch:
             return sysTime, devTime
@@ -360,9 +365,11 @@ class CommandInterface:
                 datetime.utcfromtimestamp(devTime))
 
 
-    def setTime(self, t: Union[Epoch, datetime, struct_time, tuple, None] = None,
+    def setTime(self,
+                t: Union[Epoch, datetime, struct_time, tuple, None] = None,
                 pause: bool = True,
-                retries: int = 1) -> Tuple[Epoch, Epoch]:
+                retries: int = 1,
+                timeout: Union[int, float] = 3) -> Tuple[Epoch, Epoch]:
         """ Set a recorder's date/time. A variety of standard time types are
             accepted. Note that the minimum unit of time is the whole second.
 
@@ -378,6 +385,8 @@ class CommandInterface:
             :param retries: The number of attempts to make, should the first
                 fail. Although rare, random filesystem things can potentially
                 cause hiccups.
+            :param timeout: Seconds to wait for a successful read before
+                raising a `TimeoutError`. Not used by all interface types.
             :return: The system time (float) and time that was set (integer).
                 Both are UNIX epoch time (seconds since 1970-01-01T00:00:00).
         """
@@ -396,7 +405,8 @@ class CommandInterface:
             except IOError:
                 if retries > 0:
                     sleep(.5)
-                    return self.setTime(pause=pause, retries=retries - 1)
+                    return self.setTime(pause=pause, retries=retries - 1,
+                                        timeout=timeout)
                 else:
                     raise
 
@@ -1983,7 +1993,8 @@ class SerialCommandInterface(CommandInterface):
 
     def _setTime(self,
                  t: Optional[int] = None,
-                 pause: bool = True) -> Tuple[Epoch, Epoch]:
+                 pause: bool = True,
+                 timeout: Union[int, float] = 3) -> Tuple[Epoch, Epoch]:
         """
         Called by `Recorder.setTime()`.
 
@@ -2017,7 +2028,7 @@ class SerialCommandInterface(CommandInterface):
                 t0 = time()
 
         self._sendCommand({'EBMLCommand': {'SetClock': payload}},
-                          response=False)
+                          response=False, timeout=timeout)
 
         return t0, t
 
@@ -2601,7 +2612,8 @@ class FileCommandInterface(CommandInterface):
 
     def _setTime(self,
                  t: Optional[int] = None,
-                 pause: bool = True) -> Tuple[Epoch, Epoch]:
+                 pause: bool = True,
+                 timeout: Union[int, float] = 3) -> Tuple[Epoch, Epoch]:
         """
         Called by `Recorder.setTime()`.
 
@@ -2615,6 +2627,8 @@ class FileCommandInterface(CommandInterface):
             improve accuracy across multiple recorders, but may take up
             to a second to run. Not applicable if a specific time is
             provided (i.e. `t` is not `None`).
+        :param timeout: Seconds to wait for a successful read. Not used
+            by this interface type.
         :return: The system time (float) and time that was set (integer).
             Both are UNIX epoch time (seconds since 1970-01-01T00:00:00).
         """
