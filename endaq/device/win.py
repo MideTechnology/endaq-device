@@ -129,7 +129,7 @@ def readRecorderClock(clockFile: Filename,
             file changes (e.g. a new tick/second has started) before
             returning. This is a means to maximize accuracy.
         :param timeout: Seconds to wait for a successful read, when `pause`
-            is `True`.
+            is `True`, before raising a `TimeoutError`.
         :return: The host time, and the unparsed contents of the device clock
             file.
     """
