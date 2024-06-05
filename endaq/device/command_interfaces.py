@@ -1881,7 +1881,8 @@ class SerialCommandInterface(CommandInterface):
                     self.lastCommand = time(), deepcopy(cmd)
                     self._writeCommand(packet)
 
-                    if timeout == 0:
+                    if timeout == 0 and not response:
+                        self.status = None, None
                         return None
 
                     try:
