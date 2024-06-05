@@ -496,7 +496,7 @@ class CommandInterface:
                 require no arguments.
             :returns: `True` if the command was successful.
         """
-        self._sendCommand(cmd, response=False, timeout=timeout, callback=callback)
+        self._sendCommand(cmd, response=False, timeout=0, callback=callback)
 
         # Since no response is expected, a failure to read a response caused
         # by the device resetting will just set self.status to (None, None).
