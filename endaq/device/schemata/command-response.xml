@@ -106,6 +106,12 @@
             <IntegerElement name="InfoIndex" id="0x5B02" mandatory="1" multiple="0"> See GetInfo for index value</IntegerElement>
             <BinaryElement name="InfoPayload" id="0x5B03" mandatory="1" multiple="0"> Payload</BinaryElement>
         </MasterElement>
+
+        <!-- Network (MQTT) Device Manager commands (ID 0x5Cxx).
+             These are for the Manager itself, and are not recognized by devices. -->
+        <MasterElement name="GetDeviceList" id="0x5C00" multiple="0" mandatory="0"> Request a list of remote network devices </MasterElement>
+        <UIntegerElement name="GetIDEHeader" id="0x5C20" multiple="0" mandatory="0"> Request the IDE header data from a specific recording device. Value is the device's serial number. </UIntegerElement>
+
     </MasterElement>
 
     <MasterElement name="EBMLResponse" id="0x86" multiple="0" mandatory="0">Response payload to above EBML command payload. Not all commands generate a response
@@ -182,6 +188,23 @@
         <MasterElement name="GetInfoResponse" id="0x5B01" mandatory="0" multiple="0" >
             <IntegerElement name="InfoIndex" id="0x5B02" mandatory="1" multiple="0"> See GetInfo in EBMLCommand for index value</IntegerElement>
             <BinaryElement name="InfoPayload" id="0x5B03" mandatory="1" multiple="0"> Payload</BinaryElement>
+        </MasterElement>
+
+        <!-- Network (MQTT) Device Manager responses (ID 0x5Cxx). -->
+        <MasterElement name="DeviceList" id="0x5C10" multiple="0" mandatory="0">
+            Response to a `GetDeviceList` command (0x5C00).
+            <MasterElement name="DeviceListItem" id="0x5C11" multiple="1" mandatory="0">
+                <UIntegerElement name="SerialNumber" id="0x5C12" multiple="0" mandatory="1"> Device serial number </UIntegerElement>
+                <UIntegerElement name="LastContact" id="0x5C13" multiple="0" mandatory="1"> UNIX epoch timestamp of the device's last message </UIntegerElement>
+                <MasterElement name="GetInfoResponse"> The same contents as returned by `GetInfo` index 0 </MasterElement>
+                <IntegerElement name="DeviceStatusCode"/> <!-- existing -->
+                <UnicodeElement name="DeviceStatusMessage"/> <!-- existing -->
+                <BinaryElement name="LockID"/> <!-- existing -->
+            </MasterElement>
+        </MasterElement>
+        <MasterElement name="GetIDEHeaderResponse" id="0x5C30" multiple="0" mandatory="0">
+            <UIntegerElement name="SerialNumber" id="0x5C12" multiple="0" mandatory="1"/>
+            <BinaryElement name="IDEHeaderData" id="0x5C31" multiple="0" mandatory="1"/>
         </MasterElement>
     </MasterElement>
 
