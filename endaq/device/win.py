@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 import sys
 from time import time
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 import warnings
 
 from .types import Drive, Epoch, Filename
@@ -117,7 +117,9 @@ def readUncachedFile(filename: Filename) -> bytes:
         raise IOError(err.strerror)
 
 
-def readRecorderClock(clockFile: Filename, pause: bool = True) -> Tuple[Epoch, Epoch]:
+def readRecorderClock(clockFile: Filename,
+                      pause: bool = True,
+                      timeout: Union[int, float] = 3) -> Tuple[Epoch, Epoch]:
     """ Read a (recorder) clock file, circumventing the disk cache. Returns
         the system time and the encoded device time.
 
@@ -126,6 +128,8 @@ def readRecorderClock(clockFile: Filename, pause: bool = True) -> Tuple[Epoch, E
         :param pause: If `True` (default), wait until the data in the clock
             file changes (e.g. a new tick/second has started) before
             returning. This is a means to maximize accuracy.
+        :param timeout: Seconds to wait for a successful read, when `pause`
+            is `True`, before raising a `TimeoutError`.
         :return: The host time, and the unparsed contents of the device clock
             file.
     """
@@ -152,9 +156,13 @@ def readRecorderClock(clockFile: Filename, pause: bool = True) -> Tuple[Epoch, E
     sysTime = time()
     win32file.SetFilePointer(f1, 0, win32file.FILE_BEGIN)
 
+    deadline = sysTime + timeout
+
     if pause:
         while lastTime == thisTime:
             sysTime = time()
+            if timeout > 0 and sysTime > deadline:
+                raise TimeoutError('Timed out waiting for CLOCK file to update')
             _hr, thisTime = win32file.ReadFile(f1, bpc)
             sysTime = (time() + sysTime)/2
             win32file.SetFilePointer(f1, 0, win32file.FILE_BEGIN)
