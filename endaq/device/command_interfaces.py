@@ -510,10 +510,13 @@ class CommandInterface:
 
 
     def startRecording(self,
+                       wait: bool = True,
                        timeout: Union[int, float] = 5,
                        callback: Optional[Callable] = None) -> bool:
         """ Start the device recording, if supported.
 
+            :param wait: If `True`, wait for the recorer to respond and/or
+                dismount, indicating the recording has started.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a `DeviceTimeout` exception. `None` or -1 will wait
                 indefinitely.
@@ -2177,7 +2180,7 @@ class SerialCommandInterface(CommandInterface):
         """ Stop a device that is recording.
 
             :param wait: If `True`, wait for the recorer to respond and/or
-                remount, indicating the recording has started.
+                remount, indicating the recording has stopped.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
