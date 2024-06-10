@@ -196,10 +196,10 @@
             <MasterElement name="DeviceListItem" id="0x5C11" multiple="1" mandatory="0">
                 <UIntegerElement name="SerialNumber" id="0x5C12" multiple="0" mandatory="1"> Device serial number </UIntegerElement>
                 <UIntegerElement name="LastContact" id="0x5C13" multiple="0" mandatory="1"> UNIX epoch timestamp of the device's last message </UIntegerElement>
-                <MasterElement name="GetInfoResponse"> The same contents as returned by `GetInfo` index 0 </MasterElement>
-                <IntegerElement name="DeviceStatusCode"/> <!-- existing -->
-                <UnicodeElement name="DeviceStatusMessage"/> <!-- existing -->
-                <BinaryElement name="LockID"/> <!-- existing -->
+                <MasterElement name="GetInfoResponse"> The same contents as returned by `GetInfo` index 0 (previously defined) </MasterElement>
+                <IntegerElement name="DeviceStatusCode"> The originating device's last DeviceStatusCode (previously defined) </IntegerElement>
+                <UnicodeElement name="DeviceStatusMessage"> The originating device's last DeviceStatusMessage (previously defined) </UnicodeElement>
+                <BinaryElement name="LockID"> The originating device's last LockID (previously defined) </BinaryElement>
             </MasterElement>
         </MasterElement>
         <MasterElement name="GetIDEHeaderResponse" id="0x5C30" multiple="0" mandatory="0">
