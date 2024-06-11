@@ -496,13 +496,16 @@ class CommandInterface:
                 require no arguments.
             :returns: `True` if the command was successful.
         """
-        self._sendCommand(cmd, response=False, timeout=timeout, callback=callback)
+        self._sendCommand(cmd, response=False, timeout=0.1, callback=callback)
 
         # Since no response is expected, a failure to read a response caused
         # by the device resetting will just set self.status to (None, None).
         # Success is self.status[0] == None or the expected status code.
         if self.status[0] is not None and self.status[0] != statusCode:
             return False
+        # TODO: in later firmware with serial interface, ping the device
+        #  until it returns a response. Also allow multiple status codes
+        #  (e.g., RECORDING and START_PENDING, or IDLE and RESET_PENDING)
 
         return self.awaitReboot(timeout=timeout if wait else 0,
                                 timeoutMsg=timeoutMsg,
@@ -1881,7 +1884,8 @@ class SerialCommandInterface(CommandInterface):
                     self.lastCommand = time(), deepcopy(cmd)
                     self._writeCommand(packet)
 
-                    if timeout == 0:
+                    if timeout == 0 and not response:
+                        self.status = None, None
                         return None
 
                     try:
