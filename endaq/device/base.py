@@ -151,9 +151,6 @@ class Recorder:
         self.refresh(force=False)
         self.path = path
 
-        # XXX: Make sure this isn't necessary. It caused an infinite loop w/ hasInterface()
-        # self.getInfo()
-
         # The source IDE `Dataset` used for 'virtual' devices.
         self._source: Optional[Dataset] = None
 
@@ -390,6 +387,8 @@ class Recorder:
                 self._properties = None
                 self._volumeName = None
                 self._wifi = None
+            else:
+                self.getInfo()
 
             if self._command:
                 try:
@@ -590,7 +589,7 @@ class Recorder:
                     self._hash = hash(self._rawinfo)
                     infoFile = mideSchema.loads(self._rawinfo)
                     try:
-                        props = infoFile.dump().get('RecordingProperties', '')
+                        props = infoFile.dump().get('RecordingProperties', {})
                         self._info = props.get('RecorderInfo', {})
                         for k, v in self._info.items():
                             if isinstance(v, bytes):
@@ -641,7 +640,7 @@ class Recorder:
     def name(self) -> str:
         """ The recording device's (user-assigned) name. """
         try:
-            return self.config.name
+            return self.getInfo('UserDeviceName', '') or self.config.name
         except (AttributeError, KeyError, UnsupportedFeature):
             return ''
 
@@ -967,12 +966,16 @@ class Recorder:
                 for chId, subChs in channels.items()}
 
 
-    def getTime(self, epoch=True) -> Union[Tuple[datetime, datetime], Tuple[Epoch, Epoch]]:
+    def getTime(self,
+                epoch=True,
+                timeout: Union[int, float] = 3) -> Union[Tuple[datetime, datetime], Tuple[Epoch, Epoch]]:
         """ Read the date/time from the device.
 
             :param epoch: If `True`, return the date/time as integer seconds
                 since the epoch ('Unix time'). If `False`, return a Python
                 `datetime.datetime` object.
+            :param timeout: Seconds to wait for successful completion before
+                raising a `TimeoutError`. Not used by older devices/firmware.
             :return: The system time and the device time. Both are UTC.
         """
         if self.isVirtual:
@@ -984,13 +987,14 @@ class Recorder:
         else:
             raise UnsupportedFeature(f'Cannot set time on device {self}')
 
-        return ci.getTime(epoch=epoch)
+        return ci.getTime(epoch=epoch, timeout=timeout)
 
 
     def setTime(self,
                 t: Union[Epoch, datetime, struct_time, tuple, None] = None,
                 pause: bool = True,
-                retries: int = 1) -> Epoch:
+                retries: int = 1,
+                timeout: Union[int, float] = 3) -> Epoch:
         """ Set a recorder's date/time. A variety of standard time types are
             accepted. Note that the minimum unit of time is the whole second.
 
@@ -1005,6 +1009,8 @@ class Recorder:
                 provided (i.e. `t` is not `None`).
             :param retries: The number of attempts to make, should the first
                 fail. Random filesystem things can potentially cause hiccups.
+            :param timeout: Seconds to wait for successful completion before
+                raising a `TimeoutError`. Not used by older devices/firmware.
             :return: The time that was set, as integer seconds since the epoch.
         """
         if self.isVirtual:
@@ -1016,12 +1022,13 @@ class Recorder:
         else:
             raise UnsupportedFeature(f'Cannot set time on device {self}')
 
-        return ci.setTime(t=t, pause=pause, retries=retries)
+        return ci.setTime(t=t, pause=pause, retries=retries, timeout=timeout)
 
 
     def getClockDrift(self,
                       pause: bool = True,
-                      retries: int =1 ) -> float:
+                      retries: int = 1,
+                      timeout: Union[int, float] = 3) -> float:
         """ Calculate how far the recorder's clock has drifted from the system
             time.
 
@@ -1031,6 +1038,8 @@ class Recorder:
                 integer seconds.
             :param retries: The number of attempts to make, should the first
                 fail. Random filesystem things can potentially cause hiccups.
+            :param timeout: Seconds to wait for a successful read, when `pause`
+                is `True`, before raising a `TimeoutError`.
             :return: The length of the drift, in seconds.
         """
         if self.isVirtual:
@@ -1042,7 +1051,7 @@ class Recorder:
         else:
             raise UnsupportedFeature(f'Cannot get time on device {self}')
 
-        return ci.getClockDrift(pause=pause, retries=retries)
+        return ci.getClockDrift(pause=pause, retries=retries, timeout=timeout)
 
 
     def _parsePolynomials(self, cal: MasterElement) -> Dict[int, Transform]:
@@ -1528,6 +1537,8 @@ class Recorder:
                 # This will eventually be unnecessary; see issue:
                 # https://github.com/MideTechnology/idelib/issues/112
                 config = dataset.ebmldoc.schema.loads(el.getRaw())
+                if len(config) > 0 and config[0].name == 'RecorderConfigurationList':
+                    config = config[0]
             elif el.name == 'ConfigUI':
                 # Proposed, but not yet in IDE files.
                 # No longer strictly required due to `ui_defaults`.
@@ -1544,6 +1555,7 @@ class Recorder:
         dev._configData = config
 
         # Datasets merge calibration info into recorderInfo; separate them.
+        dev.getInfo()
         dev._calibration = {}
         for k in ('CalibrationDate',
                   'CalibrationExpiry',

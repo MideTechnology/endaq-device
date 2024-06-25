@@ -20,7 +20,7 @@ from ebmlite.core import loadSchema
 from ebmlite.core import Document, Element, MasterElement
 from idelib.dataset import Channel, SubChannel
 
-from .exceptions import ConfigError, UnsupportedFeature
+from .exceptions import ConfigError, DeviceError, UnsupportedFeature
 from . import legacy
 from . import ui_defaults
 from . import util
@@ -658,7 +658,7 @@ class ConfigInterface:
         raise NotImplementedError("getConfigUI() not implemented")
 
 
-    def getConfig(self) -> Union[Document, MasterElement]:
+    def getConfig(self) -> Union[None, Document, MasterElement]:
         """ Low-level method that retrieves the device's config EBML (e.g.,
             the contents of a real device's `config.cfg` file), if any.
         """
@@ -1223,7 +1223,7 @@ class VirtualConfigInterface(ConfigInterface):
         return self.configUi
 
 
-    def getConfig(self) -> Union[Document, MasterElement]:
+    def getConfig(self) -> Union[None, Document, MasterElement]:
         """ Low-level method that retrieves the device's config EBML (e.g.,
             the contents of a real device's ``config.cfg`` file), if any.
         """
@@ -1314,7 +1314,9 @@ class FileConfigInterface(ConfigInterface):
         return vers
 
 
-    def _makeConfig(self, unknown: bool = True, version: Optional[int] = None,
+    def _makeConfig(self,
+                    unknown: bool = True,
+                    version: Optional[int] = None,
                     defaults: bool = False) -> Dict[str, Any]:
         """ Generate a dictionary of configuration data, suitable for EBML
             encoding.
@@ -1328,6 +1330,8 @@ class FileConfigInterface(ConfigInterface):
                 configuration file but have IDs that do not correspond to
                 fields in the device's ``ConfigUI`` data.
             :param version: The version of configuration data to use.
+            :param defaults: If `True`, include config values that have not
+                been explicitly set (i.e. still their default value).
             :return: A dictionary of configuration values, ready for encoding
                 as EBML.
         """
@@ -1363,21 +1367,26 @@ class FileConfigInterface(ConfigInterface):
         return self.configUi
 
 
-    def getConfig(self) -> Union[Document, MasterElement]:
+    def getConfig(self) -> Union[None, Document, MasterElement]:
         """ Low-level method that retrieves the device's config EBML (e.g.,
             the contents of a real device's `config.cfg` file), if any.
         """
+        if not os.path.isfile(self.device.configFile):
+            return None
+
         try:
-            if not os.path.isfile(self.device.configFile):
-                return b''
-
             with open(self.device.configFile, 'rb') as f:
-                return loadSchema('mide_ide.xml').loads(f.read())
+                data = f.read()
+            if data:
+                return loadSchema('mide_ide.xml').loads(data)
 
-        except IOError as err:
+            logger.debug('No config data could be read (device not configured?), ignoring')
+
+        except (DeviceError, IOError, NotImplementedError) as err:
             warnings.warn("{}.getConfig(): ignoring possibly expected exception {!r}"
                           .format(type(self).__name__, err))
-            return b''
+
+        return None
 
 
     def loadConfig(self, config: Optional[MasterElement] = None):

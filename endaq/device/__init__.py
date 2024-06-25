@@ -33,7 +33,7 @@ logger = logging.getLogger('endaq.device')
 #
 # ============================================================================
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'DeviceError', 'DeviceTimeout', 'UnsupportedFeature',
@@ -268,7 +268,9 @@ def findDevice(sn: Optional[Union[str, int]] = None,
             chipId = int(chipId, 16)
 
         for d in getDevices(paths, update=update, strict=strict, unmounted=unmounted):
-            if d.serialInt == sn or d.chipId == chipId:
+            if sn is not None and d.serialInt == sn:
+                return d
+            elif chipId is not None and d.chipId == chipId:
                 return d
 
         return None
