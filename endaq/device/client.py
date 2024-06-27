@@ -23,14 +23,6 @@ logger.setLevel(logging.DEBUG)
 #
 # ===========================================================================
 
-def dump(data: ByteString, length: int = 8) -> str:
-    """ Debugging tool to display `bytes` and `bytearray` values in hex.
-    """
-    if not length:
-        length = len(data)
-    return ' '.join(f'{x:02x}' for x in data[:length])
-
-
 def synchronized(method):
     """ Decorator for making methods use a lock, modeled after the one in
         Java.
@@ -44,6 +36,29 @@ def synchronized(method):
         with lock:
             return method(instance, *args, **kwargs)
     return wrapped
+
+
+def requires_lock(method):
+    """ Decorator for command methods that require a `LockID`.
+    """
+    @wraps(method)
+    def wrapped(instance,
+                payload: Any,
+                         lockId: Optional[int] = None
+            ) -> Tuple[dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+        if lockId != instance.lockId:
+            logger.warning(f'Could not run {method.__name__} (mismatched LockID)')
+            return {}, DeviceStatusCode.ERR_BAD_LOCK_ID, None
+        return method(instance, payload, lockId)
+    return wrapped
+
+
+def dump(data: ByteString, length: int = 8) -> str:
+    """ Debugging tool to display `bytes` and `bytearray` values in hex.
+    """
+    if not length:
+        length = len(data)
+    return ' '.join(f'{x:02x}' for x in data[:length])
 
 
 # ===========================================================================
@@ -109,8 +124,8 @@ class CommandClient:
 
     @synchronized
     def sendResponse(self,
-                         recipient: Any, 
-                         packet: ByteString):
+                     recipient: Any,
+                     packet: ByteString):
         """ Transmit a complete, encoded response packet. 
             Must be implemented for each subclass.
         """
@@ -180,14 +195,14 @@ class CommandClient:
         idx = command.pop('CommandIdx', None)
         lockId = command.pop('LockID', None)
 
-        commandFn = None
+        commandName = None
         commandPayload = None
         statusCode = DeviceStatusCode.IDLE
         statusMsg = None
 
         for k, v in command.items():
             if k in self.COMMANDS:
-                commandFn = self.COMMANDS[k]
+                commandName = k
                 commandPayload = v
                 break
 
@@ -196,11 +211,17 @@ class CommandClient:
             response['ResponseIdx'] = int(idx)
         response['CMDQueueDepth'] = 1
 
-        if commandFn:
-            reply, replyCode, replyMsg = commandFn(commandPayload, lockId)
-            response.update(reply)
-            statusCode = replyCode or statusCode
-            statusMsg = replyMsg or statusMsg
+        if commandName:
+            try:
+                commandFn = self.COMMANDS[commandName]
+                reply, replyCode, replyMsg = commandFn(commandPayload, lockId)
+                response.update(reply)
+                statusCode = replyCode or statusCode
+                statusMsg = replyMsg or statusMsg
+            except Exception as err:
+                logger.error(f'Error processing command {commandName!r}:', exc_info=True)
+                statusCode = DeviceStatusCode.ERR_INTERNAL_ERROR
+                statusMsg = f"{type(err).__name__}: {err}"
         else:
             statusCode = DeviceStatusCode.ERR_UNKNOWN_COMMAND
 
@@ -220,13 +241,21 @@ class CommandClient:
 
     # =======================================================================
     # Commands: Methods for each command handled by the `CommandClient`.
+    # This base class implements the bare minimum required by something
+    # emulating an enDAQ recorder. Presumably, these won't need to be
+    # overwritten; subclasses will probably just add command methods.
+    #
     # Methods should be named `command_` plus the name of the command's
-    # EBML element. This base class implements the bare minimum required by
-    # something emulating an enDAQ recorder.
+    # EBML element, (e.g., `command_sendPing()`). `GetInfo` and `SetInfo`
+    # have separate methods for each index, and have the index as a suffix
+    # (e.g., `command_GetInfo_0`). The base `command_GetInfo()` and
+    # `command_SetInfo()` probably won't need to be overridden.
     # 
     # Method arguments:
     #   * payload: The value of the command element. See the schema for the
-    #     data type for each command.
+    #     data type for each command. Note: individual `SetInfo` methods will
+    #     get the command's `InfoPayload` value instead of the whole command
+    #     dict.
     #   * lockId: The LockID in the command, if any. Only used by commands
     #     that require a lock.
     #
@@ -241,7 +270,7 @@ class CommandClient:
 
     def command_SendPing(self, 
                          payload: Any,
-                         lockId: Optional[int] = None
+                         lockId: Optional[ByteString] = None
             ) -> Tuple[dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
         """ Handle a ``SendPing`` command (EBML ID 0x5700).
 
@@ -255,8 +284,8 @@ class CommandClient:
     
 
     def command_GetLockID(self, 
-                          payload: dict[str, Any],
-                          lockId: Optional[int] = None
+                          payload: ByteString,
+                          lockId: Optional[ByteString] = None
             ) -> Tuple[dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
         """ Handle a `<GetLockID>` command (EBML ID 0x5B00).
 
@@ -271,7 +300,7 @@ class CommandClient:
 
     def command_SetLockID(self, 
                           payload: dict[str, Any],
-                          lockId: Optional[int] = None
+                          lockId: Optional[ByteString] = None
             ) -> Tuple[dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
         """ Handle a `<SetLockID>` command (EBML ID 0x5B07).
 
@@ -290,3 +319,47 @@ class CommandClient:
         
         except KeyError:
             return {}, DeviceStatusCode.ERR_BAD_PAYLOAD, None
+
+
+    def command_GetInfo(self,
+                        payload: int,
+                        lockId: Optional[ByteString] = None
+            ) -> Tuple[dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+        """ Main handler for the `<GetInfo>` command (EBML ID 0x5B00).
+        """
+        try:
+            return self.COMMANDS[f'GetInfo_{payload}'](payload, lockId)
+        except KeyError:
+            logger.warning(f'No GetInfo for idx {payload!r}')
+            return {}, DeviceStatusCode.ERR_BAD_INFO_INDEX, None
+
+
+    def command_SetInfo(self,
+                        payload: dict[str, Any],
+                        lockId: Optional[ByteString] = None
+            ) -> Tuple[dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+        """ Main handler for the `<SetInfo>` command (EBML ID 0x5B07).
+        """
+        try:
+            idx = payload['InfoIndex']
+            info = payload['InfoPayload']
+        except KeyError as err:
+            logger.error(f'SetInfo command missing element {err}')
+            return {}, DeviceStatusCode.ERR_INVALID_COMMAND, None
+
+        try:
+            return self.COMMANDS[f'SetInfo_{idx}'](info, lockId)
+        except KeyError:
+            logger.warning(f'No SetInfo for idx {idx!r}')
+            return {}, DeviceStatusCode.ERR_BAD_INFO_INDEX, None
+
+
+    @requires_lock
+    def command_GetInfo_5(self,
+                          payload: ByteString,
+                          lockId: Optional[int] = None):
+        """ Example of a `GetInfo` (5: `config.cfg`) that requires the lock
+            be set.
+        """
+        raise NotImplementedError('CommandClient.command_GetInfo_5()')
+    
