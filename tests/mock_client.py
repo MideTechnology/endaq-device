@@ -61,8 +61,7 @@ class MockClient(CommandClient):
     def command_GetInfo_0(self,
                           payload: ByteString,
                           lockId: Optional[int] = None):
-        response = {'GetInfoResponse': {'InfoPayload': self.DEVINFO}}
-        return response, None, None
+        return self.DEVINFO, None, None
 
 
     @requires_lock
@@ -72,8 +71,7 @@ class MockClient(CommandClient):
         """ Example of a `GetInfo` (5: `config.cfg`) that requires the lock
             be set.
         """
-        response = {'GetInfoResponse': {'InfoPayload': self.CONFIG}}
-        return response, None, None
+        return self.CONFIG, None, None
 
 
 # ===========================================================================

@@ -8,15 +8,15 @@ software in the enDAQ ecosystem.
 
 from functools import wraps
 from threading import RLock
-from typing import Any, ByteString, Dict, Optional, Tuple
-
-from .command_interfaces import SerialCommandInterface, CommandError, CRCError, CommandInterface
-from .response_codes import DeviceStatusCode
-
+from typing import Any, ByteString, Dict, Optional, Tuple, Union
 
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+from .command_interfaces import SerialCommandInterface, CommandError, CRCError, CommandInterface
+from .response_codes import DeviceStatusCode
+from .util import dump
 
 
 # ===========================================================================
@@ -39,26 +39,20 @@ def synchronized(method):
 
 
 def requires_lock(method):
-    """ Decorator for command methods that require a `LockID`.
+    """ Decorator for command methods that require a `LockID`. It is
+        assumed that the method being decorated is in a class with a
+        `lockId` attribute (i.e., a `CommandClient` subclass).
     """
     @wraps(method)
     def wrapped(instance,
                 payload: Any,
-                         lockId: Optional[int] = None
-            ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+                lockId: Optional[int] = None
+            ) -> Tuple[Union[Dict[str, Any], ByteString], Optional[DeviceStatusCode], Optional[str]]:
         if lockId != instance.lockId:
             logger.warning(f'Could not run {method.__name__} (mismatched LockID)')
             return {}, DeviceStatusCode.ERR_BAD_LOCK_ID, None
         return method(instance, payload, lockId)
     return wrapped
-
-
-def dump(data: ByteString, length: int = 8) -> str:
-    """ Debugging tool to display `bytes` and `bytearray` values in hex.
-    """
-    if not length:
-        length = len(data)
-    return ' '.join(f'{x:02x}' for x in data[:length])
 
 
 # ===========================================================================
@@ -250,8 +244,13 @@ class CommandClient:
     # have separate methods for each index, and have the index as a suffix
     # (e.g., `command_GetInfo_0`). The base `command_GetInfo()` and
     # `command_SetInfo()` probably won't need to be overridden.
+    #
+    # `command_GetInfo_0` and `command_GetInfo_5` are examples of `GetInfo`
+    # methods. The latter requires the LockID, and uses the `requires_lock`
+    # decorator. These should be overridden in subclasses, but do not
+    # need to be.
     # 
-    # Method arguments:
+    # Command methods require two arguments:
     #   * payload: The value of the command element. See the schema for the
     #     data type for each command. Note: individual `SetInfo` methods will
     #     get the command's `InfoPayload` value instead of the whole command
@@ -259,9 +258,11 @@ class CommandClient:
     #   * lockId: The LockID in the command, if any. Only used by commands
     #     that require a lock.
     #
-    # Method returns a tuple containing:
+    # Command methods must return a tuple containing:
     #   * Response dictionary. Commands that have no specific response should
-    #     return an empty dict.
+    #     return an empty dict. Index-specific `GetInfo` methods should
+    #     return the binary value `InfoPayload`; `command_GetInfo()` builds
+    #     the rest of the response dictionary.
     #   * A DeviceStatusCode to return (e.g., if the command generated an
     #     error) which, if not None, overrides the system's DeviceStatusCode.
     #   * A DeviceStatusMessage string which, if not None, overrides the
@@ -328,10 +329,15 @@ class CommandClient:
         """ Main handler for the `<GetInfo>` command (EBML ID 0x5B00).
         """
         try:
-            return self.COMMANDS[f'GetInfo_{payload}'](payload, lockId)
+            getter = self.COMMANDS[f'GetInfo_{payload}']
         except KeyError:
             logger.warning(f'No GetInfo for idx {payload!r}')
             return {}, DeviceStatusCode.ERR_BAD_INFO_INDEX, None
+
+        info, statusCode, statusMsg = getter(payload, lockId)
+        response = {'GetInfoResponse': {'InfoIndex': payload,
+                                        'InfoPayload': info or b''}}
+        return response, statusCode, statusMsg
 
 
     def command_SetInfo(self,
@@ -348,18 +354,44 @@ class CommandClient:
             return {}, DeviceStatusCode.ERR_INVALID_COMMAND, None
 
         try:
-            return self.COMMANDS[f'SetInfo_{idx}'](info, lockId)
+            setter = self.COMMANDS[f'SetInfo_{idx}']
         except KeyError:
             logger.warning(f'No SetInfo for idx {idx!r}')
-
             return {}, DeviceStatusCode.ERR_BAD_INFO_INDEX, None
+
+        return setter(info, lockId)
+
+
+    # =======================================================================
+
+    def command_GetInfo_0(self,
+                          payload: ByteString,
+                          lockId: Optional[int] = None
+            ) -> Tuple[Dict[str, ByteString], Optional[DeviceStatusCode], Optional[str]]:
+        """ Example of a `GetInfo` (0: `DEVINFO`) that does not require the
+            lock be set. This should be overridden by subclasses.
+
+
+            Note: unlike other command methods, the first element of the
+            response is `bytes` (e.g., the requested info as encoded EBML).
+        """
+        return (b'',
+                DeviceStatusCode.ERR_BAD_INFO_INDEX,
+                'command_GetInfo_0() is only an example')
 
 
     @requires_lock
     def command_GetInfo_5(self,
                           payload: ByteString,
-                          lockId: Optional[int] = None):
+                          lockId: Optional[int] = None
+            ) -> Tuple[Dict[str, ByteString], Optional[DeviceStatusCode], Optional[str]]:
         """ Example of a `GetInfo` (5: `config.cfg`) that requires the lock
-            be set.
+            be set. Note the use of the `requires_lock` decorator. This
+            should be overridden in subclasses.
+
+            Note: unlike other command methods, the first element of the
+            response is `bytes` (e.g., the requested info as encoded EBML).
         """
-        raise NotImplementedError('CommandClient.command_GetInfo_5() is only an example')
+        return (b'',
+                DeviceStatusCode.ERR_BAD_INFO_INDEX,
+                'command_GetInfo_5() is only an example')
