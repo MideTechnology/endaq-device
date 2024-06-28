@@ -94,7 +94,7 @@ class CommandClient:
 
         # Collect all the class' implemented command methods. See comments
         # near the end for more information.
-        self.COMMANDS = {k.partition('_')[-1]: getattr(self, k) for k, v in dir(self)
+        self.COMMANDS = {k.partition('_')[-1]: getattr(self, k) for k in dir(self)
                          if k.startswith('command_')}
 
         self.lockId = b'\x00' * 16
@@ -280,7 +280,7 @@ class CommandClient:
                 DeviceStatusCode (can be `None`), and DeviceStatusMessage
                 (can be `None`).
         """
-        return {'PingResponse': payload}, None, None
+        return {'PingReply': payload}, None, None
     
 
     def command_GetLockID(self, 
@@ -351,6 +351,7 @@ class CommandClient:
             return self.COMMANDS[f'SetInfo_{idx}'](info, lockId)
         except KeyError:
             logger.warning(f'No SetInfo for idx {idx!r}')
+
             return {}, DeviceStatusCode.ERR_BAD_INFO_INDEX, None
 
 
@@ -361,5 +362,4 @@ class CommandClient:
         """ Example of a `GetInfo` (5: `config.cfg`) that requires the lock
             be set.
         """
-        raise NotImplementedError('CommandClient.command_GetInfo_5()')
-    
+        raise NotImplementedError('CommandClient.command_GetInfo_5() is only an example')
