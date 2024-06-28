@@ -6,13 +6,16 @@ data-logging devices.
 __author__ = "David Stokes"
 __copyright__ = "Copyright 2024 Mide Technology Corporation"
 
-import logging
 import os
 from pathlib import Path
 import string
 from threading import RLock
 from typing import Dict, List, Optional, Union
 from weakref import WeakValueDictionary
+
+import logging
+logger = logging.getLogger(__name__)
+# logger.setLevel(logging.DEBUG)
 
 import ebmlite.core
 from idelib.dataset import Dataset
@@ -25,9 +28,6 @@ from .endaq import EndaqS, EndaqW
 from .response_codes import DeviceStatusCode
 from .slamstick import SlamStickX, SlamStickC, SlamStickS
 from .types import Drive, Filename, Epoch
-
-logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
 
 # ============================================================================
 #
