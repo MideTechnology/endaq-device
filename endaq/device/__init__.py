@@ -26,7 +26,7 @@ from .response_codes import DeviceStatusCode
 from .slamstick import SlamStickX, SlamStickC, SlamStickS
 from .types import Drive, Filename, Epoch
 
-logger = logging.getLogger('endaq.device')
+logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
 
 # ============================================================================

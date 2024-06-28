@@ -15,7 +15,7 @@ from .response_codes import DeviceStatusCode
 
 
 import logging
-logger = logging.getLogger('command_client')
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 

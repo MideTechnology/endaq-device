@@ -18,7 +18,7 @@ from uuid import uuid4
 import warnings
 
 import logging
-logger = logging.getLogger('endaq.device')
+logger = logging.getLogger(__name__)
 
 from ebmlite import loadSchema
 import serial

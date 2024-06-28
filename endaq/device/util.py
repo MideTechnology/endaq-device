@@ -9,7 +9,7 @@ import shutil
 import typing
 
 import logging
-logger = logging.getLogger("endaq.device")
+logger = logging.getLogger(__name__)
 
 
 def makeBackup(filename: typing.Union[str, pathlib.Path]) -> bool:

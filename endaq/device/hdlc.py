@@ -7,7 +7,7 @@ break characters.
 from typing import Union
 
 from logging import getLogger
-logger = getLogger('endaq.device')
+logger = getLogger(__name__)
 
 from .exceptions import CRCError
 
