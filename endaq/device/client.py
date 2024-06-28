@@ -8,7 +8,7 @@ software in the enDAQ ecosystem.
 
 from functools import wraps
 from threading import RLock
-from typing import Any, ByteString, Optional, Tuple
+from typing import Any, ByteString, Dict, Optional, Tuple
 
 from .command_interfaces import SerialCommandInterface, CommandError, CRCError, CommandInterface
 from .response_codes import DeviceStatusCode
@@ -45,7 +45,7 @@ def requires_lock(method):
     def wrapped(instance,
                 payload: Any,
                          lockId: Optional[int] = None
-            ) -> Tuple[dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+            ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
         if lockId != instance.lockId:
             logger.warning(f'Could not run {method.__name__} (mismatched LockID)')
             return {}, DeviceStatusCode.ERR_BAD_LOCK_ID, None
@@ -151,14 +151,14 @@ class CommandClient:
         self.sendResponse(recipient, response)
 
 
-    def decodeCommand(self, packet: ByteString) -> dict[str, Any]:
+    def decodeCommand(self, packet: ByteString) -> Dict[str, Any]:
         """ Decode/parse an incoming command message.
         """
         # Subclasses may override this as needed.
         return self.command._decodeCommand(packet)
 
 
-    def encodeResponse(self, response: dict[str, Any]) -> ByteString:
+    def encodeResponse(self, response: Dict[str, Any]) -> ByteString:
         """ Encode an outgoing response.
         """
         # Subclasses may override this as needed.
@@ -271,7 +271,7 @@ class CommandClient:
     def command_SendPing(self, 
                          payload: Any,
                          lockId: Optional[ByteString] = None
-            ) -> Tuple[dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+            ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
         """ Handle a ``SendPing`` command (EBML ID 0x5700).
 
             :param payload: The command element's value.
@@ -286,7 +286,7 @@ class CommandClient:
     def command_GetLockID(self, 
                           payload: ByteString,
                           lockId: Optional[ByteString] = None
-            ) -> Tuple[dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+            ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
         """ Handle a `<GetLockID>` command (EBML ID 0x5B00).
 
             :param payload: The command element's value.
@@ -299,9 +299,9 @@ class CommandClient:
 
 
     def command_SetLockID(self, 
-                          payload: dict[str, Any],
+                          payload: Dict[str, Any],
                           lockId: Optional[ByteString] = None
-            ) -> Tuple[dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+            ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
         """ Handle a `<SetLockID>` command (EBML ID 0x5B07).
 
             :param payload: The command element's value.
@@ -324,7 +324,7 @@ class CommandClient:
     def command_GetInfo(self,
                         payload: int,
                         lockId: Optional[ByteString] = None
-            ) -> Tuple[dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+            ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
         """ Main handler for the `<GetInfo>` command (EBML ID 0x5B00).
         """
         try:
@@ -335,9 +335,9 @@ class CommandClient:
 
 
     def command_SetInfo(self,
-                        payload: dict[str, Any],
+                        payload: Dict[str, Any],
                         lockId: Optional[ByteString] = None
-            ) -> Tuple[dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+            ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
         """ Main handler for the `<SetInfo>` command (EBML ID 0x5B07).
         """
         try:
