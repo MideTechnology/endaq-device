@@ -44,6 +44,7 @@ class MockClient(CommandClient):
     """ Mock `CommandClient` subclass for testing base functionality.
         Instantiate using `createMocks()`.
     """
+    # (Very) fake info. The actual contents don't matter for these tests.
     DEVINFO = b'this is fake devinfo'
     CONFIG = b'should fail if unlocked'
 
@@ -82,6 +83,13 @@ def createMocks(device: Recorder) -> Tuple[CommandInterface, CommandClient]:
     """ Create a mockup `CommandClient`, and a mockup `CommandInterface` to
         test it.
 
+        Note: the mock `CommandClient` uses the same instance of mock
+        `CommandInterface`. In real applications, the `CommandInterface`
+        sending commands and the `ComamndClient` would be on different
+        machines and/or processes, and the `CommandClient` would have its
+        own instance. The one `CommandInterface` is shared here for
+        conveniecne; this does not affect the tests.
+
         :param device: Any non-virtual test `Recorder`.
         :returns: The mock `CommandInterface` and `CommandClient`.
     """
@@ -89,4 +97,3 @@ def createMocks(device: Recorder) -> Tuple[CommandInterface, CommandClient]:
     client = MockClient(command)
     command.client = client
     return command, client
-

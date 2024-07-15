@@ -111,7 +111,6 @@
              These are for the Manager itself, and are not recognized by devices. -->
         <MasterElement name="GetDeviceList" id="0x5C00" multiple="0" mandatory="0"> Request a list of remote network devices </MasterElement>
         <UIntegerElement name="GetIDEHeader" id="0x5C20" multiple="0" mandatory="0"> Request the IDE header data from a specific recording device. Value is the device's serial number. </UIntegerElement>
-
     </MasterElement>
 
     <MasterElement name="EBMLResponse" id="0x86" multiple="0" mandatory="0">Response payload to above EBML command payload. Not all commands generate a response

@@ -369,8 +369,9 @@ class CommandClient:
                           lockId: Optional[int] = None
             ) -> Tuple[Dict[str, ByteString], Optional[DeviceStatusCode], Optional[str]]:
         """ Example of a `GetInfo` (0: `DEVINFO`) that does not require the
-            lock be set. This should be overridden by subclasses.
-
+            lock be set. This should be overridden by subclasses. This
+            implementation returns the same `ERR_BAD_INFO_INDEX` as is
+            returned when the requested method has not been implemented.
 
             Note: unlike other command methods, the first element of the
             response is `bytes` (e.g., the requested info as encoded EBML).
@@ -387,7 +388,9 @@ class CommandClient:
             ) -> Tuple[Dict[str, ByteString], Optional[DeviceStatusCode], Optional[str]]:
         """ Example of a `GetInfo` (5: `config.cfg`) that requires the lock
             be set. Note the use of the `requires_lock` decorator. This
-            should be overridden in subclasses.
+            should be overridden in subclasses.  This implementation returns
+            the same `ERR_BAD_INFO_INDEX` as is returned when the requested
+            method has not been implemented.
 
             Note: unlike other command methods, the first element of the
             response is `bytes` (e.g., the requested info as encoded EBML).
@@ -395,3 +398,4 @@ class CommandClient:
         return (b'',
                 DeviceStatusCode.ERR_BAD_INFO_INDEX,
                 'command_GetInfo_5() is only an example')
+
