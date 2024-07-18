@@ -28,7 +28,7 @@ from . import util
 if TYPE_CHECKING:
     from .base import Recorder
 
-logger = logging.getLogger('endaq.device')
+logger = logging.getLogger(__name__)
 
 
 # ===========================================================================

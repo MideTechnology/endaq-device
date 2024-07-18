@@ -15,7 +15,7 @@ from .types import Drive, Filename
 from .command_interfaces import SerialCommandInterface
 from . import util
 
-logger = logging.getLogger('endaq.device')
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .base import Recorder

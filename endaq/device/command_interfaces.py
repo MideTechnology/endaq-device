@@ -18,7 +18,7 @@ from uuid import uuid4
 import warnings
 
 import logging
-logger = logging.getLogger('endaq.device')
+logger = logging.getLogger(__name__)
 
 from ebmlite import loadSchema
 import serial
@@ -1799,8 +1799,9 @@ class SerialCommandInterface(CommandInterface):
             if callback is not None and callback():
                 return
             try:
-                if self.port.in_waiting:
-                    buf += self.port.read()
+                waiting = self.port.in_waiting
+                if waiting:
+                    buf += self.port.read(waiting)
                     self._lastbuf = buf
                     if HDLC_BREAK_CHAR in buf:
                         packet, _, buf = buf.partition(HDLC_BREAK_CHAR)

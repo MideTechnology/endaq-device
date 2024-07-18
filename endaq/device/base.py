@@ -44,7 +44,7 @@ from .command_interfaces import CommandInterface
 from .exceptions import *
 from .types import Drive, Filename, Epoch
 
-logger = logging.getLogger('endaq.device')
+logger = logging.getLogger(__name__)
 
 
 __all__ = ('Recorder', 'os_specific')
