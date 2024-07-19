@@ -49,6 +49,9 @@ class SimSerialPort:
         may return less characters as requested. With no timeout it will block
         until the requested number of bytes is read.
         """
+        if not self._is_open.is_set():
+            raise PortNotOpenError()
+
         if size < 1:
             return b''
 
