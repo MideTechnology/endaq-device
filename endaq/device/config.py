@@ -494,7 +494,7 @@ class ConfigInterface:
         """ All defined configuration items for the device, keyed by
             Config ID.
         """
-        if not self.configUi:
+        if not self.configUi or not self._items:
             self._items.clear()
             self._allitems.clear()
             self.configUi = self.getConfigUI()
