@@ -1,3 +1,8 @@
+"""
+A base class for simulated/vitual serial ports, implementing the core
+subset of `serial.Serial` methods required by `endaq.device`.
+"""
+
 from threading import Event
 from time import sleep, time
 from typing import Optional, Union
@@ -12,7 +17,6 @@ class SimSerialPort:
     A base class for simulated/vitual serial ports, implementing the core
     subset of `serial.Serial` methods required by `endaq.device`.
     """
-
 
     def __init__(self,
                  timeout: Optional[float] = None,

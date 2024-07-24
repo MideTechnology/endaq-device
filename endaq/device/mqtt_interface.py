@@ -370,7 +370,7 @@ class MQTTCommandInterface(SerialCommandInterface):
                      timeout: Union[int, float] = 1,
                      kwargs: Optional[Dict[str, Any]] = None) -> MQTTSerialPort:
         """
-            Create a virtual serial connection through the MQTT broker for posting
+            Create a virtual serial connection through the MQTT broker for reading
             device status updates (used by the MQTT device manager).
 
             :param reset: If `True`, reset the virual serial connection if already
@@ -385,7 +385,7 @@ class MQTTCommandInterface(SerialCommandInterface):
             self.statePort = None
         if not self.statePort:
             sn = str(self.device.serial).lstrip('SWH0')
-            self.statePort = self.client.new(write=f'endaq/{sn}/control/state',
+            self.statePort = self.client.new(read=f'endaq/{sn}/control/state',
                                              timeout=timeout,
                                              write_timeout=timeout,
                                              **kwargs)

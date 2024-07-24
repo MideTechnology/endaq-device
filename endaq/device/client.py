@@ -76,8 +76,10 @@ class CommandClient:
             recorder.
 
             :param command: An existing `CommandInterface` to use, if
-                required. Defaults to a standard `SerialCommandInterface`.
-                Mainly for use in subclasses that override `__init__()`.
+                required. Defaults to a standard `SerialCommandInterface`,
+                although it is only used for encoding/decoding packets (in
+                the base class), not communication. Mainly for use in
+                subclasses that override `__init__()`.
             :param make_crc: If `True`, generate CRCs for outgoing responses.
             :param ignore_crc: If `False`, do not validate incoming
                 commands.
@@ -261,15 +263,17 @@ class CommandClient:
     # Command methods must return a tuple containing:
     #   * Response dictionary. Commands that have no specific response should
     #     return an empty dict. Index-specific `GetInfo` methods should
-    #     return the binary value `InfoPayload`; `command_GetInfo()` builds
-    #     the rest of the response dictionary.
-    #   * A DeviceStatusCode to return (e.g., if the command generated an
-    #     error) which, if not None, overrides the system's DeviceStatusCode.
-    #   * A DeviceStatusMessage string which, if not None, overrides the
+    #     return the binary value for `InfoPayload`; `command_GetInfo()`
+    #     builds the rest of the response dictionary.
+    #   * A `DeviceStatusCode` to return (e.g., if the command generated an
+    #     error) which, if not `None`, overrides the instance's
+    #     `DeviceStatusCode`.
+    #   * A `DeviceStatusMessage` string which, if not `None`, overrides the
     #     system's DeviceStatusMessage. 
     # =======================================================================
 
-    def command_SendPing(self, 
+    # noinspection PyUnusedLocal
+    def command_SendPing(self,
                          payload: Any,
                          lockId: Optional[ByteString] = None
             ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
@@ -284,7 +288,8 @@ class CommandClient:
         return {'PingReply': payload}, None, None
     
 
-    def command_GetLockID(self, 
+    # noinspection PyUnusedLocal
+    def command_GetLockID(self,
                           payload: ByteString,
                           lockId: Optional[ByteString] = None
             ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
@@ -299,7 +304,8 @@ class CommandClient:
         return {'LockID': self.lockId}, None, None
 
 
-    def command_SetLockID(self, 
+    # noinspection PyUnusedLocal
+    def command_SetLockID(self,
                           payload: Dict[str, Any],
                           lockId: Optional[ByteString] = None
             ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
@@ -364,6 +370,7 @@ class CommandClient:
 
     # =======================================================================
 
+    # noinspection PyUnusedLocal
     def command_GetInfo_0(self,
                           payload: ByteString,
                           lockId: Optional[int] = None
@@ -381,6 +388,7 @@ class CommandClient:
                 'command_GetInfo_0() is only an example')
 
 
+    # noinspection PyUnusedLocal
     @requires_lock
     def command_GetInfo_5(self,
                           payload: ByteString,
