@@ -1,11 +1,13 @@
 from logging import getLogger
-from threading import Event, RLock, Thread
+from threading import Event, Thread
 from time import sleep, time
-from typing import Any, Dict, Optional, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 from weakref import WeakValueDictionary
 
 from .client import synchronized
 from .command_interfaces import SerialCommandInterface
+from .devinfo import MQTTDeviceInfo
+from .exceptions import CommunicationError, DeviceError
 from .simserial import SimSerialPort
 
 import paho.mqtt.client as mqtt
@@ -16,13 +18,21 @@ if TYPE_CHECKING:
 
 logger = getLogger(__name__)
 
-# Temporary. For testing.
 MQTT_BROKER = "localhost"
 MQTT_PORT = 1883
 KEEP_ALIVE_INTERVAL = 60*60  #: MQTT client 'keep alive' time
-
 THREAD_KEEP_ALIVE_INTERVAL = 60 * 5  #: Thread 'keep alive' time if there are no connections
 
+COMMAND_TOPIC = "endaq/{sn}/control/command"
+RESPONSE_TOPIC = "endaq/{sn}/control/response"
+STATE_TOPIC = "endaq/{sn}/control/state"
+
+_CLIENT_INSTANCE = None  #: A default instance of `MQTTSerialClient`
+
+
+# ===========================================================================
+#
+# ===========================================================================
 
 class MQTTSerialClient:
     """
@@ -32,7 +42,7 @@ class MQTTSerialClient:
     """
 
     def __init__(self,
-              host: str,
+              host: str= MQTT_BROKER,
               port: int = MQTT_PORT,
               username: Optional[str] = None,
               password: Optional[str] = None,
@@ -359,9 +369,65 @@ class MQTTCommandInterface(SerialCommandInterface):
             self.port = None
         if not self.port:
             sn = str(self.device.serial).lstrip('SWH0')
-            self.port = self.client.new(read=f'endaq/{sn}/control/response',
-                                        write=f'endaq/{sn}/control/command',
+            self.port = self.client.new(write=COMMAND_TOPIC.format(sn=sn),
+                                        read=RESPONSE_TOPIC.format(sn=sn),
                                         timeout=timeout,
                                         write_timeout=timeout,
                                         **kwargs)
         return self.port
+
+
+# ===========================================================================
+#
+# ===========================================================================
+
+def getRemoteDevices(known: Optional[Dict[int, Recorder]] = None,
+                     client: Optional[MQTTSerialClient] = None) -> List[Recorder]:
+    """ Get a list of data recorder objects from the MQTT broker.
+
+        :param known: A dictionary of known `Recorder` instances, keyed by
+            device serial number.
+        :param client:
+    """
+    client = client or _CLIENT_INSTANCE
+    if not client:
+        raise CommunicationError("MQTT client has not been created/configured")
+
+    # Imported here to avoid circular references.
+    # I don't like doing this, but I think this case is okay.
+    from . import _module_busy, RECORDER_TYPES
+
+    if known is None:
+        known = {}
+
+    devices = []
+
+    # Dummy recorder and command interface to retrieve DEVINFO
+    fake = Recorder(None)
+    fake._sn, fake._snInt = 'manager', 0
+    fake.command = MQTTCommandInterface(fake, client)
+
+    with _module_busy:
+        try:
+            response = fake.command._sendCommand({'EBMLCommand': {'GetDeviceList': {}}})
+            items = response['DeviceList']['DeviceListItem']
+        except KeyError as err:
+            raise DeviceError(f"Manager response did not contain {err.args[0]}")
+
+        for listItem in items:
+            # TODO: Error catching in loop
+            sn = listItem['SerialNumber']
+            if sn in known:
+                devices.append(known[sn])
+                continue
+
+            info = listItem['GetInfoResponse']['InfoPayload']
+            for devtype in RECORDER_TYPES:
+                if devtype._isRecorder(info):
+                    device = devtype(None, devinfo=info)
+                    device.command = MQTTCommandInterface(device, client)
+                    device._devinfo = MQTTDeviceInfo(device)
+                    devices.append(device)
+                    break
+
+    return devices
