@@ -47,7 +47,9 @@ def requires_lock(method):
     def wrapped(instance,
                 payload: Any,
                 lockId: Optional[int] = None
-            ) -> Tuple[Union[Dict[str, Any], ByteString], Optional[DeviceStatusCode], Optional[str]]:
+            ) -> Tuple[Union[Dict[str, Any], ByteString],
+                       Optional[DeviceStatusCode],
+                       Optional[str]]:
         if lockId != instance.lockId:
             logger.warning(f'Could not run {method.__name__} (mismatched LockID)')
             return {}, DeviceStatusCode.ERR_BAD_LOCK_ID, None
@@ -63,8 +65,8 @@ class CommandClient:
     """
     A base class for receiving, parsing, and responding to enDAQ commands in
     the same way as (or similar to) an enDAQ data recorder. It is intended
-    for testing `endaq.device` and developing non-embedded software in the
-    enDAQ ecosystem.
+    for testing `endaq.device` and for developing non-embedded software in
+    the enDAQ ecosystem.
     """
 
     def __init__(self,
@@ -124,6 +126,12 @@ class CommandClient:
                      packet: ByteString):
         """ Transmit a complete, encoded response packet. 
             Must be implemented for each subclass.
+
+            :param recipient: The device/computer/connection that sent the
+                command. Its type determined by the `CommandClient` subclass;
+                it can be `None` if not specifically needed by the subclass'
+                `sendResponse()` method.
+            :param packet: The complete, encoded response packet to send.
         """
         raise NotImplementedError('CommandClient.sendResponse()')
 
@@ -137,7 +145,9 @@ class CommandClient:
             returned when commands could not be parsed/processed.
 
             :param recipient: The device/computer/connection that sent the
-                command. Its type determined by the `CommandClient` subclass.
+                command. Its type determined by the `CommandClient` subclass;
+                it can be `None` if not specifically needed by the subclass'
+                `sendResponse()` method.
             :param statusCode: The error status code to send.
             :param statusMsg: Optional descriptive error message.
         """
@@ -169,7 +179,9 @@ class CommandClient:
 
             :param packet: The raw command message payload.
             :param sender: The device/computer/connection that sent the
-                command. Its type determined by the `CommandClient` subclass.
+                command. Its type determined by the `CommandClient` subclass;
+                it can be `None` if not specifically needed by the subclass'
+                `sendResponse()` method.
         """
         # Attempt to parse, and generate basic errors for bad packets.
         try:

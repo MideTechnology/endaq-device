@@ -2,6 +2,7 @@ from logging import getLogger
 from threading import Event, RLock, Thread
 from time import sleep, time
 from typing import Any, Dict, Optional, Union, TYPE_CHECKING
+from weakref import WeakValueDictionary
 
 from .client import synchronized
 from .command_interfaces import SerialCommandInterface
@@ -33,6 +34,8 @@ class MQTTSerialClient:
     def __init__(self,
               host: str,
               port: int = MQTT_PORT,
+              username: Optional[str] = None,
+              password: Optional[str] = None,
               mqttKeepAlive: int = KEEP_ALIVE_INTERVAL,
               threadKeepAlive: int = THREAD_KEEP_ALIVE_INTERVAL,
               clientArgs: Dict[str, Any] = None,
@@ -43,6 +46,10 @@ class MQTTSerialClient:
 
             :param host: The hostname of the MQTT broker.
             :param port: The port to which to connect.
+            :param username: The username to use to connect to the broker,
+                if required.
+            :param password: The password to use to connect to the broker,
+                if required.
             :param mqttKeepAlive: The number of seconds to keep the MQTT
                 client connection alive.
             :param threadKeepAlive: The number of seconds to keep the
@@ -55,6 +62,8 @@ class MQTTSerialClient:
         """
         self.host = host
         self.port = port
+        self.username = username
+        self.password = password
         self.keepalive = mqttKeepAlive
         self.threadKeepAlive = threadKeepAlive
         self.clientArgs = clientArgs or {}
@@ -63,44 +72,32 @@ class MQTTSerialClient:
         self.client: mqtt.Client = None
         self.thread: Thread = None
         self._stop = Event()
-        self.subscribers: Dict[str, "MQTTSerialPort"] = {}
+        self.subscribers: Dict[str, "MQTTSerialPort"] = WeakValueDictionary()
 
         self.setup(host, port,
+                   username=username, password=password,
                    mqttKeepAlive=mqttKeepAlive, threadKeepAlive=threadKeepAlive,
                    clientArgs=clientArgs, connectArgs=connectArgs)
 
 
+    @synchronized
     def setup(self,
-              host: str = None,
-              port: int = MQTT_PORT,
-              mqttKeepAlive: int = KEEP_ALIVE_INTERVAL,
-              threadKeepAlive: int = THREAD_KEEP_ALIVE_INTERVAL,
-              clientArgs: Dict[str, Any] = None,
-              connectArgs: Dict[str, Any] = None):
+              **kwargs):
         """
             The actual initialization of a new instance. Separated from
             the constructor so it can be used to change an existing
-            instance.
-
-            :param host: The hostname of the MQTT broker.
-            :param port: The port to which to connect.
-            :param mqttKeepAlive: The number of seconds to keep the MQTT
-                client connection alive.
-            :param threadKeepAlive: The number of seconds to keep the
-                data-reading thread alive after all `MQTTSerialPort`
-                instances have closed.
-            :param clientArgs: Additional arguments to be used in the
-                instantiation of the `paho.mqtt.client.Client`.
-            :param connectArgs: Additional arguments to be used with
-                `paho.mqtt.client.Client.connect()`.
+            instance. Takes the same keyword arguments as `__init__()`.
+            Arguments that are unsupplied will remain unchanged.
         """
         self.disconnect()
-        self.host = host or self.host
-        self.port = port or self.port
-        self.keepalive = mqttKeepAlive if mqttKeepAlive is not None else self.keepalive
-        self.threadKeepAlive = threadKeepAlive if threadKeepAlive is not None else self.threadKeepAlive
-        self.clientArgs = clientArgs or {}
-        self.connectArgs = connectArgs or {}
+        self.host = kwargs.get('host', self.host)
+        self.port = kwargs.get('port', self.port)
+        self.username = kwargs.get('username', self.username)
+        self.password = kwargs.get('password', self.password)
+        self.keepalive = kwargs.get('keepalive', self.keepalive)
+        self.threadKeepAlive = kwargs.get('threadKeepAlive', self.threadKeepAlive)
+        self.clientArgs = kwargs.get('clientArgs', self.clientArgs)
+        self.connectArgs = kwargs.get('connectArgs', self.connectArgs)
 
         self.lastUsedTime = time()
 
@@ -113,6 +110,8 @@ class MQTTSerialClient:
         """
         if not self.client:
             self.client = mqtt.Client(**self.clientArgs)
+            if self.username or self.password:
+                self.client.username_pw_set(self.username, self.password)
 
         if not self.client.is_connected():
             self.client.connect(self.host, port=self.port, **self.connectArgs)
@@ -152,7 +151,7 @@ class MQTTSerialClient:
         """ Connect a `MQTTSerialPort` to the client.
         """
         if subscriber.readTopic is None:
-            # A write-only port
+            # A write-only port, no additional setup.
             return
 
         self.connect()
@@ -171,6 +170,9 @@ class MQTTSerialClient:
 
     @synchronized
     def publish(self, subscriber: "MQTTSerialPort", message: bytes):
+        """ Send an MQTT message containing the contents of a call to
+            `MQTTSerialPort.write()`
+        """
         if not subscriber.writeTopic:
             raise IOError('Port is read-only')
 
@@ -223,9 +225,9 @@ class MQTTSerialClient:
             is recommended over directly instantiating an `MQTTSerialPort`.
 
             :param read: The MQTT topic serving as RX. Can be `None` if the
-                port is only read from.
-            :param write: The MQTT topic serving as TX. Can be `None` if the
                 port is only written to.
+            :param write: The MQTT topic serving as TX. Can be `None` if the
+                port is only read from.
             :param timeout: Timeout (seconds) for port reads.
             :param write_timeout: Timeout (seconds) for port writes.
             :param maxsize: The maximum size of the read buffer.
@@ -234,6 +236,7 @@ class MQTTSerialClient:
         port = MQTTSerialPort(self, read=read, write=write,
                               timeout=timeout, write_timeout=write_timeout,
                               maxsize=maxsize, qos=qos)
+
         self.add(port)
         return port
 
@@ -333,7 +336,6 @@ class MQTTCommandInterface(SerialCommandInterface):
             when opening the serial port.
         """
         self.client = client
-        self.statePort = None
         super().__init__(device, make_crc=make_crc, ignore_crc=ignore_crc, **kwargs)
 
 
@@ -363,30 +365,3 @@ class MQTTCommandInterface(SerialCommandInterface):
                                         write_timeout=timeout,
                                         **kwargs)
         return self.port
-
-
-    def getStatePort(self,
-                     reset: bool = False,
-                     timeout: Union[int, float] = 1,
-                     kwargs: Optional[Dict[str, Any]] = None) -> MQTTSerialPort:
-        """
-            Create a virtual serial connection through the MQTT broker for reading
-            device status updates (used by the MQTT device manager).
-
-            :param reset: If `True`, reset the virual serial connection if already
-                open.
-            :param timeout: Time (in seconds) to get the serial port.
-            :param kwargs: Additional keyword arguments to be used when opening
-                the port.
-            :return: A `MQTTSerialPort` instance.
-        """
-        if reset and self.statePort:
-            self.statePort.close()
-            self.statePort = None
-        if not self.statePort:
-            sn = str(self.device.serial).lstrip('SWH0')
-            self.statePort = self.client.new(read=f'endaq/{sn}/control/state',
-                                             timeout=timeout,
-                                             write_timeout=timeout,
-                                             **kwargs)
-        return self.statePort
