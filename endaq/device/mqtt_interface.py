@@ -1,7 +1,7 @@
-from logging import getLogger
+import logging
 from threading import Event, Thread
 from time import sleep, time
-from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Union
 from weakref import WeakValueDictionary
 
 from .client import synchronized
@@ -13,28 +13,38 @@ from .simserial import SimSerialPort
 import paho.mqtt.client as mqtt
 from serial import PortNotOpenError
 
+from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .base import Recorder
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# ===========================================================================
+#
+# ===========================================================================
 
 MQTT_BROKER = "localhost"
 MQTT_PORT = 1883
-KEEP_ALIVE_INTERVAL = 60*60  #: MQTT client 'keep alive' time
-THREAD_KEEP_ALIVE_INTERVAL = 60 * 5  #: Thread 'keep alive' time if there are no connections
+KEEP_ALIVE_INTERVAL = 60*60  #: MQTT client 'keep alive' time (seconds)
+THREAD_KEEP_ALIVE_INTERVAL = 60 * 5  #: Thread 'keep alive' time (seconds) if there are no connections
+
+# Default keyword arguments for `paho.mqtt.client.Client.__init__()` and `.connect()`
+CLIENT_INIT_ARGS = (('callback_api_version', mqtt.CallbackAPIVersion.VERSION2),)
+CLIENT_CONNECT_ARGS = ()
 
 COMMAND_TOPIC = "endaq/{sn}/control/command"
 RESPONSE_TOPIC = "endaq/{sn}/control/response"
 STATE_TOPIC = "endaq/{sn}/control/state"
 
-_CLIENT_INSTANCE = None  #: A default instance of `MQTTSerialClient`
+_MANAGER_INSTANCE = None  #: A default instance of `MQTTSerialManager`
 
 
 # ===========================================================================
 #
 # ===========================================================================
 
-class MQTTSerialClient:
+class MQTTSerialManager:
     """
     Class that manages the MQTT Broker connection for virtual serial ports
     over MQTT. Generally, there will be only one instance of this class,
@@ -76,18 +86,18 @@ class MQTTSerialClient:
         self.password = password
         self.keepalive = mqttKeepAlive
         self.threadKeepAlive = threadKeepAlive
-        self.clientArgs = clientArgs or {}
-        self.connectArgs = connectArgs or {}
+        self.clientArgs = dict(CLIENT_INIT_ARGS)
+        self.connectArgs = dict(CLIENT_CONNECT_ARGS)
+
+        self.clientArgs.update(clientArgs or {})
+        self.connectArgs.update(connectArgs or {})
 
         self.client: mqtt.Client = None
         self.thread: Thread = None
         self._stop = Event()
         self.subscribers: Dict[str, "MQTTSerialPort"] = WeakValueDictionary()
 
-        self.setup(host, port,
-                   username=username, password=password,
-                   mqttKeepAlive=mqttKeepAlive, threadKeepAlive=threadKeepAlive,
-                   clientArgs=clientArgs, connectArgs=connectArgs)
+        self.setup()
 
 
     @synchronized
@@ -119,22 +129,27 @@ class MQTTSerialClient:
             (re-)start the thread (if not running).
         """
         if not self.client:
+            logger.debug(f'instantiating {mqtt.Client}...')
             self.client = mqtt.Client(**self.clientArgs)
+
+            self.client.on_message = self.onMessage
+            self.client.on_disconnect = self.onDisconnect
             if self.username or self.password:
                 self.client.username_pw_set(self.username, self.password)
 
         if not self.client.is_connected():
-            self.client.connect(self.host, port=self.port, **self.connectArgs)
-            self.client.on_message = self.onMessage
-            self.client.on_publish = self.onPublish
-            self.client.on_disconnect = self.onDisconnect
-            for sn, s in self.subscribers:
-                if s.readTopic:
-                    self.client.subscribe(s.readTopic, qos=s.qos)
+            logger.debug('connecting...')
+            err = self.client.connect(self.host, port=self.port, **self.connectArgs)
+            if err != mqtt.MQTT_ERR_SUCCESS:
+                raise CommunicationError(f'Failed to connect to broker: {err!r}')
 
-        if not self.thread.is_alive():
+            for s in self.subscribers.values():
+                if s.readTopic:
+                    self.add(s)
+
+        if not self.thread or not self.thread.is_alive():
             self.thread = Thread(target=self.run, daemon=True)
-            self.thread.name = self.thread.name.replace('Thread', type(self).__name__)
+            self.thread.name = f'{type(self).__name__}{self.thread.name}'
             self._stop.clear()
             self.thread.start()
 
@@ -149,7 +164,7 @@ class MQTTSerialClient:
                 sleep(0.1)
 
         if self.client and self.client.is_connected():
-            self.client.unsubscribe('#')
+            # self.client.unsubscribe('#')
             self.client.disconnect()
 
         self._stop.clear()
@@ -164,9 +179,14 @@ class MQTTSerialClient:
             # A write-only port, no additional setup.
             return
 
-        self.connect()
-        self.subscribers[subscriber.readTopic] = subscriber
-        self.client.subscribe(subscriber.readTopic, qos=subscriber.qos)
+        if subscriber not in self.subscribers.values():
+            self.subscribers[subscriber.readTopic] = subscriber
+
+        result, _mid = self.client.subscribe(subscriber.readTopic, qos=subscriber.qos)
+        if result != mqtt.MQTT_ERR_SUCCESS:
+            logger.error(f'Error subscribing to {subscriber.readTopic!r}: {result!r}')
+        else:
+            logger.debug(f'Subscribed to {subscriber.readTopic!r}')
 
 
     @synchronized
@@ -179,20 +199,30 @@ class MQTTSerialClient:
 
 
     @synchronized
-    def publish(self, subscriber: "MQTTSerialPort", message: bytes):
+    def publishSubscriber(self, subscriber: "MQTTSerialPort", message: bytes):
         """ Send an MQTT message containing the contents of a call to
             `MQTTSerialPort.write()`
         """
+        logger.debug(f'publishing {len(message)} bytes to topic {subscriber.writeTopic}')
         if not subscriber.writeTopic:
             raise IOError('Port is read-only')
 
+        self.lastUsedTime = time()
         self.connect()
-        self.client.publish(subscriber.writeTopic, message, qos=subscriber.qos)
+        info = self.client.publish(subscriber.writeTopic, bytes(message), qos=subscriber.qos)
+        if info.rc != mqtt.MQTT_ERR_SUCCESS:
+            logger.error(f'Error publishing to virtual serial: {info.rc!r}')
+            return
+        try:
+            info.wait_for_publish(1.0)
+        except RuntimeError as err:
+            logger.error(f'Error waiting for response to publishing to virtual serial: {err!r}')
 
 
     def onMessage(self, _client, _userdata, message):
         """ MQTT event handler for messages.
         """
+        logger.debug(f'received {len(message.payload)} bytes on {message.topic}')
         if message.topic in self.subscribers:
             self.lastUsedTime = time()
             self.subscribers[message.topic].append(message.payload)
@@ -200,16 +230,15 @@ class MQTTSerialClient:
             logger.debug(f'Message from unknown topic: {message.topic}')
 
 
-    def onPublish(self, _client, _userdata, _rc):
         """ MQTT event handler called when messages are published.
         """
         self.lastUsedTime = time()
 
 
-    def onDisconnect(self, _client, _userdata, _rc):
+    def onDisconnect(self, client, userdata, disconnect_flags, reason_code, properties):
         """ MQTT event handler called when the client disconnects.
         """
-        logger.debug('Disconnected from MQTT broker')
+        logger.debug(f'Disconnected from MQTT broker {reason_code=!r}')
         pass
 
 
@@ -221,6 +250,12 @@ class MQTTSerialClient:
             if not self.subscribers and time() - self.lastUsedTime > self.keepalive:
                 break
             sleep(0.01)
+
+
+    def stop(self):
+        self._stop.set()
+        while self.thread and self.thread.is_alive():
+            sleep(0.1)
 
 
     def new(self,
@@ -243,6 +278,13 @@ class MQTTSerialClient:
             :param maxsize: The maximum size of the read buffer.
             :param qos: MQTT quality of service for writes.
         """
+        self.connect()
+        if read in self.subscribers:
+            port = self.subscribers[read]
+            logger.debug(f'new(): returning existing port, read={port.readTopic} write={port.writeTopic}')
+            return port
+
+        logger.debug(f'new(): creating new serial port, {read=} {write=}')
         port = MQTTSerialPort(self, read=read, write=write,
                               timeout=timeout, write_timeout=write_timeout,
                               maxsize=maxsize, qos=qos)
@@ -257,7 +299,7 @@ class MQTTSerialPort(SimSerialPort):
     """
 
     def __init__(self,
-                 client: MQTTSerialClient,
+                 manager: MQTTSerialManager,
                  read: Optional[str] = None,
                  write: Optional[str] = None,
                  timeout: Optional[float] = None,
@@ -266,10 +308,10 @@ class MQTTSerialPort(SimSerialPort):
                  qos: int = 1):
         """
             A virtual serial port, communicating over MQTT. For convenience,
-            using `MQTTSerialClient.new()` is recommended over explicitly
+            using `MQTTSerialManager.new()` is recommended over explicitly
             instantiating a `MQTTSerialPort` 'manually.'
 
-            :param client: The port's supporting `MQTTSerialClient`.
+            :param manager: The port's supporting `MQTTSerialManager`.
             :param read: The MQTT topic serving as RX. Can be `None` if the
                 port is only read from.
             :param write: The MQTT topic serving as TX. Can be `None` if the
@@ -282,13 +324,13 @@ class MQTTSerialPort(SimSerialPort):
         self.readTopic = read
         self.writeTopic = write
         self.qos = qos
-        self.client = client
+        self.manager = manager
         super().__init__(timeout=timeout, write_timeout=write_timeout, maxsize=maxsize)
 
 
     @synchronized
     def close(self):
-        self.client.remove(self)
+        self.manager.remove(self)
         return super().close()
 
 
@@ -306,9 +348,10 @@ class MQTTSerialPort(SimSerialPort):
             Write to the virtual serial port (if allowed).
         """
         if not self.is_open:
+            logger.error('write() failed: port not open')
             raise PortNotOpenError()
         if self.writeTopic:
-            self.client.client.publish(self.writeTopic, data, qos=self.qos)
+            self.manager.publishSubscriber(self, data)
             return len(data)
         raise TypeError('No write topic specified, port is read-only.')
 
@@ -330,7 +373,7 @@ class MQTTCommandInterface(SerialCommandInterface):
 
     def __init__(self,
                  device: 'Recorder',
-                 client: MQTTSerialClient,
+                 client: MQTTSerialManager,
                  make_crc: bool = True,
                  ignore_crc: bool = False,
                  **kwargs):
@@ -338,7 +381,7 @@ class MQTTCommandInterface(SerialCommandInterface):
             Constructor.
 
             :param device: The Recorder to which to interface.
-            :param client: The `MQTTSerialClient` to manage the port.
+            :param client: The `MQTTSerialManager` to manage the port.
             :param make_crc: If `True`, generate CRCs for outgoing packets.
             :param ignore_crc: If `True`, ignore the CRC on response packets.
 
@@ -364,6 +407,7 @@ class MQTTCommandInterface(SerialCommandInterface):
                 the port.
             :return: A `MQTTSerialPort` instance.
         """
+        kwargs = kwargs or {}
         if reset and self.port:
             self.port.close()
             self.port = None
@@ -374,6 +418,7 @@ class MQTTCommandInterface(SerialCommandInterface):
                                         timeout=timeout,
                                         write_timeout=timeout,
                                         **kwargs)
+        self.port.open()
         return self.port
 
 
@@ -381,21 +426,40 @@ class MQTTCommandInterface(SerialCommandInterface):
 #
 # ===========================================================================
 
-def getRemoteDevices(known: Optional[Dict[int, Recorder]] = None,
-                     client: Optional[MQTTSerialClient] = None) -> List[Recorder]:
+def getRemoteDevices(known: Optional[Dict[int, "Recorder"]] = None,
+                     client: Optional[MQTTSerialManager] = None,
+                     timeout: Union[int, float] = 10.0,
+                     managerTimeout: Optional[int] = None,
+                     callback: Optional[Callable] = None) -> List["Recorder"]:
     """ Get a list of data recorder objects from the MQTT broker.
 
         :param known: A dictionary of known `Recorder` instances, keyed by
             device serial number.
-        :param client:
+        :param client: An `MQTTSerialManager` instance, if the client requires
+            specific arguments or preparation. Defaults to a client with
+            the default arguments.
+        :param timeout: Time (in seconds) to wait for a response from the
+            Device Manager before raising a `DeviceTimeout` exception. `None`
+            or -1 will wait indefinitely.
+        :param managerTimeout: A value (in seconds) that overrides the remote
+            Device Manager's timeout that excludes inactive devices. 0 will
+            return all devices, regardless of how long it has been since they
+            reported to the Device Manager.
+        :param callback: A function to call each response-checking
+            cycle. If the callback returns `True`, the wait for a
+            response will be cancelled. The callback function
+            requires no arguments.
+
     """
-    client = client or _CLIENT_INSTANCE
+    global _MANAGER_INSTANCE
+    client = client or _MANAGER_INSTANCE
+
     if not client:
-        raise CommunicationError("MQTT client has not been created/configured")
+        client = _MANAGER_INSTANCE = MQTTSerialManager()
 
     # Imported here to avoid circular references.
     # I don't like doing this, but I think this case is okay.
-    from . import _module_busy, RECORDER_TYPES
+    from . import _module_busy, RECORDER_TYPES, Recorder
 
     if known is None:
         known = {}
@@ -409,25 +473,33 @@ def getRemoteDevices(known: Optional[Dict[int, Recorder]] = None,
 
     with _module_busy:
         try:
-            response = fake.command._sendCommand({'EBMLCommand': {'GetDeviceList': {}}})
+            cmd = {'EBMLCommand': {'GetDeviceList': {}}}
+            if managerTimeout is not None:
+                cmd['EBMLCommand']['GetDeviceList']['Timeout'] = managerTimeout
+            response = fake.command._sendCommand(cmd, timeout=timeout, callback=callback)
+            if not response['DeviceList']:
+                return devices
             items = response['DeviceList']['DeviceListItem']
+
         except KeyError as err:
             raise DeviceError(f"Manager response did not contain {err.args[0]}")
 
-        for listItem in items:
-            # TODO: Error catching in loop
-            sn = listItem['SerialNumber']
-            if sn in known:
-                devices.append(known[sn])
-                continue
+        for n, listItem in enumerate(items):
+            try:
+                sn = listItem['SerialNumber']
+                if sn in known:
+                    devices.append(known[sn])
+                    continue
 
-            info = listItem['GetInfoResponse']['InfoPayload']
-            for devtype in RECORDER_TYPES:
-                if devtype._isRecorder(info):
-                    device = devtype(None, devinfo=info)
-                    device.command = MQTTCommandInterface(device, client)
-                    device._devinfo = MQTTDeviceInfo(device)
-                    devices.append(device)
-                    break
+                info = bytes(listItem['GetInfoResponse']['InfoPayload'])
+                for devtype in RECORDER_TYPES:
+                    if devtype._isRecorder(info):
+                        device = devtype('remote', devinfo=info)
+                        device.command = MQTTCommandInterface(device, client)
+                        device._devinfo = MQTTDeviceInfo(device)
+                        devices.append(device)
+                        break
+            except KeyError as err:
+                logger.error(f'DeviceListItem {n} from Manager did not contain {err.args[0]}')
 
     return devices

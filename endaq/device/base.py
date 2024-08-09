@@ -426,8 +426,8 @@ class Recorder:
             self.clockFile = self.userCalFile = self.configUIFile = None
             self.recpropFile = self.commandFile = None
 
-            if str(newpath).lower().startswith("mqtt"):
-                path = None
+            if str(newpath).lower().startswith(('mqtt', 'remote')):
+                path = newpath
 
             elif newpath is not None:
                 newpath = newpath.path if isinstance(newpath, Drive) else newpath
@@ -633,7 +633,7 @@ class Recorder:
             return False
         elif not self._path:
             return True
-        return str(self._path).lower().startswith(('mqtt',))
+        return str(self._path).lower().startswith(('mqtt', 'remote'))
 
 
     @property

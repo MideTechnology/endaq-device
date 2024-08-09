@@ -237,7 +237,8 @@ class CommandClient:
         if statusMsg:
             response['DeviceStatusMessage'] = statusMsg
 
-        self.sendResponse(sender, self.command._encodeResponse(response))
+        packet = self.command._encodeResponse({'EBMLResponse': response})
+        self.sendResponse(sender, packet)
 
 
     def checkLock(self, lockId: ByteString) -> bool:

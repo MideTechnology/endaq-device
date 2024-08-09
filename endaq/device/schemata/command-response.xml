@@ -109,7 +109,9 @@
 
         <!-- Network (MQTT) Device Manager commands (ID 0x5Cxx).
              These are for the Manager itself, and are not recognized by devices. -->
-        <MasterElement name="GetDeviceList" id="0x5C00" multiple="0" mandatory="0"> Request a list of remote network devices </MasterElement>
+        <MasterElement name="GetDeviceList" id="0x5C00" multiple="0" mandatory="0"> Request a list of remote network devices
+            <UIntegerElement name="Timeout" id="0x5C01" multiple="0" mandatory="0"> Optional timeout to exclude incommunicado devices, overriding manager's default </UIntegerElement>
+        </MasterElement>
         <UIntegerElement name="GetIDEHeader" id="0x5C20" multiple="0" mandatory="0"> Request the IDE header data from a specific recording device. Value is the device's serial number. </UIntegerElement>
     </MasterElement>
 

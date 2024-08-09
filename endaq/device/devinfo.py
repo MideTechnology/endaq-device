@@ -345,14 +345,6 @@ class MQTTDeviceInfo(SerialDeviceInfo):
     encoding is done by the caller.
     """
 
-    # Very similar to SerialDeviceInfo, in that they get data via the command
-    # interface.
-    # XXX: PLACEHOLDER!
-    def __init__(self, device: 'Recorder', **_kwargs):
-        logger.warning('MQTTDeviceInfo not implemented!', NotImplemented)
-        super().__init__(device, **_kwargs)
-
-
     @classmethod
     def hasInterface(cls, device: "Recorder") -> bool:
         """ Determine if a device supports this `DeviceInfo` type.
@@ -367,8 +359,8 @@ class MQTTDeviceInfo(SerialDeviceInfo):
         if device.isVirtual:
             return False
 
-        # TODO: Better mechanism for identifying MQTT devices
-        return device.path and device.path.lower().startswith('mqtt')
+        # TODO: Better mechanism for identifying MQTT devices?
+        return device.path and device.path.lower().startswith(('mqtt', 'remote'))
 
 
 # ===========================================================================
