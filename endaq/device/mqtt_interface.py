@@ -101,8 +101,7 @@ class MQTTSerialManager:
 
 
     @synchronized
-    def setup(self,
-              **kwargs):
+    def setup(self, **kwargs):
         """
             The actual initialization of a new instance. Separated from
             the constructor so it can be used to change an existing
@@ -128,6 +127,8 @@ class MQTTSerialManager:
             Connect/reconnect to the MQTT Broker (if not connected), and
             (re-)start the thread (if not running).
         """
+        self.lastUsedTime = time()
+
         if not self.client:
             logger.debug(f'instantiating {mqtt.Client}...')
             self.client = mqtt.Client(**self.clientArgs)
@@ -153,8 +154,6 @@ class MQTTSerialManager:
             self._stop.clear()
             self.thread.start()
 
-        self.lastUsedTime = time()
-
 
     @synchronized
     def disconnect(self):
@@ -175,6 +174,8 @@ class MQTTSerialManager:
     def add(self, subscriber: "MQTTSerialPort"):
         """ Connect a `MQTTSerialPort` to the client.
         """
+        self.lastUsedTime = time()
+
         if subscriber.readTopic is None:
             # A write-only port, no additional setup.
             return
@@ -207,7 +208,6 @@ class MQTTSerialManager:
         if not subscriber.writeTopic:
             raise IOError('Port is read-only')
 
-        self.lastUsedTime = time()
         self.connect()
         info = self.client.publish(subscriber.writeTopic, bytes(message), qos=subscriber.qos)
         if info.rc != mqtt.MQTT_ERR_SUCCESS:
@@ -230,15 +230,11 @@ class MQTTSerialManager:
             logger.debug(f'Message from unknown topic: {message.topic}')
 
 
-        """ MQTT event handler called when messages are published.
-        """
-        self.lastUsedTime = time()
-
-
+    # noinspection PyUnusedLocal
     def onDisconnect(self, client, userdata, disconnect_flags, reason_code, properties):
         """ MQTT event handler called when the client disconnects.
         """
-        logger.debug(f'Disconnected from MQTT broker {reason_code=!r}')
+        logger.debug(f'Disconnected MQTT broker ({reason_code.getName()})')
         pass
 
 
@@ -341,6 +337,16 @@ class MQTTSerialPort(SimSerialPort):
             from another thread.
         """
         self.buffer.extend(data)
+
+
+    def read(self, size: int = 1) -> bytes:
+        """
+        Read size bytes from the virtual serial port. If a timeout is set it
+        may return less characters as requested. With no timeout it will block
+        until the requested number of bytes is read.
+        """
+        self.manager.lastUsedTime = time()
+        return super().read(size)
 
 
     def write(self, data: bytes) -> int:
