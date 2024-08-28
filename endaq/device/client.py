@@ -237,7 +237,7 @@ class CommandClient:
         if statusMsg:
             response['DeviceStatusMessage'] = statusMsg
 
-        packet = self.command._encodeResponse({'EBMLResponse': response})
+        packet = self.encodeResponse({'EBMLResponse': response})
         self.sendResponse(sender, packet)
 
 
@@ -387,7 +387,7 @@ class CommandClient:
     def command_GetInfo_0(self,
                           payload: ByteString,
                           lockId: Optional[int] = None
-            ) -> Tuple[Dict[str, ByteString], Optional[DeviceStatusCode], Optional[str]]:
+            ) -> Tuple[ByteString, Optional[DeviceStatusCode], Optional[str]]:
         """ Example of a `GetInfo` (0: `DEVINFO`) that does not require the
             lock be set. This should be overridden by subclasses. This
             implementation returns the same `ERR_BAD_INFO_INDEX` as is
@@ -406,7 +406,7 @@ class CommandClient:
     def command_GetInfo_5(self,
                           payload: ByteString,
                           lockId: Optional[int] = None
-            ) -> Tuple[Dict[str, ByteString], Optional[DeviceStatusCode], Optional[str]]:
+            ) -> Tuple[ByteString, Optional[DeviceStatusCode], Optional[str]]:
         """ Example of a `GetInfo` (5: `config.cfg`) that requires the lock
             be set. Note the use of the `requires_lock` decorator. This
             should be overridden in subclasses.  This implementation returns
