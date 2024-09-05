@@ -134,6 +134,7 @@ class MQTTSerialManager:
             self.client = mqtt.Client(**self.clientArgs)
 
             self.client.on_message = self.onMessage
+            self.client.on_connect = self.onConnect
             self.client.on_disconnect = self.onDisconnect
             if self.username or self.password:
                 self.client.username_pw_set(self.username, self.password)
@@ -143,10 +144,6 @@ class MQTTSerialManager:
             err = self.client.connect(self.host, port=self.port, **self.connectArgs)
             if err != mqtt.MQTT_ERR_SUCCESS:
                 raise CommunicationError(f'Failed to connect to broker: {err!r}')
-
-            for s in self.subscribers.values():
-                if s.readTopic:
-                    self.add(s)
 
         if not self.thread or not self.thread.is_alive():
             self.thread = Thread(target=self.run, daemon=True)
@@ -230,11 +227,20 @@ class MQTTSerialManager:
             logger.debug(f'Message from unknown topic: {message.topic}')
 
 
+    def onConnect(self, client, userdata, disconnect_flags, reason_code, properties):
+        """ MQTT event handler called when the client connects.
+        """
+        logger.info(f'Connected MQTT broker ({reason_code.getName()})')
+        for s in self.subscribers.values():
+            if s.readTopic:
+                self.add(s)
+
+
     # noinspection PyUnusedLocal
     def onDisconnect(self, client, userdata, disconnect_flags, reason_code, properties):
         """ MQTT event handler called when the client disconnects.
         """
-        logger.debug(f'Disconnected MQTT broker ({reason_code.getName()})')
+        logger.info(f'Disconnected MQTT broker ({reason_code.getName()})')
         pass
 
 
@@ -324,10 +330,17 @@ class MQTTSerialPort(SimSerialPort):
         super().__init__(timeout=timeout, write_timeout=write_timeout, maxsize=maxsize)
 
 
-    @synchronized
-    def close(self):
-        self.manager.remove(self)
-        return super().close()
+    # @synchronized
+    # def close(self):
+    #     self.manager.remove(self)
+    #     return super().close()
+
+
+    def __del__(self):
+        try:
+            self.manager.remove(self)
+        except (AttributeError, IOError, RuntimeError):
+            pass
 
 
     @synchronized
@@ -418,7 +431,10 @@ class MQTTCommandInterface(SerialCommandInterface):
             self.port.close()
             self.port = None
         if not self.port:
-            sn = str(self.device.serial).lstrip('SWH0')
+            if self.device.serialInt:
+                sn = f'{self.device.serialInt:07d}'  # XXX: CHANGE WHEN FW CHANGES TO 8 DIGITS
+            else:
+                sn = str(self.device.serial)
             self.port = self.client.new(write=COMMAND_TOPIC.format(sn=sn),
                                         read=RESPONSE_TOPIC.format(sn=sn),
                                         timeout=timeout,
