@@ -7,7 +7,7 @@ software in the enDAQ ecosystem.
 """
 
 from functools import wraps
-from threading import RLock
+from threading import RLock, get_native_id
 from typing import Any, ByteString, Dict, Optional, Tuple, Union
 
 import logging
@@ -35,6 +35,27 @@ def synchronized(method):
             lock = instance._synchronized_lock = RLock()
         with lock:
             return method(instance, *args, **kwargs)
+    return wrapped
+
+
+def _synchronized(method):
+    """ Decorator for making methods use a lock, modeled after the one in
+        Java. This version does some debug logging.
+    """
+    @wraps(method)
+    def wrapped(instance, *args, **kwargs):
+        try:
+            lock = instance._synchronized_lock
+        except AttributeError:
+            lock = instance._synchronized_lock = RLock()
+        with lock:
+            if 'waiting' not in str(method):
+                logger.debug(f'>>> calling synchronized method {method} (thread {get_native_id()})')
+            try:
+                return method(instance, *args, **kwargs)
+            finally:
+                if 'waiting' not in str(method):
+                    logger.debug(f'<<< exiting synchronized method {method} (thread {get_native_id()})')
     return wrapped
 
 

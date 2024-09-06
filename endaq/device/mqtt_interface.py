@@ -1,5 +1,6 @@
 import logging
-from threading import Event, Thread
+import socket
+from threading import Event, Thread, get_native_id
 from time import sleep, time
 from typing import Any, Callable, Dict, List, Optional, Union
 from weakref import WeakValueDictionary
@@ -24,7 +25,7 @@ logger.setLevel(logging.DEBUG)
 #
 # ===========================================================================
 
-MQTT_BROKER = "localhost"
+MQTT_BROKER = None  # "localhost"
 MQTT_PORT = 1883
 KEEP_ALIVE_INTERVAL = 60*60  #: MQTT client 'keep alive' time (seconds)
 THREAD_KEEP_ALIVE_INTERVAL = 60 * 5  #: Thread 'keep alive' time (seconds) if there are no connections
@@ -37,7 +38,34 @@ COMMAND_TOPIC = "endaq/{sn}/control/command"
 RESPONSE_TOPIC = "endaq/{sn}/control/response"
 STATE_TOPIC = "endaq/{sn}/control/state"
 
-_MANAGER_INSTANCE = None  #: A default instance of `MQTTSerialManager`
+_SERIAL_MANAGER = None  #: A default instance of `MQTTSerialManager`
+_DEVICE_MANAGER = None  #: The `Recorder` representing the MQTT Device Manager
+
+# ===========================================================================
+#
+# ===========================================================================
+
+def getMyIP():
+    """ Retrieve the computer's IP address.
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8", 80))
+    addr = s.getsockname()[0]
+    s.close()
+    return addr
+
+
+def makeClientID(base):
+    """ Generate a unique but readable ID for the MQTT Client, combining
+        the name of a parent object, the machine's IP, and the thread ID
+        from which the function was called.
+    """
+    if not isinstance(base, str):
+        name = type(base).__name__
+    else:
+        name = base
+    ip = getMyIP()#.replace('.', '-')
+    return f'{name}_{ip}_{get_native_id()}'
 
 
 # ===========================================================================
@@ -52,7 +80,7 @@ class MQTTSerialManager:
     """
 
     def __init__(self,
-              host: str= MQTT_BROKER,
+              host: str = MQTT_BROKER,
               port: int = MQTT_PORT,
               username: Optional[str] = None,
               password: Optional[str] = None,
@@ -80,7 +108,7 @@ class MQTTSerialManager:
             :param connectArgs: Additional arguments to be used with
                 `paho.mqtt.client.Client.connect()`.
         """
-        self.host = host
+        self.host = host or getMyIP()
         self.port = port
         self.username = username
         self.password = password
@@ -90,6 +118,7 @@ class MQTTSerialManager:
         self.connectArgs = dict(CLIENT_CONNECT_ARGS)
 
         self.clientArgs.update(clientArgs or {})
+        self.clientArgs.setdefault('client_id', makeClientID(self))
         self.connectArgs.update(connectArgs or {})
 
         self.client: mqtt.Client = None
@@ -108,7 +137,8 @@ class MQTTSerialManager:
             instance. Takes the same keyword arguments as `__init__()`.
             Arguments that are unsupplied will remain unchanged.
         """
-        self.disconnect()
+        if self.client and self.client.is_connected():
+            self.disconnect()
         self.host = kwargs.get('host', self.host)
         self.port = kwargs.get('port', self.port)
         self.username = kwargs.get('username', self.username)
@@ -122,7 +152,7 @@ class MQTTSerialManager:
 
 
     @synchronized
-    def connect(self):
+    def connect(self, timeout=30):
         """
             Connect/reconnect to the MQTT Broker (if not connected), and
             (re-)start the thread (if not running).
@@ -140,7 +170,7 @@ class MQTTSerialManager:
                 self.client.username_pw_set(self.username, self.password)
 
         if not self.client.is_connected():
-            logger.debug('connecting...')
+            logger.debug(f'Attempting to connect to Broker {self.host}:{self.port}...')
             err = self.client.connect(self.host, port=self.port, **self.connectArgs)
             if err != mqtt.MQTT_ERR_SUCCESS:
                 raise CommunicationError(f'Failed to connect to broker: {err!r}')
@@ -151,9 +181,18 @@ class MQTTSerialManager:
             self._stop.clear()
             self.thread.start()
 
+        deadline = time() + timeout
+        while time() < deadline:
+            if self.client.is_connected():
+                return
+            sleep(0.01)
+
+        raise TimeoutError('Timed out waiting for client to connect')
+
 
     @synchronized
     def disconnect(self):
+        logger.debug('disconnect')
         if self.thread and self.thread.is_alive():
             self._stop.set()
             while self.thread.is_alive():
@@ -227,10 +266,11 @@ class MQTTSerialManager:
             logger.debug(f'Message from unknown topic: {message.topic}')
 
 
+    # @synchronized
     def onConnect(self, client, userdata, disconnect_flags, reason_code, properties):
         """ MQTT event handler called when the client connects.
         """
-        logger.info(f'Connected MQTT broker ({reason_code.getName()})')
+        logger.info(f'Connected MQTT broker {self.host}:{self.port} ({reason_code.getName()})')
         for s in self.subscribers.values():
             if s.readTopic:
                 self.add(s)
@@ -240,7 +280,7 @@ class MQTTSerialManager:
     def onDisconnect(self, client, userdata, disconnect_flags, reason_code, properties):
         """ MQTT event handler called when the client disconnects.
         """
-        logger.info(f'Disconnected MQTT broker ({reason_code.getName()})')
+        logger.info(f'Disconnected MQTT broker {self.host}:{self.port} ({reason_code.getName()})')
         pass
 
 
@@ -284,12 +324,12 @@ class MQTTSerialManager:
         if read in self.subscribers:
             port = self.subscribers[read]
             logger.debug(f'new(): returning existing port, read={port.readTopic} write={port.writeTopic}')
-            return port
 
-        logger.debug(f'new(): creating new serial port, {read=} {write=}')
-        port = MQTTSerialPort(self, read=read, write=write,
-                              timeout=timeout, write_timeout=write_timeout,
-                              maxsize=maxsize, qos=qos)
+        else:
+            logger.debug(f'new(): creating new serial port, {read=} {write=}')
+            port = MQTTSerialPort(self, read=read, write=write,
+                                  timeout=timeout, write_timeout=write_timeout,
+                                  maxsize=maxsize, qos=qos)
 
         self.add(port)
         return port
@@ -392,7 +432,7 @@ class MQTTCommandInterface(SerialCommandInterface):
 
     def __init__(self,
                  device: 'Recorder',
-                 client: MQTTSerialManager,
+                 manager: MQTTSerialManager,
                  make_crc: bool = True,
                  ignore_crc: bool = False,
                  **kwargs):
@@ -400,14 +440,14 @@ class MQTTCommandInterface(SerialCommandInterface):
             Constructor.
 
             :param device: The Recorder to which to interface.
-            :param client: The `MQTTSerialManager` to manage the port.
+            :param manager: The `MQTTSerialManager` to manage the port.
             :param make_crc: If `True`, generate CRCs for outgoing packets.
             :param ignore_crc: If `True`, ignore the CRC on response packets.
 
             If additional keyword arguments are provided, they will be used
             when opening the serial port.
         """
-        self.client = client
+        self.manager = manager
         super().__init__(device, make_crc=make_crc, ignore_crc=ignore_crc, **kwargs)
 
 
@@ -435,7 +475,7 @@ class MQTTCommandInterface(SerialCommandInterface):
                 sn = f'{self.device.serialInt:07d}'  # XXX: CHANGE WHEN FW CHANGES TO 8 DIGITS
             else:
                 sn = str(self.device.serial)
-            self.port = self.client.new(write=COMMAND_TOPIC.format(sn=sn),
+            self.port = self.manager.new(write=COMMAND_TOPIC.format(sn=sn),
                                         read=RESPONSE_TOPIC.format(sn=sn),
                                         timeout=timeout,
                                         write_timeout=timeout,
@@ -449,7 +489,7 @@ class MQTTCommandInterface(SerialCommandInterface):
 # ===========================================================================
 
 def getRemoteDevices(known: Optional[Dict[int, "Recorder"]] = None,
-                     client: Optional[MQTTSerialManager] = None,
+                     manager: Optional[MQTTSerialManager] = None,
                      timeout: Union[int, float] = 10.0,
                      managerTimeout: Optional[int] = None,
                      callback: Optional[Callable] = None) -> List["Recorder"]:
@@ -457,8 +497,8 @@ def getRemoteDevices(known: Optional[Dict[int, "Recorder"]] = None,
 
         :param known: A dictionary of known `Recorder` instances, keyed by
             device serial number.
-        :param client: An `MQTTSerialManager` instance, if the client requires
-            specific arguments or preparation. Defaults to a client with
+        :param manager: An `MQTTSerialManager` instance, if the manager requires
+            specific arguments or preparation. Defaults to a manager with
             the default arguments.
         :param timeout: Time (in seconds) to wait for a response from the
             Device Manager before raising a `DeviceTimeout` exception. `None`
@@ -473,32 +513,36 @@ def getRemoteDevices(known: Optional[Dict[int, "Recorder"]] = None,
             requires no arguments.
 
     """
-    global _MANAGER_INSTANCE
-    client = client or _MANAGER_INSTANCE
-
-    if not client:
-        client = _MANAGER_INSTANCE = MQTTSerialManager()
-
     # Imported here to avoid circular references.
     # I don't like doing this, but I think this case is okay.
     from . import _module_busy, RECORDER_TYPES, Recorder
 
-    if known is None:
-        known = {}
-
-    devices = []
-
-    # Dummy recorder and command interface to retrieve DEVINFO
-    fake = Recorder(None)
-    fake._sn, fake._snInt = 'manager', 0
-    fake.command = MQTTCommandInterface(fake, client)
+    global _SERIAL_MANAGER, _DEVICE_MANAGER
+    manager = manager or _SERIAL_MANAGER
+    devManager = _DEVICE_MANAGER
 
     with _module_busy:
+        if not manager:
+            logger.debug('Instantiating new MQTTSerialManager')
+            manager = _SERIAL_MANAGER = MQTTSerialManager()
+
+        # Dummy recorder representing the MQTT Device Manager
+        if not devManager:
+            logger.debug("Instantiating new Device Manager 'Recorder'")
+            devManager = _DEVICE_MANAGER = Recorder(None)
+            devManager._sn, devManager._snInt = 'manager', 0
+            devManager.command = MQTTCommandInterface(devManager, manager)
+
+        if known is None:
+            known = {}
+
+        devices = []
+
         try:
             cmd = {'EBMLCommand': {'GetDeviceList': {}}}
             if managerTimeout is not None:
                 cmd['EBMLCommand']['GetDeviceList']['Timeout'] = managerTimeout
-            response = fake.command._sendCommand(cmd, timeout=timeout, callback=callback)
+            response = devManager.command._sendCommand(cmd, timeout=timeout, callback=callback)
             if not response['DeviceList']:
                 return devices
             items = response['DeviceList']['DeviceListItem']
@@ -517,11 +561,12 @@ def getRemoteDevices(known: Optional[Dict[int, "Recorder"]] = None,
                 for devtype in RECORDER_TYPES:
                     if devtype._isRecorder(info):
                         device = devtype('remote', devinfo=info)
-                        device.command = MQTTCommandInterface(device, client)
+                        device.command = MQTTCommandInterface(device, manager)
                         device._devinfo = MQTTDeviceInfo(device)
                         devices.append(device)
                         break
             except KeyError as err:
-                logger.error(f'DeviceListItem {n} from Manager did not contain {err.args[0]}')
+                logger.error(f'getRemoteDevices(): DeviceListItem {n} from Manager '
+                             f'did not contain {err.args[0]}, continuing')
 
     return devices
