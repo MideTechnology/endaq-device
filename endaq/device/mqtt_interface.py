@@ -56,16 +56,12 @@ def getMyIP():
 
 
 def makeClientID(base):
-    """ Generate a unique but readable ID for the MQTT Client, combining
-        the name of a parent object, the machine's IP, and the thread ID
-        from which the function was called.
+    """ Generate a unique but readable ID for the MQTT Client. The ID
+        combines the name of a parent object, the machine's IP, and the
+        thread ID from which the function was called.
     """
-    if not isinstance(base, str):
-        name = type(base).__name__
-    else:
-        name = base
-    ip = getMyIP()#.replace('.', '-')
-    return f'{name}_{ip}_{get_native_id()}'
+    ip = getMyIP()
+    return f'{base}_{ip}_{get_native_id()}'
 
 
 # ===========================================================================
@@ -80,14 +76,14 @@ class MQTTSerialManager:
     """
 
     def __init__(self,
-              host: str = MQTT_BROKER,
-              port: int = MQTT_PORT,
-              username: Optional[str] = None,
-              password: Optional[str] = None,
-              mqttKeepAlive: int = KEEP_ALIVE_INTERVAL,
-              threadKeepAlive: int = THREAD_KEEP_ALIVE_INTERVAL,
-              clientArgs: Dict[str, Any] = None,
-              connectArgs: Dict[str, Any] = None):
+                 host: str = MQTT_BROKER,
+                 port: int = MQTT_PORT,
+                 username: Optional[str] = None,
+                 password: Optional[str] = None,
+                 mqttKeepAlive: int = KEEP_ALIVE_INTERVAL,
+                 threadKeepAlive: int = THREAD_KEEP_ALIVE_INTERVAL,
+                 clientArgs: Dict[str, Any] = None,
+                 connectArgs: Dict[str, Any] = None):
         """
             Class that manages the MQTT Broker connection for virtual
             serial ports over MQTT.
@@ -118,7 +114,7 @@ class MQTTSerialManager:
         self.connectArgs = dict(CLIENT_CONNECT_ARGS)
 
         self.clientArgs.update(clientArgs or {})
-        self.clientArgs.setdefault('client_id', makeClientID(self))
+        self.clientArgs.setdefault('client_id', makeClientID(type(self).__name__))
         self.connectArgs.update(connectArgs or {})
 
         self.client: mqtt.Client = None
@@ -270,7 +266,7 @@ class MQTTSerialManager:
     def onConnect(self, client, userdata, disconnect_flags, reason_code, properties):
         """ MQTT event handler called when the client connects.
         """
-        logger.info(f'Connected MQTT broker {self.host}:{self.port} ({reason_code.getName()})')
+        logger.info(f'Connected to MQTT broker {client.host}:{client.port} ({reason_code.getName()})')
         for s in self.subscribers.values():
             if s.readTopic:
                 self.add(s)
@@ -280,7 +276,7 @@ class MQTTSerialManager:
     def onDisconnect(self, client, userdata, disconnect_flags, reason_code, properties):
         """ MQTT event handler called when the client disconnects.
         """
-        logger.info(f'Disconnected MQTT broker {self.host}:{self.port} ({reason_code.getName()})')
+        logger.info(f'Disconnected from MQTT broker {client.host}:{client.port} ({reason_code.getName()})')
         pass
 
 
@@ -368,12 +364,6 @@ class MQTTSerialPort(SimSerialPort):
         self.qos = qos
         self.manager = manager
         super().__init__(timeout=timeout, write_timeout=write_timeout, maxsize=maxsize)
-
-
-    # @synchronized
-    # def close(self):
-    #     self.manager.remove(self)
-    #     return super().close()
 
 
     def __del__(self):
