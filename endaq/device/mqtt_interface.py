@@ -60,8 +60,8 @@ def makeClientID(base):
         combines the name of a parent object, the machine's IP, and the
         thread ID from which the function was called.
     """
-    ip = getMyIP()
-    return f'{base}_{ip}_{get_native_id()}'
+    # This is *probably* unique enough.
+    return f'{base}_{getMyIP()}_{get_native_id()}'
 
 
 # ===========================================================================
@@ -266,7 +266,7 @@ class MQTTSerialManager:
     def onConnect(self, client, userdata, disconnect_flags, reason_code, properties):
         """ MQTT event handler called when the client connects.
         """
-        logger.info(f'Connected to MQTT broker {client.host}:{client.port} ({reason_code.getName()})')
+        logger.debug(f'Connected to MQTT broker {client.host}:{client.port} ({reason_code.getName()})')
         for s in self.subscribers.values():
             if s.readTopic:
                 self.add(s)
@@ -276,7 +276,7 @@ class MQTTSerialManager:
     def onDisconnect(self, client, userdata, disconnect_flags, reason_code, properties):
         """ MQTT event handler called when the client disconnects.
         """
-        logger.info(f'Disconnected from MQTT broker {client.host}:{client.port} ({reason_code.getName()})')
+        logger.debug(f'Disconnected from MQTT broker {client.host}:{client.port} ({reason_code.getName()})')
         pass
 
 
@@ -462,8 +462,9 @@ class MQTTCommandInterface(SerialCommandInterface):
             self.port = None
         if not self.port:
             if self.device.serialInt:
-                sn = f'{self.device.serialInt:07d}'  # XXX: CHANGE WHEN FW CHANGES TO 8 DIGITS
+                sn = f'{self.device.serialInt:08d}'
             else:
+                # Special serial number string (e.g., 'manager')
                 sn = str(self.device.serial)
             self.port = self.manager.new(write=COMMAND_TOPIC.format(sn=sn),
                                         read=RESPONSE_TOPIC.format(sn=sn),

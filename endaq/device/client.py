@@ -25,7 +25,8 @@ from .util import dump
 
 def synchronized(method):
     """ Decorator for making methods use a lock, modeled after the one in
-        Java.
+        Java. It uses `threading.RLock`; synchronized methods called from
+        the same thread that has claimed the lock are not blocked.
     """
     @wraps(method)
     def wrapped(instance, *args, **kwargs):
@@ -49,6 +50,7 @@ def _synchronized(method):
         except AttributeError:
             lock = instance._synchronized_lock = RLock()
         with lock:
+            # Don't log the `in_waiting` property checks (too many calls)
             if 'waiting' not in str(method):
                 logger.debug(f'>>> calling synchronized method {method} (thread {get_native_id()})')
             try:
