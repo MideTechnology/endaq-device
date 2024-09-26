@@ -1277,17 +1277,19 @@ class FileConfigInterface(ConfigInterface):
     # objects.
     # =======================================================================
 
-    @staticmethod
-    def _writefile(filename: Union[str, Path], data: bytes) -> int:
+    def _writeConfig(self, data: bytes) -> int:
         """ Open and write to a binary file. """
-        with open(filename, 'wb') as f:
+        with open(self.device.configFile, 'wb') as f:
             return f.write(data)
 
 
-    @staticmethod
-    def _readfile(filename: Union[str, Path]) -> bytes:
-        """ Open and read a binary file. """
-        with open(filename, 'rb') as f:
+    def _readConfig(self) -> bytes:
+        with open(self.device.configFile, 'rb') as f:
+            return f.read()
+
+
+    def _readUi(self):
+        with open(self.device.configUIFile, 'rb') as f:
             return f.read()
 
 
@@ -1400,8 +1402,7 @@ class FileConfigInterface(ConfigInterface):
         """
         if not self.configUi:
             if self._isfile(self.device.configUIFile):
-                ui = self._readfile(self.device.configUIFile)
-                self.configUi = self._schema.loads(ui)
+                self.configUi = self._schema.loads(self._readUi())
             else:
                 ebml = ui_defaults.getDefaultConfigUI(self.device)
                 if not ebml:
@@ -1420,7 +1421,7 @@ class FileConfigInterface(ConfigInterface):
             return None
 
         try:
-            data = self._readfile(self.device.configFile)
+            data = self._readConfig()
             if data:
                 return loadSchema('mide_ide.xml').loads(data)
 
@@ -1483,7 +1484,7 @@ class FileConfigInterface(ConfigInterface):
 
         try:
             self._makeBackup(self.device.configFile)
-            self._writefile(self.device.configFile, configEbml)
+            self._writeConfig(configEbml)
 
             if clear:
                 for item in self.items.values():
