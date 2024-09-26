@@ -327,12 +327,6 @@ class MQTTConnectionManager:
             sleep(0.01)
 
 
-    def stopThread(self):
-        self._stop.set()
-        while self.thread and self.thread.is_alive():
-            sleep(0.1)
-
-
     def newPort(self,
             read: Optional[str] = None,
             write: Optional[str] = None,
@@ -481,7 +475,8 @@ class MQTTConnectionManager:
 
 class MQTTSerialPort(SimSerialPort):
     """
-    A virtual serial port, communicating over MQTT.
+    A virtual serial port, communicating over MQTT. Instances are created and
+    managed by `MQTTConnectionManager`.
     """
 
     def __init__(self,
@@ -494,8 +489,8 @@ class MQTTSerialPort(SimSerialPort):
                  qos: int = 1):
         """
             A virtual serial port, communicating over MQTT. For convenience,
-            using `MQTTConnectionManager.newPort()` is recommended over explicitly
-            instantiating a `MQTTSerialPort` 'manually.'
+            using `MQTTConnectionManager.newPort()` is recommended over
+            explicitly instantiating a `MQTTSerialPort` 'manually.'
 
             :param manager: The port's supporting `MQTTConnectionManager`.
             :param read: The MQTT topic serving as RX. Can be `None` if the
