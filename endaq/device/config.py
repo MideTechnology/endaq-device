@@ -1271,6 +1271,51 @@ class FileConfigInterface(ConfigInterface):
     configuration file format (version 1).
     """
 
+    # =======================================================================
+    # Methods abstracting file/filesystem access, so subclasses supporting
+    # remote devices (USB serial, Wi-Fi, MQTT, etc.) can substitute file-like
+    # objects.
+    # =======================================================================
+
+    @staticmethod
+    def _writeFile(filename: Union[str, Path], data: bytes) -> int:
+        """ Open and write to a binary file. """
+        with open(filename, 'wb') as f:
+            return f.write(data)
+
+
+    @staticmethod
+    def _readFile(filename: Union[str, Path]) -> bytes:
+        """ Open and read a binary file. """
+        with open(filename, 'rb') as f:
+            return f.read()
+
+
+    @staticmethod
+    def _isfile(filename: Union[str, Path]) -> bool:
+        """ Test whether a path is a regular file """
+        return os.path.isfile(filename)
+
+
+    @staticmethod
+    def _makeBackup(filename: Union[str, Path]) -> bool:
+        """ Create a backup copy of the given file.
+        """
+        return util.makeBackup(filename)
+
+
+    @staticmethod
+    def _restoreBackup(filename: Union[str, Path],
+                       remove: bool = False) -> bool:
+        """ Restore a backup copy of a file, overwriting the file.
+        """
+        return util.restoreBackup(filename, remove)
+
+
+    # =======================================================================
+    #
+    # =======================================================================
+
     @classmethod
     def hasInterface(cls, device: "Recorder") -> bool:
         """
@@ -1285,7 +1330,7 @@ class FileConfigInterface(ConfigInterface):
         # Very simple initial check: is there a CONFIG.UI file?
         # Unlikely to fail, but in a `try` just in case.
         try:
-            if os.path.isfile(device.configUIFile):
+            if cls._isfile(device.configUIFile):
                 return True
         except IOError:
             pass
@@ -1354,9 +1399,9 @@ class FileConfigInterface(ConfigInterface):
         """ Load the device's ``ConfigUI`` data.
         """
         if not self.configUi:
-            if os.path.isfile(self.device.configUIFile):
-                with open(self.device.configUIFile, 'rb') as f:
-                    self.configUi = self._schema.loads(f.read())
+            if self._isfile(self.device.configUIFile):
+                ui = self._readFile(self.device.configUIFile)
+                self.configUi = self._schema.loads(ui)
             else:
                 ebml = ui_defaults.getDefaultConfigUI(self.device)
                 if not ebml:
@@ -1371,12 +1416,11 @@ class FileConfigInterface(ConfigInterface):
         """ Low-level method that retrieves the device's config EBML (e.g.,
             the contents of a real device's `config.cfg` file), if any.
         """
-        if not os.path.isfile(self.device.configFile):
+        if not self._isfile(self.device.configFile):
             return None
 
         try:
-            with open(self.device.configFile, 'rb') as f:
-                data = f.read()
+            data = self._readFile(self.device.configFile)
             if data:
                 return loadSchema('mide_ide.xml').loads(data)
 
@@ -1438,9 +1482,8 @@ class FileConfigInterface(ConfigInterface):
         configEbml = loadSchema('mide_ide.xml').encodes(config, headers=False)
 
         try:
-            util.makeBackup(self.device.configFile)
-            with open(self.device.configFile, 'wb') as f:
-                f.write(configEbml)
+            self._makeBackup(self.device.configFile)
+            self._writeFile(self.device.configFile, configEbml)
 
             if clear:
                 for item in self.items.values():
@@ -1448,7 +1491,7 @@ class FileConfigInterface(ConfigInterface):
 
         except Exception:
             # Write failed, restore old config file
-            util.restoreBackup(self.device.configFile, remove=False)
+            self._restoreBackup(self.device.configFile, remove=False)
             raise
 
 
