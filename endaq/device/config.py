@@ -1278,17 +1278,19 @@ class FileConfigInterface(ConfigInterface):
     # =======================================================================
 
     def _writeConfig(self, data: bytes) -> int:
-        """ Open and write to a binary file. """
+        """ Open and write to the device's config file. """
         with open(self.device.configFile, 'wb') as f:
             return f.write(data)
 
 
     def _readConfig(self) -> bytes:
+        """ Open and read the device's config file. """
         with open(self.device.configFile, 'rb') as f:
             return f.read()
 
 
     def _readUi(self):
+        """ Open and read the device's `CONFIG.UI` file. """
         with open(self.device.configUIFile, 'rb') as f:
             return f.read()
 
@@ -1301,16 +1303,14 @@ class FileConfigInterface(ConfigInterface):
 
     @staticmethod
     def _makeBackup(filename: Union[str, Path]) -> bool:
-        """ Create a backup copy of the given file.
-        """
+        """ Create a backup copy of the given file. """
         return util.makeBackup(filename)
 
 
     @staticmethod
     def _restoreBackup(filename: Union[str, Path],
                        remove: bool = False) -> bool:
-        """ Restore a backup copy of a file, overwriting the file.
-        """
+        """ Restore a backup copy of a file, overwriting the file. """
         return util.restoreBackup(filename, remove)
 
 
