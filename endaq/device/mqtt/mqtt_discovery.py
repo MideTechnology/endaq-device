@@ -5,7 +5,7 @@ Find an enDAQ MQTT broker.
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from time import sleep, time
-from typing import Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from zeroconf import Zeroconf, ServiceBrowser, ServiceInfo, ServiceStateChange
 
@@ -22,33 +22,31 @@ DEFAULT_NAMES = ["enDAQ Remote Interface*", "Data Collection Box Interface*"]
 #
 # ===========================================================================
 
-@dataclass
-class BrokerInfo:
-    """ Information about discovered brokers. """
-    name: str
-    address: str
-    port: int
-    properties: dict
-
-    @classmethod
-    def parse(cls, info: ServiceInfo) -> "BrokerInfo":
-        """ ServiceInfo -> BrokerInfo """
-        name = info.name.replace("._mqtt._tcp.local.", '')
-        addr = info.parsed_addresses()
-        # Some services' properties contain null keys
-        props = {k: v for k, v in info.properties.items() if k}
-        return cls(name, addr, info.port, props)
+def parseInfo(info: ServiceInfo) -> Dict[str, Any]:
+    """
+    Parse `zeroconf.ServiceInfo` into a dictionary (for use elsewhere as
+    keyword arguments). Resulting dictionary contains items `"name"`
+    (string), `"host"` (list of addresses as strings, IPv4 and IPV6 if
+    available), `"port"` (int), and `"properties"` (dictionary, provided
+    by the service).
+    """
+    name = info.name.replace("._mqtt._tcp.local.", '')
+    addr = info.parsed_addresses()
+    # Some services' properties contain null keys
+    props = {k: v for k, v in info.properties.items() if k}
+    return {"name": name, "host": addr, "port": info.port, "properties": props}
 
 
 def getBroker(name: str = DEFAULT_NAME,
-              timeout: float = 5) -> BrokerInfo:
+              timeout: float = 5) -> Dict[str, Any]:
     """
     Find a specific enDAQ-advertized MQTT Broker. In the best case, this may
-    be marginally faster than `findBrokers()`.
+    be marginally faster than `findBrokers()` when looking for a specific
+    broker.
 
     :param name: The name of the broker.
     :param timeout: The timeout, in seconds.
-    :return: The broker information.
+    :return: A dictionary of broker information.
     """
     if not name.endswith("._mqtt._tcp.local."):
         name += "._mqtt._tcp.local."
@@ -59,7 +57,7 @@ def getBroker(name: str = DEFAULT_NAME,
         if not info:
             raise TimeoutError(f'MQTT Broker "{name}" not found')
 
-        return BrokerInfo.parse(info)
+        return parseInfo(info)
 
     finally:
         r.close()
@@ -68,7 +66,7 @@ def getBroker(name: str = DEFAULT_NAME,
 def findBrokers(*patterns,
                 scantime: float = 2,
                 timeout: float = 5,
-                callback: Optional[Callable] = None) -> List[BrokerInfo]:
+                callback: Optional[Callable] = None) -> List[Dict[str, Any]]:
     """
     Find enDAQ-advertized MQTT Brokers.
 
@@ -101,7 +99,7 @@ def findBrokers(*patterns,
             if not info:
                 return
             if not patterns or any(fnmatchcase(info.name, p) for p in patterns):
-                found.append(BrokerInfo.parse(info))
+                found.append(parseInfo(info))
 
     try:
         browser = ServiceBrowser(zeroconf, ["_mqtt._tcp.local."],
