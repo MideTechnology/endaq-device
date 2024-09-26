@@ -1301,17 +1301,15 @@ class FileConfigInterface(ConfigInterface):
         return os.path.isfile(filename)
 
 
-    @staticmethod
-    def _makeBackup(filename: Union[str, Path]) -> bool:
-        """ Create a backup copy of the given file. """
-        return util.makeBackup(filename)
+    def _backupConfig(self) -> bool:
+        """ Create a backup copy of the device's config file. """
+        return util.makeBackup(self.device.configFile)
 
 
-    @staticmethod
-    def _restoreBackup(filename: Union[str, Path],
+    def _restoreConfig(self,
                        remove: bool = False) -> bool:
-        """ Restore a backup copy of a file, overwriting the file. """
-        return util.restoreBackup(filename, remove)
+        """ Restore a backup copy of the device's config file. """
+        return util.restoreBackup(self.device.configFile, remove)
 
 
     # =======================================================================
@@ -1483,7 +1481,7 @@ class FileConfigInterface(ConfigInterface):
         configEbml = loadSchema('mide_ide.xml').encodes(config, headers=False)
 
         try:
-            self._makeBackup(self.device.configFile)
+            self._backupConfig()
             self._writeConfig(configEbml)
 
             if clear:
@@ -1492,7 +1490,7 @@ class FileConfigInterface(ConfigInterface):
 
         except Exception:
             # Write failed, restore old config file
-            self._restoreBackup(self.device.configFile, remove=False)
+            self._restoreConfig(remove=False)
             raise
 
 
