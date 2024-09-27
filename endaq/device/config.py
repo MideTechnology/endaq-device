@@ -13,7 +13,7 @@ import errno
 import logging
 import os.path
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import warnings
 
 from ebmlite.core import loadSchema
@@ -25,6 +25,7 @@ from . import legacy
 from . import ui_defaults
 from . import util
 
+from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .base import Recorder
 
@@ -1498,8 +1499,91 @@ class FileConfigInterface(ConfigInterface):
 #
 # ===========================================================================
 
+class RemoteConfigInterface(FileConfigInterface):
+    """
+    A configuration interface for remote devices (serial without MSD, MQTT,
+    etc.), using the device's `CommandInterface` to read and write data.
+    """
+    #: A command callback function, used when reading and writing data.
+    #  The same one is used for all reads/writes, but you may change the
+    #  value of `callback` before calling `loadConfig()`, `applyConfig()`,
+    #  or modifying any configuration item values if the operations need
+    #  their own callbacks.
+    callback: Optional[Callable] = None
+
+
+    def _writeConfig(self, data: bytes) -> int:
+        """ Open and write to the device's config file. """
+        try:
+            self.device.command.setLockID()
+            self.device.command._setInfo(5, data, callback=self.callback)
+        finally:
+            self.device.command.clearLockID()
+
+
+    def _readConfig(self) -> bytes:
+        """ Open and read the device's config file. """
+        info = b''
+        try:
+            self.device.command.setLockID()
+            info = self.device.command._getInfo(5, lock=True,
+                                                callback=self.callback)
+        finally:
+            self.device.command.clearLockID()
+
+        return info
+
+
+    def _readUi(self):
+        """ Open and read the device's `CONFIG.UI` file. """
+        return self.device.command._getInfo(2, callback=self.callback)
+
+
+    @staticmethod
+    def _isfile(filename: Union[str, Path]) -> bool:
+        """ Test whether a path is a regular file. """
+        #
+        return True
+
+
+    def _backupConfig(self) -> bool:
+        """ Create a backup copy of the device's config file. """
+        return True
+
+
+    def _restoreConfig(self,
+                       remove: bool = False) -> bool:
+        """ Restore a backup copy of the device's config file. """
+        return True
+
+
+    # =======================================================================
+    #
+    # =======================================================================
+
+    @classmethod
+    def hasInterface(cls, device: "Recorder") -> bool:
+        """
+        Determine if a device supports this `ConfigInterface` type.
+
+        :param device: The Recorder to check.
+        :return: `True` if the device supports the interface.
+        """
+        if device.isVirtual or not device.isRemote:
+            return False
+
+        # TODO: FW version check?
+        return True
+
+
+# ===========================================================================
+#
+# ===========================================================================
+
 #: A list of all `ConfigInterface` types, used when finding a device's
 #   interface. `VirtualConfigInterface` should go last. New interface types
 #   defined elsewhere should append/insert themselves into this list (before
 #   their superclass, if their `hasInterface()` is more specific).
-INTERFACES = [FileConfigInterface, VirtualConfigInterface]
+INTERFACES = [FileConfigInterface,
+              VirtualConfigInterface,
+              RemoteConfigInterface]
