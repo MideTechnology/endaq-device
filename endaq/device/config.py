@@ -1271,6 +1271,51 @@ class FileConfigInterface(ConfigInterface):
     configuration file format (version 1).
     """
 
+    # =======================================================================
+    # Methods abstracting file/filesystem access, so subclasses supporting
+    # remote devices (USB serial, Wi-Fi, MQTT, etc.) can substitute file-like
+    # objects.
+    # =======================================================================
+
+    def _writeConfig(self, data: bytes) -> int:
+        """ Open and write to the device's config file. """
+        with open(self.device.configFile, 'wb') as f:
+            return f.write(data)
+
+
+    def _readConfig(self) -> bytes:
+        """ Open and read the device's config file. """
+        with open(self.device.configFile, 'rb') as f:
+            return f.read()
+
+
+    def _readUi(self):
+        """ Open and read the device's `CONFIG.UI` file. """
+        with open(self.device.configUIFile, 'rb') as f:
+            return f.read()
+
+
+    @staticmethod
+    def _isfile(filename: Union[str, Path]) -> bool:
+        """ Test whether a path is a regular file """
+        return os.path.isfile(filename)
+
+
+    def _backupConfig(self) -> bool:
+        """ Create a backup copy of the device's config file. """
+        return util.makeBackup(self.device.configFile)
+
+
+    def _restoreConfig(self,
+                       remove: bool = False) -> bool:
+        """ Restore a backup copy of the device's config file. """
+        return util.restoreBackup(self.device.configFile, remove)
+
+
+    # =======================================================================
+    #
+    # =======================================================================
+
     @classmethod
     def hasInterface(cls, device: "Recorder") -> bool:
         """
@@ -1285,7 +1330,7 @@ class FileConfigInterface(ConfigInterface):
         # Very simple initial check: is there a CONFIG.UI file?
         # Unlikely to fail, but in a `try` just in case.
         try:
-            if os.path.isfile(device.configUIFile):
+            if cls._isfile(device.configUIFile):
                 return True
         except IOError:
             pass
@@ -1354,9 +1399,8 @@ class FileConfigInterface(ConfigInterface):
         """ Load the device's ``ConfigUI`` data.
         """
         if not self.configUi:
-            if os.path.isfile(self.device.configUIFile):
-                with open(self.device.configUIFile, 'rb') as f:
-                    self.configUi = self._schema.loads(f.read())
+            if self._isfile(self.device.configUIFile):
+                self.configUi = self._schema.loads(self._readUi())
             else:
                 ebml = ui_defaults.getDefaultConfigUI(self.device)
                 if not ebml:
@@ -1371,12 +1415,11 @@ class FileConfigInterface(ConfigInterface):
         """ Low-level method that retrieves the device's config EBML (e.g.,
             the contents of a real device's `config.cfg` file), if any.
         """
-        if not os.path.isfile(self.device.configFile):
+        if not self._isfile(self.device.configFile):
             return None
 
         try:
-            with open(self.device.configFile, 'rb') as f:
-                data = f.read()
+            data = self._readConfig()
             if data:
                 return loadSchema('mide_ide.xml').loads(data)
 
@@ -1438,9 +1481,8 @@ class FileConfigInterface(ConfigInterface):
         configEbml = loadSchema('mide_ide.xml').encodes(config, headers=False)
 
         try:
-            util.makeBackup(self.device.configFile)
-            with open(self.device.configFile, 'wb') as f:
-                f.write(configEbml)
+            self._backupConfig()
+            self._writeConfig(configEbml)
 
             if clear:
                 for item in self.items.values():
@@ -1448,7 +1490,7 @@ class FileConfigInterface(ConfigInterface):
 
         except Exception:
             # Write failed, restore old config file
-            util.restoreBackup(self.device.configFile, remove=False)
+            self._restoreConfig(remove=False)
             raise
 
 
