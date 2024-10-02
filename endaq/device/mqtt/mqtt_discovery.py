@@ -51,16 +51,17 @@ def getBroker(name: str = DEFAULT_NAME,
     if not name.endswith("._mqtt._tcp.local."):
         name += "._mqtt._tcp.local."
 
-    r = Zeroconf()
+    zeroconf = Zeroconf()
     try:
-        info = r.get_service_info("._mqtt._tcp.local.", name, timeout=timeout*1000)
+        info = zeroconf.get_service_info("_mqtt._tcp.local.", name,
+                                         timeout=timeout*1000)
         if not info:
             raise TimeoutError(f'MQTT Broker "{name}" not found')
 
         return parseInfo(info)
 
     finally:
-        r.close()
+        zeroconf.close()
 
 
 def findBrokers(*patterns,

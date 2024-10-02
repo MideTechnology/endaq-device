@@ -1,3 +1,7 @@
+"""
+MQTT Device Manager
+"""
+
 from collections import defaultdict
 from io import BytesIO
 import os.path
@@ -58,7 +62,10 @@ class MQTTDevice:
         """
         logger.debug(f'Created new MQTTDevice (SN: {sn})')
         self.manager = manager
+
         self.sn = sn
+        if isinstance(sn, int):
+            self.sn = f'{sn:08d}'
 
         # Device info, received via `state` topic.
         self.devinfo: ByteString = None
@@ -258,8 +265,9 @@ class MQTTDevice:
 
 class MQTTDeviceManager(MQTTClient):
     """
-    A client that monitors several MQTT topics, providing additional features
-    for device discovery and data streaming.
+    A client that monitors several MQTT topics, keeping track of sensors and
+    other devices, and providing additional features for device discovery and
+    data streaming.
     """
 
     DEFAULT_DEVINFO = {
@@ -473,6 +481,10 @@ def run(host: Optional[str] = MQTT_BROKER,
             pass
         logger.debug('exited loop')
 
+
+# ===========================================================================
+#
+# ===========================================================================
 
 if __name__ == "__main__":
     run(background=False)

@@ -2490,9 +2490,8 @@ class SerialCommandInterface(CommandInterface):
                 If the callback returns `True`, the wait for a response will
                 be cancelled. The callback function should require no arguments.
         """
-        # TODO: Implement `SerialCommandInterface._setInfo()`!
-        #  Send command with lock=True
-        raise NotImplementedError
+        # Only supported via MQTT (for now?)
+        raise UnsupportedFeature(self, self._setInfo)
 
 
 # ===========================================================================

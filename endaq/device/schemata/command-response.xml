@@ -189,7 +189,8 @@
         <BinaryElement name="LockID" id="0x5A00" mandatory="0" multiple="0"> Serial Only, optional current LockID of device </BinaryElement>
         <MasterElement name="GetInfoResponse" id="0x5B01" mandatory="0" multiple="0" >
             <IntegerElement name="InfoIndex" id="0x5B02" mandatory="1" multiple="0"> See GetInfo in EBMLCommand for index value</IntegerElement>
-            <BinaryElement name="InfoPayload" id="0x5B03" mandatory="1" multiple="0"> Payload</BinaryElement>
+            <BinaryElement name="InfoPayload" id="0x5B03" mandatory="1" multiple="0"> Payload. Typically EBML using the payload's native schema. </BinaryElement>
+            <StringElement name="InfoEncoding" id="0x5B04" mandatory="0" multiple="0"> An optional encoding type, if an unusual encoding was used (e.g., JSON). </StringElement>
         </MasterElement>
 
         <!-- Network (MQTT) Device Manager responses (ID 0x5Cxx). -->

@@ -671,6 +671,58 @@
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
+            <MasterElement name="IPAddressField" id="0x4025" global="1" multiple="1">
+                Special-case text field variant for entering IP addresses.
+                <UIntegerElement name="ConfigID" />
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <StringElement name="ASCIIValue" />
+                <StringElement name="DisableIf" />
+                <UIntegerElement name="ExcludeID" />
+                <StringElement name="ValueFormat" />
+                <StringElement name="DisplayFormat" />
+                <UIntegerElement name="IsAdvancedFeature" />
+            </MasterElement>
+
+            <MasterElement name="ServiceNameField" id="0x4046" global="1" multiple="1">
+                Special-case text field variant for entering the name of an advertised service (e.g., an MQTT broker).
+                <UIntegerElement name="ConfigID" />
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <UnicodeElement name="TextValue" />
+                <StringElement name="DisableIf" />
+                <UIntegerElement name="ExcludeID" />
+                <StringElement name="ValueFormat" />
+                <StringElement name="DisplayFormat" />
+                <UIntegerElement name="IsAdvancedFeature" />
+            </MasterElement>
+
+            <MasterElement name="CheckIPAddressField" id="0x4035" global="1" multiple="1">
+                Special-case text field variant for entering IP addresses, with checkbox.
+                <UIntegerElement name="ConfigID" />
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <StringElement name="ASCIIValue" />
+                <StringElement name="DisableIf" />
+                <UIntegerElement name="ExcludeID" />
+                <StringElement name="ValueFormat" />
+                <StringElement name="DisplayFormat" />
+                <UIntegerElement name="IsAdvancedFeature" />
+            </MasterElement>
+
+            <MasterElement name="CheckServiceNameField" id="0x4056" global="1" multiple="1">
+                Special-case text field variant for entering the name of an advertised service (e.g., an MQTT broker), with checkbox.
+                <UIntegerElement name="ConfigID" />
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <UnicodeElement name="TextValue" />
+                <StringElement name="DisableIf" />
+                <UIntegerElement name="ExcludeID" />
+                <StringElement name="ValueFormat" />
+                <StringElement name="DisplayFormat" />
+                <UIntegerElement name="IsAdvancedFeature" />
+            </MasterElement>
+
         </MasterElement> <!-- Group -->
 
         <MasterElement name="CheckGroup" global="1" id="0x4018" multiple="1">
@@ -711,6 +763,10 @@
             <MasterElement name="CheckDriftButton" />
             <MasterElement name="VerticalPadding" />
             <MasterElement name="ResetButton" />
+            <MasterElement name="IPAddressField" />
+            <MasterElement name="CheckIPAddressField" />
+            <MasterElement name="ServiceNameField" />
+            <MasterElement name="CheckServiceNameField" />
             <UIntegerElement name="IsAdvancedFeature" />
         </MasterElement>
 
@@ -747,6 +803,10 @@
         <MasterElement name="CheckDriftButton" />
         <MasterElement name="VerticalPadding" />
         <MasterElement name="ResetButton" />
+        <MasterElement name="IPAddressField" />
+        <MasterElement name="CheckIPAddressField" />
+        <MasterElement name="ServiceNameField" />
+        <MasterElement name="CheckServiceNameField" />
         <UIntegerElement name="IsAdvancedFeature" />
     </MasterElement> <!-- Tab -->
 

@@ -563,6 +563,10 @@ class MQTTCommandInterface(SerialCommandInterface):
     :ivar ignore_crc: If `True`, ignore the CRC on response packets.
     """
 
+    # Default maximum encoded command length (bytes). `None` is no limit.
+    DEFAULT_MAX_COMMAND_SIZE = None
+
+
     def __init__(self,
                  device: 'Recorder',
                  manager: MQTTConnectionManager,
@@ -616,3 +620,43 @@ class MQTTCommandInterface(SerialCommandInterface):
                                         **kwargs)
         self.port.open()
         return self.port
+
+
+    def _setInfo(self,
+                 infoIdx: int,
+                 payload: Union[bytearray, bytes],
+                 timeout: Union[int, float] = 10,
+                 interval: float = .25,
+                 callback: Optional[Callable] = None):
+        """ Write device system information. This method is called indirectly
+            by methods in `Recorder`.
+
+            :param infoIdx: The index of the information to write.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
+            :param interval: Time (in seconds) between checks for a response.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will
+                be cancelled. The callback function should require no arguments.
+        """
+        # Note: `LockID` and `CommandIdx` are explicitly added to ensure they
+        #   come before the `InfoPayload` in the command dict.
+        cmd = {
+            'EBMLCommand': {
+                'LockID': None,  # will be set in _sendCommand
+                'CommandIdx': None,  # will be set in _sendCommand
+                'SetInfo': {
+                    'InfoIndex': infoIdx,
+                    'InfoPayload': payload}
+            }
+        }
+
+        self._sendCommand(cmd,
+                          response=True,
+                          timeout=timeout,
+                          lock=True,
+                          index=True,
+                          callback=callback)
+
+        return True
