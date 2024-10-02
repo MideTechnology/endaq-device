@@ -6,7 +6,6 @@ from collections import defaultdict
 from io import BytesIO
 import os.path
 import sys
-from threading import Thread
 from time import time
 from typing import Any, ByteString, Dict, Optional, Tuple, Union
 
@@ -23,6 +22,7 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+from .advertising import Advertiser
 from .mqtt_client import MQTTClient
 from .mqtt_interface import STATE_TOPIC, HEADER_TOPIC, MEASUREMENT_TOPIC
 
@@ -82,7 +82,8 @@ class MQTTDevice:
         self.headerTopic = HEADER_TOPIC.format(sn=self.sn)
 
         self.measurementTopic = MEASUREMENT_TOPIC.format(sn=self.sn)
-        self.manager.client.message_callback_add(self.measurementTopic, manager.onMeasurementMessage)
+        self.manager.client.message_callback_add(self.measurementTopic,
+                                                 manager.onMeasurementMessage)
         self.manager.client.subscribe(self.measurementTopic)
         logger.debug(f'Subscribed to {self.measurementTopic}')
 
@@ -312,8 +313,8 @@ class MQTTDeviceManager(MQTTClient):
             MQTT topic.
 
             :param topic: The message topic.
-            :return: The serial number and the topic's category ("state", 
-                "measurement", etc.).
+            :return: The serial number. Typically an integer, but special
+                cases (like the manager) may have a string value.
         """
         parts = topic.split('/')  # TODO: regex?
         if len(parts) < 2:
@@ -450,13 +451,35 @@ class MQTTDeviceManager(MQTTClient):
 
 def run(host: Optional[str] = MQTT_BROKER,
         port: int = MQTT_PORT,
+        advertise: bool = True,
         background: bool = True,
         clientArgs: Dict[str, Any] = None,
-        connectArgs: Dict[str, Any] = None):
+        connectArgs: Dict[str, Any] = None,
+        advertArgs: Dict[str, Any] = None):
+    """
+
+    :param host: The hostname/IP of the MQTT broker. Defaults to the current
+        machine's.
+    :param port: The port to which to connect.
+    :param advertise: If `True`, start the mDNS advertising of the broker.
+    :param background: *For testing.* If `True`, this function returns an
+        `MQTTDeviceManager` instance with the client loop running in a
+        thread. If `False`, the function will run the client loop in the
+        foreground and will not return.
+    :param clientArgs: A dictionary of additional keyword arguments to be
+        used in the instantiation of the `paho.mqtt.client.Client`.
+    :param connectArgs: A dictionary of additional keyword arguments to be
+        used with `paho.mqtt.client.Client.connect()`.
+    :param advertArgs: A dictionary of additional keyword arguments to be
+        used in the instantiation of the `Advertiser` (if `advertise` is
+        `True`).
+    :return: The running `MQTTDeviceManager` if `background`, else the
+        function runs indefinitely without returning.
+    """
     host = host or getMyIP()
 
-    clientArgs = clientArgs or {}
-    connectArgs = connectArgs or {}
+    clientArgs = clientArgs.copy() if clientArgs else {}
+    connectArgs = connectArgs.copy if connectArgs else {}
     clientArgs.setdefault('client_id', makeClientID("MQTTDeviceManager"))
 
     logger.debug(f'Instantiating MQTT client ({clientArgs["client_id"]})')
@@ -467,19 +490,32 @@ def run(host: Optional[str] = MQTT_BROKER,
 
     logger.debug('Instantiating MQTTDeviceManager')
     manager = MQTTDeviceManager(client)
+    if advertise:
+        advertArgs = advertArgs.copy() if advertArgs else {}
+        advertArgs.update({'address': host, 'port': port})
+        manager.advertiser = Advertiser(**advertArgs)
+        logger.debug('starting advertiser')
+        manager.advertiser.start()
 
     if background:
         logger.debug('starting loop thread')
-        thread = Thread(target=client.loop_forever)
-        thread.start()
+        client.loop_start()
         return manager
     else:
         logger.debug('entering loop')
         try:
             client.loop_forever()
-        except KeyboardInterrupt:
+        except KeyboardInterrupt as err:
+            logger.debug(f'{err}')
             pass
+        finally:
+            if advertise:
+                logger.debug('stopping advertiser')
+                manager.advertiser.stop()
+
         logger.debug('exited loop')
+
+    return manager
 
 
 # ===========================================================================

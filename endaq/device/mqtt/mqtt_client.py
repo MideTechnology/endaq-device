@@ -29,6 +29,9 @@ class MQTTClient(CommandClient):
     enDAQ hardware.
     """
 
+    # Non-enDAQ devices identify themselves in their DEVINFO via
+    #  `RecorderTypeUID` with bit 31 set. Bits 30-0 can be used for more
+    #  specific/descriptive identification of client type.
     DEFAULT_DEVINFO = {
         'RecorderTypeUID': 1 << 31,
     }
@@ -78,7 +81,9 @@ class MQTTClient(CommandClient):
     def onConnect(self, client, userdata, disconnect_flags, reason_code, properties):
         """ MQTT event handler called when the client connects.
         """
-        logger.info(f'Connected to MQTT broker {client.host}:{client.port} ({reason_code.getName()})')
+        logger.info(f'Connected to MQTT broker {client.host}:{client.port} '
+                    f'({reason_code.getName()})')
+
         self.client.subscribe(self.commandTopic)
         logger.debug(f'Subscribed to {self.commandTopic}')
 
@@ -88,7 +93,8 @@ class MQTTClient(CommandClient):
     def onDisconnect(self, client, userdata, disconnect_flags, reason_code, properties):
         """ MQTT event handler called when the client disconnects.
         """
-        logger.info(f'Disconnected from MQTT broker {client.host}:{client.port} ({reason_code.getName()})')
+        logger.info(f'Disconnected from MQTT broker {client.host}:{client.port} '
+                    f'({reason_code.getName()})')
 
 
     def __del__(self):

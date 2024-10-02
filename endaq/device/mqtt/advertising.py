@@ -29,14 +29,15 @@ class Advertiser(Thread):
         :param properties: An optional dictionary of additional data to be
             included in the service advertising.
         """
-        self.address = address or getMyIP()
         self.port = port
-        self.name = name
+        self.serviceName = name
         if not name.endswith("_mqtt._tcp.local."):
             name += "._mqtt._tcp.local."
         self.properties = properties or {}
 
-        self._stop = Event()
+        # TODO: IPv6 support?
+        self.address = address or getMyIP()
+        self.ipVersion = IPVersion.V4Only
 
         self.info = ServiceInfo(
                 "_mqtt._tcp.local.",
@@ -46,9 +47,7 @@ class Advertiser(Thread):
                 properties=self.properties,
         )
 
-        # TODO: IPv6 support?
-        self.ipVersion = IPVersion.V4Only
-
+        self._stopEvent = Event()
         super().__init__(daemon=True)
         self.name = self.name.replace("Thread", type(self).__name__)
 
@@ -70,7 +69,7 @@ class Advertiser(Thread):
         timeout = -1 if timeout is None else timeout
         deadline = timeout + time()
 
-        self._stop.set()
+        self._stopEvent.set()
         sleep(0.01)
 
         while timeout != 0 and self.is_alive():
@@ -91,7 +90,7 @@ class Advertiser(Thread):
         zeroconf.register_service(self.info)
 
         try:
-            while not self._stop.is_set():
+            while not self._stopEvent.is_set():
                 sleep(0.1)
         finally:
             zeroconf.unregister_service(self.info)

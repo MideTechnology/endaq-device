@@ -54,7 +54,7 @@ MEASUREMENT_TOPIC = "endaq/{sn}/measurement"
 #
 # ===========================================================================
 
-def getMyIP():
+def getMyIP() -> str:
     """ Retrieve the computer's IP address (v4).
     """
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -64,7 +64,7 @@ def getMyIP():
     return addr
 
 
-def makeClientID(base):
+def makeClientID(base: str) -> str:
     """ Generate a unique but readable ID for the MQTT Client. The ID
         combines the name of a parent object, the machine's IP, and the
         thread ID from which the function was called.
@@ -322,7 +322,7 @@ class MQTTConnectionManager:
         """
         while not self._stop.is_set():
             self.client.loop()
-            if not self._ports and time() - self.lastUsedTime > self.keepalive:
+            if not self._ports and time() - self.lastUsedTime > self.threadKeepAlive:
                 break
             sleep(0.01)
 
