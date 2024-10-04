@@ -15,15 +15,12 @@ from weakref import WeakValueDictionary
 import paho.mqtt.client as mqtt
 from serial import PortNotOpenError
 
+from ..base import Recorder, NonRecorder
 from ..client import synchronized
 from ..command_interfaces import SerialCommandInterface
 from ..devinfo import MQTTDeviceInfo
 from ..exceptions import CommunicationError, DeviceError
 from ..simserial import SimSerialPort
-
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from ..base import Recorder
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -76,6 +73,7 @@ def makeClientID(base: str) -> str:
 # ===========================================================================
 #
 # ===========================================================================
+
 
 class MQTTConnectionManager:
     """
@@ -367,17 +365,14 @@ class MQTTConnectionManager:
         """ Get or create a special `Recorder` instance representing the
             connection to the MQTT Device Manager.
         """
-        # Imported here to avoid circular references.
-        # I don't like doing this, but I think this case is okay.
-        from ..base import Recorder
-
         if self.devManager:
             return self.devManager
 
         logger.debug("Instantiating new Device Manager 'Recorder'")
-        self.devManager = Recorder(None)
+        self.devManager = NonRecorder('remote', name="DeviceManager")
         self.devManager._sn, self.devManager._snInt = 'manager', 0
         self.devManager.command = MQTTCommandInterface(self.devManager, self)
+        self.devManager._devinfo = MQTTDeviceInfo(self.devManager)
         try:
             self.devManager.command.ping()
         except (TimeoutError, ConnectionError):

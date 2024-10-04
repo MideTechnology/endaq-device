@@ -87,9 +87,10 @@ class Advertiser(Thread):
         Main thread.
         """
         zeroconf = Zeroconf(ip_version=self.ipVersion)
-        zeroconf.register_service(self.info)
 
         try:
+            zeroconf.register_service(self.info)
+
             while not self._stopEvent.is_set():
                 sleep(0.1)
         finally:

@@ -73,6 +73,7 @@ setuptools.setup(
             'endaq.device',
             'endaq.device.ui_defaults',
             'endaq.device.schemata',
+            'endaq.device.mqtt'
             ],
         package_dir={
             'endaq.device': './endaq/device',

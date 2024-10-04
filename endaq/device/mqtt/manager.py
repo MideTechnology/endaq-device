@@ -430,7 +430,7 @@ class MQTTDeviceManager(MQTTClient):
                 logger.debug(f'GetDeviceList: skipping {sn} due to timeout')
                 continue
 
-            item = {'SerialNumber': dev.sn,
+            item = {'SerialNumber': sn,
                     'LastContact': last,
                     'GetInfoResponse': dev.devinfo}
 

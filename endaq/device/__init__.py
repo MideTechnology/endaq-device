@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 import ebmlite.core
 from idelib.dataset import Dataset
 
-from .base import Recorder, os_specific
+from .base import Recorder, NonRecorder, os_specific
 from .command_interfaces import SerialCommandInterface
 from .devinfo import SerialDeviceInfo
 from .exceptions import *
@@ -33,7 +33,7 @@ from .types import Drive, Filename, Epoch
 #
 # ============================================================================
 
-__version__ = "1.3.1b1"
+__version__ = "1.4.1b1"
 
 __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'DeviceError', 'DeviceTimeout', 'UnsupportedFeature',
@@ -367,7 +367,7 @@ def getSerialDevices(known: Optional[Dict[int, Recorder]] = None,
     devices = []
 
     # Dummy recorder and command interface to retrieve DEVINFO
-    fake = Recorder(None)
+    fake = NonRecorder()
     fake.command = SerialCommandInterface(fake)
 
     for port, sn in SerialCommandInterface._possibleRecorders(strict=strict):
