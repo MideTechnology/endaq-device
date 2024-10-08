@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 from .advertising import Advertiser
+from .mqtt_discovery import DEFAULT_NAME
 from .mqtt_client import MQTTClient
 from .mqtt_interface import STATE_TOPIC, HEADER_TOPIC, MEASUREMENT_TOPIC
 
@@ -451,6 +452,7 @@ class MQTTDeviceManager(MQTTClient):
 def run(host: Optional[str] = MQTT_BROKER,
         port: int = MQTT_PORT,
         advertise: bool = True,
+        brokerName: Optional[str] = DEFAULT_NAME,
         background: bool = False,
         clientArgs: Dict[str, Any] = None,
         connectArgs: Dict[str, Any] = None,
@@ -463,6 +465,7 @@ def run(host: Optional[str] = MQTT_BROKER,
         machine's.
     :param port: The port to which to connect.
     :param advertise: If `True`, start the mDNS advertising of the broker.
+    :param brokerName: The name under which the MQTT broker will be advertised.
     :param background: *For testing.* If `True`, this function returns an
         `MQTTDeviceManager` instance with the client loop running in a
         thread. If `False`, the function will run the client loop in the
@@ -477,10 +480,11 @@ def run(host: Optional[str] = MQTT_BROKER,
     :return: The running `MQTTDeviceManager` if `background`, else the
         function runs indefinitely without returning.
     """
-    host = host or getMyIP()
-
     clientArgs = clientArgs.copy() if clientArgs else {}
     connectArgs = connectArgs.copy if connectArgs else {}
+
+    host = connectArgs.pop('host', host) or getMyIP()
+    port = connectArgs.pop('port', port) or MQTT_PORT
     clientArgs.setdefault('client_id', makeClientID("MQTTDeviceManager"))
 
     logger.debug(f'Instantiating MQTT client ({clientArgs["client_id"]})')
@@ -492,29 +496,30 @@ def run(host: Optional[str] = MQTT_BROKER,
     logger.debug('Instantiating MQTTDeviceManager')
     manager = MQTTDeviceManager(client)
     if advertise:
-        advertArgs = advertArgs.copy() if advertArgs else {}
-        advertArgs.update({'address': host, 'port': port})
-        manager.advertiser = Advertiser(**advertArgs)
-        logger.debug('starting advertiser')
+        kwargs = {'address': host, 'port': port, 'name': brokerName}
+        if advertArgs:
+            kwargs.update(advertArgs)
+        manager.advertiser = Advertiser(**kwargs)
+        logger.debug(f'Starting advertising broker on {host}:{port} as {brokerName!r}')
         manager.advertiser.start()
 
+    logger.debug("Starting manager's MQTT client loop thread")
+
+    # Test code: this conditional block to be removed (probably)
     if background:
-        logger.debug('starting loop thread')
         client.loop_start()
         return manager
-    else:
-        logger.debug('entering loop')
-        try:
-            client.loop_forever()
-        except KeyboardInterrupt as err:
-            logger.debug(f'{err}')
-            pass
-        finally:
-            if advertise:
-                logger.debug('stopping advertiser')
-                manager.advertiser.stop()
 
-        logger.debug('exited loop')
+    try:
+        client.loop_forever()
+    except KeyboardInterrupt as err:
+        logger.debug(f'{err!r}')
+    finally:
+        if advertise:
+            logger.debug('stopping advertiser')
+            manager.advertiser.stop()
+
+    logger.debug('exited loop')
 
     return manager
 
@@ -524,4 +529,25 @@ def run(host: Optional[str] = MQTT_BROKER,
 # ===========================================================================
 
 if __name__ == "__main__":
-    run(background=False)
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+
+    parser.add_argument('-a', '--address', type=str, default=None,
+                        help="MQTT Broker address/hostname. Defaults to this machine.")
+    parser.add_argument('-p', '--port', type=int, default=MQTT_PORT,
+                        help="MQTT Broker port.")
+    parser.add_argument('-s', '--silent', action='store_true',
+                        help="Do not advertise the MQTT broker via mDNS.")
+    parser.add_argument('-n', '--name', type=str, default=DEFAULT_NAME,
+                        help="The advertised name of the MQTT broker.")
+    parser.add_argument('-c', '--config', type=str, default=None,
+                        help="The name of a configuration JSON file with additional"
+                             "arguments for the Device Manager and advertising."
+                             " (NOT IMPLEMENTED YET)")
+
+    args = parser.parse_args()
+    if args.config:
+        raise NotImplementedError('Additional config file not yet implemented!')
+
+    run(host=args.address, port=args.port,
+        advertise=not args.silent, brokerName=args.name)

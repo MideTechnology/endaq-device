@@ -1,3 +1,4 @@
+import logging
 import socket
 from threading import Event, Thread
 from time import time, sleep
@@ -7,6 +8,9 @@ from zeroconf import IPVersion, ServiceInfo, Zeroconf
 
 from .mqtt_interface import MQTT_BROKER, MQTT_PORT, getMyIP
 from .mqtt_discovery import DEFAULT_NAME
+
+
+logger = logging.getLogger(__name__)
 
 
 class Advertiser(Thread):
@@ -47,6 +51,7 @@ class Advertiser(Thread):
                 properties=self.properties,
         )
 
+        self.fullName = name
         self._stopEvent = Event()
         super().__init__(daemon=True)
         self.name = self.name.replace("Thread", type(self).__name__)
@@ -66,6 +71,7 @@ class Advertiser(Thread):
         :return: Whether the thread was stopped. Note: if `timeout` is 0,
             a false negative may occur.
         """
+        logger.debug('Attempting to stop advertising...')
         timeout = -1 if timeout is None else timeout
         deadline = timeout + time()
 
@@ -79,13 +85,21 @@ class Advertiser(Thread):
                break
             sleep(0.01)
 
-        return not self.is_alive()
+        stopped = not self.is_alive()
+        if stopped:
+            logger.debug('Advertiser shut down.')
+        else:
+            logger.warning('Failed to shut down advertiser within {timeout} seconds!')
+
+        return stopped
 
 
     def run(self):
         """
         Main thread.
         """
+        logger.debug(f'Starting zeroconf advertising of {self.fullName} '
+                     f'on {self.address}:{self.port}.')
         zeroconf = Zeroconf(ip_version=self.ipVersion)
 
         try:
@@ -94,6 +108,8 @@ class Advertiser(Thread):
             while not self._stopEvent.is_set():
                 sleep(0.1)
         finally:
+            logger.debug(f'Ending zeroconf advertising of {self.fullName} '
+                         f'on {self.address}:{self.port}.')
             zeroconf.unregister_service(self.info)
             zeroconf.close()
 
