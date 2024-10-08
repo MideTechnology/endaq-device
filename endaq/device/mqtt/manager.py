@@ -307,7 +307,6 @@ class MQTTDeviceManager(MQTTClient):
         self.client.message_callback_add(self.stateSubTopic, self.onStateMessage)
 
 
-
     def getSenderSerial(self, topic: str) -> Union[int, str]:
         """ Extract the sending device's serial number from the name of an
             MQTT topic.
@@ -452,11 +451,13 @@ class MQTTDeviceManager(MQTTClient):
 def run(host: Optional[str] = MQTT_BROKER,
         port: int = MQTT_PORT,
         advertise: bool = True,
-        background: bool = True,
+        background: bool = False,
         clientArgs: Dict[str, Any] = None,
         connectArgs: Dict[str, Any] = None,
         advertArgs: Dict[str, Any] = None):
     """
+    Start the Device Manager and (optionally) the mDNS advertiser.
+    This is a temporary implementation and will be refactored.
 
     :param host: The hostname/IP of the MQTT broker. Defaults to the current
         machine's.

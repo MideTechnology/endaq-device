@@ -14,7 +14,8 @@ from zeroconf import Zeroconf, ServiceBrowser, ServiceInfo, ServiceStateChange
 #
 # ===========================================================================
 
-DEFAULT_NAME = "enDAQ Remote Interface"
+# DEFAULT_NAME = "enDAQ Remote Interface"
+DEFAULT_NAME = "Data Collection Box Interface"
 DEFAULT_NAMES = ["enDAQ Remote Interface*", "Data Collection Box Interface*"]
 
 
