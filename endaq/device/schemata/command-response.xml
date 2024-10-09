@@ -163,8 +163,7 @@
         </UIntegerElement>
 		<BinaryElement name="PingReply" id="0x5701" multiple="0" mandatory="0">Serial only. Contains the echo to a Ping command.</BinaryElement>
         <IntegerElement name="DeviceStatusCode" id="0x5801" multiple="0" mandatory="0">Serial only, mandatory for serial. int16. Negative values are errors.
-            200: Device Resetting
-            110: Device Wireless Interface is in low-power mode 
+            110: Command Interface Offline (e.g. Device Wireless Interface in Low Power mode, etc.)
             100: Device is currently in sleep mode, or will enter sleep mode soon after this response is received.
             50: Device Uploading (i.e. Wi-Fi Upload after recording finishes)
             40: Device Triggering (i.e. waiting for a trigger)
