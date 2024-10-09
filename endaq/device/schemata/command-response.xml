@@ -206,6 +206,21 @@
             <UIntegerElement name="SerialNumber" id="0x5C12" multiple="0" mandatory="1"/>
             <BinaryElement name="IDEHeaderData" id="0x5C31" multiple="0" mandatory="1"/>
         </MasterElement>
+
+        <IntegerElement name="SystemStateCode" id="0x5D01" multiple="0" mandatory="0"> System state of device unaffected by command errors. Values match those in Device Status Code.
+            200: Device Resetting
+            110: Device Wireless Interface is in low-power mode 
+            100: Device is currently in sleep mode, or will enter sleep mode soon after this response is received.
+            50: Device Uploading (i.e. Wi-Fi Upload after recording finishes)
+            40: Device Triggering (i.e. waiting for a trigger)
+            30: Recording start pending (device will start recording soon after this message is sent)
+            20: Reset pending (device will reset soon after this message is sent)
+            10: Device recording
+            1: Device idle, unmounted.
+            0: Device idle, message successful. It is presumed the device is mounted as an MSD.
+        </IntegerElement>
+        <UnicodeElement name="SystemStateMessage" id="0x5E01" multiple="0" mandatory="0">Optional code for system state</UnicodeElement>
+
     </MasterElement>
 
 <!--
