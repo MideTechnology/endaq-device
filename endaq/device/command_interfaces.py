@@ -8,6 +8,7 @@ from copy import deepcopy
 from datetime import datetime
 import errno
 import os.path
+from random import randint
 import shutil
 import string
 import struct
@@ -80,7 +81,7 @@ class CommandInterface:
         self.schema = loadSchema('command-response.xml')
 
         self.device = device
-        self.index: int = 0
+        self.index: int = randint(2**16, 2**31)
 
         # The communication timeout (in seconds).
         self.timeout: Union[int, float] = 1
@@ -2371,8 +2372,11 @@ class SerialCommandInterface(CommandInterface):
             :param timeout: Time (in seconds) to wait for a response.
             :returns: The new lock ID.
         """
-        lockId = new or self.hostId
         with self.device._busy:
+            lockId = new or self.hostId
+            if lockId == self.getLockID():
+                return True
+
             cmd = {'EBMLCommand':
                        {'SetLockID':
                             {'CurrentLockID': current or (b'\x00' * 16),
