@@ -323,7 +323,7 @@ class SerialDeviceInfo(DeviceInfo):
         """
         self.device.command.setLockID()
         try:
-            return self.device.command._getInfo(6) or None
+            return self.device.command._getInfo(6, lock=True) or None
         finally:
             self.device.command.clearLockID()
 

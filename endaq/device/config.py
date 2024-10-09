@@ -754,6 +754,14 @@ class ConfigInterface:
             self.config = {}
             return
 
+        self._loadConfig(config)
+
+
+    def _loadConfig(self, config: MasterElement):
+        """ Do the actual work of processing configuration data. Separated
+            from `loadConfig()` to allow subclasses to do special case
+            stuff before processing.
+        """
         dump = config.dump()
 
         root = dump.get('RecorderConfigurationList', dump)
@@ -1454,7 +1462,7 @@ class FileConfigInterface(ConfigInterface):
         else:
             versionRead = 2
 
-        super().loadConfig(config)
+        super()._loadConfig(config)
         self.configVersionRead = versionRead
 
 
@@ -1572,6 +1580,29 @@ class RemoteConfigInterface(FileConfigInterface):
 
         # TODO: FW version check?
         return True
+
+
+    @property
+    def available(self) -> bool:
+        """ Is the device currently ready for configuration?
+
+            Note: This is intended for future configuration systems. Since
+            configuration is currently applied via the filesystem, it is
+            functionally the same as `Recorder.available`.
+        """
+        # FUTURE: This should ping the device.
+        return self.device.command.available
+
+
+    def loadConfig(self, config: Optional[MasterElement] = None):
+        """ Process a device's configuration data.
+
+            :param config: Optional, explicit configuration EBML data to
+                process. If none is provided, the data retrieved by
+                `getConfig()` will be used.
+        """
+        # FileCommandInterface legacy stuff not needed.
+        return ConfigInterface.loadConfig(self, config)
 
 
 # ===========================================================================
