@@ -211,13 +211,13 @@
         <IntegerElement name="SystemStateCode" id="0x5D01" multiple="0" mandatory="0"> System state of device unaffected by command errors. Values match those in Device Status Code.
             110: Command Interface is currently offline (for reason other than sleep)  
             100: Device is currently in sleep mode
-            50: Device Uploading (i.e. Wi-Fi Upload after recording finishes)
+            50: Device Uploading
             40: Device Triggering (i.e. waiting for a trigger)
-            30: Recording start pending (device will start recording soon after this message is sent)
-            20: Reset pending (device will reset soon after this message is sent)
+            30: Recording starting
+            20: Device resetting
             10: Device recording
             1: Device idle, unmounted.
-            0: Device idle, message successful. It is presumed the device is mounted as an MSD.
+            0: Device idle. It is presumed the device is mounted as an MSD.
         </IntegerElement>
         <UnicodeElement name="SystemStateMessage" id="0x5E01" multiple="0" mandatory="0">Optional code for system state</UnicodeElement>
 
