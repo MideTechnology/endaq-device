@@ -69,7 +69,7 @@ class CommandInterface:
     _TIME_PARSER = struct.Struct("<L")
 
 
-    def __init__(self,
+    def  __init__(self,
                  device: "Recorder"):
         """ `CommandInterface` instances are rarely (if ever) explicitly
             created; the parent `Recorder` object will create an instance of
@@ -497,6 +497,9 @@ class CommandInterface:
                 require no arguments.
             :returns: `True` if the command was successful.
         """
+        if self.device.isRemote:
+            wait = False
+
         self._sendCommand(cmd, response=False, timeout=0.1, callback=callback)
 
         # Since no response is expected, a failure to read a response caused
@@ -954,6 +957,9 @@ class CommandInterface:
         """
         timeout = -1 if timeout is None else timeout
         deadline = time() + timeout
+
+        if self.device.isRemote:
+            wait = False
 
         cmd = {'SSID': ssid, 'Selected': 1}
         if password is not None:
@@ -2195,6 +2201,9 @@ class SerialCommandInterface(CommandInterface):
                 arguments.
             :returns: `True` if the command was successful.
         """
+        if self.device.isRemote:
+            wait = False
+
         response = self._sendCommand({'EBMLCommand': {'RecStop': {}}},
                                      response=False,
                                      timeout=timeout,
@@ -2777,6 +2786,9 @@ class FileCommandInterface(CommandInterface):
                 require no arguments.
             :returns: `True` if the command was successful.
         """
+        if self.device.isRemote:
+            wait = False
+
         msg = self._encode(cmd)[:2]
         self._writeCommand(msg)
 

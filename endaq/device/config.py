@@ -1512,32 +1512,26 @@ class RemoteConfigInterface(FileConfigInterface):
     A configuration interface for remote devices (serial without MSD, MQTT,
     etc.), using the device's `CommandInterface` to read and write data.
     """
+
     #: A command callback function, used when reading and writing data.
     #  The same one is used for all reads/writes, but you may change the
-    #  value of `callback` before calling `loadConfig()`, `applyConfig()`,
-    #  or modifying any configuration item values if the operations need
-    #  their own callbacks.
+    #  value of `callback` before calling `loadConfig()` or `applyConfig()`,
+    #  or before modifying any configuration item values if the operations
+    #  need their own callbacks.
     callback: Optional[Callable] = None
 
 
     def _writeConfig(self, data: bytes) -> int:
         """ Open and write to the device's config file. """
         self.device.command.setLockID()
-        try:
-            self.device.command._setInfo(5, data, callback=self.callback)
-        finally:
-            self.device.command.clearLockID()
+        self.device.command._setInfo(5, data, callback=self.callback)
 
 
     def _readConfig(self) -> bytes:
         """ Open and read the device's config file. """
         self.device.command.setLockID()
-
-        try:
-            return self.device.command._getInfo(5, lock=True,
-                                                callback=self.callback)
-        finally:
-            self.device.command.clearLockID()
+        return self.device.command._getInfo(5, lock=True,
+                                            callback=self.callback)
 
 
     def _readUi(self):
@@ -1547,19 +1541,23 @@ class RemoteConfigInterface(FileConfigInterface):
 
     @staticmethod
     def _isfile(filename: Union[str, Path]) -> bool:
-        """ Test whether a path is a regular file. """
-        #
+        """ Test whether a path is a regular file. For compatibility;
+            always returns `True` for `RemoteConfigInterface`.
+        """
         return True
 
 
     def _backupConfig(self) -> bool:
-        """ Create a backup copy of the device's config file. """
+        """ Create a backup copy of the device's config file. For
+            compatibility; does nothing for `RemoteConfigInterface`."""
         return True
 
 
     def _restoreConfig(self,
                        remove: bool = False) -> bool:
-        """ Restore a backup copy of the device's config file. """
+        """ Restore a backup copy of the device's config file. For
+            compatibility; does nothing for `RemoteConfigInterface`.
+        """
         return True
 
 
@@ -1602,7 +1600,7 @@ class RemoteConfigInterface(FileConfigInterface):
                 `getConfig()` will be used.
         """
         # FileCommandInterface legacy stuff not needed.
-        return ConfigInterface.loadConfig(self, config)
+        return super().loadConfig(config)
 
 
 # ===========================================================================

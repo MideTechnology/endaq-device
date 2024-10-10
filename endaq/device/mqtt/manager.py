@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 from .advertising import Advertiser
-from .mqtt_discovery import DEFAULT_NAME
+from .mqtt_discovery import DEFAULT_NAME, SERVICE_TYPE
 from .mqtt_client import MQTTClient
 from .mqtt_interface import STATE_TOPIC, HEADER_TOPIC, MEASUREMENT_TOPIC
 
@@ -33,7 +33,7 @@ from .mqtt_interface import STATE_TOPIC, HEADER_TOPIC, MEASUREMENT_TOPIC
 
 MIDE_SCHEMA = ebmlite.loadSchema('mide_ide.xml')
 CDB_ID = MIDE_SCHEMA['ChannelDataBlock'].id
-EBML_ID_BYTES = bytes([0x1A, 0x45, 0xDF, 0xA3])
+EBML_ID_BYTES = bytes([0x1A, 0x45, 0xDF, 0xA3])  # To identify `EBML` elements
 
 DEVICE_TIMEOUT = 60 * 5  # seconds
 
@@ -453,6 +453,7 @@ def run(host: Optional[str] = MQTT_BROKER,
         port: int = MQTT_PORT,
         advertise: bool = True,
         brokerName: Optional[str] = DEFAULT_NAME,
+        serviceType: str = SERVICE_TYPE,
         background: bool = False,
         clientArgs: Dict[str, Any] = None,
         connectArgs: Dict[str, Any] = None,
@@ -466,6 +467,8 @@ def run(host: Optional[str] = MQTT_BROKER,
     :param port: The port to which to connect.
     :param advertise: If `True`, start the mDNS advertising of the broker.
     :param brokerName: The name under which the MQTT broker will be advertised.
+    :param serviceType: The name of the service type under which the broker
+        will be advertised.
     :param background: *For testing.* If `True`, this function returns an
         `MQTTDeviceManager` instance with the client loop running in a
         thread. If `False`, the function will run the client loop in the
@@ -496,11 +499,13 @@ def run(host: Optional[str] = MQTT_BROKER,
     logger.debug('Instantiating MQTTDeviceManager')
     manager = MQTTDeviceManager(client)
     if advertise:
-        kwargs = {'address': host, 'port': port, 'name': brokerName}
+        kwargs = {'address': host, 'port': port,
+                  'name': brokerName, 'serviceType': serviceType}
         if advertArgs:
             kwargs.update(advertArgs)
         manager.advertiser = Advertiser(**kwargs)
-        logger.debug(f'Starting advertising broker on {host}:{port} as {brokerName!r}')
+        logger.debug(f'Starting advertising broker on {host}:{port} '
+                     f'as "{brokerName}.{serviceType}"')
         manager.advertiser.start()
 
     logger.debug("Starting manager's MQTT client loop thread")

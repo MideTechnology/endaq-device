@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, Optional
 from zeroconf import IPVersion, ServiceInfo, Zeroconf
 
 from .mqtt_interface import MQTT_BROKER, MQTT_PORT, getMyIP
-from .mqtt_discovery import DEFAULT_NAME
+from .mqtt_discovery import DEFAULT_NAME, SERVICE_TYPE
 
 
 logger = logging.getLogger(__name__)
@@ -20,6 +20,7 @@ class Advertiser(Thread):
 
     def __init__(self,
                  name: str = DEFAULT_NAME,
+                 serviceType: str = SERVICE_TYPE,
                  address: Optional[str] = MQTT_BROKER,
                  port: int = MQTT_PORT,
                  properties: Optional[Dict[str, Any]] = None):
@@ -27,6 +28,8 @@ class Advertiser(Thread):
         A thread that does mDNS service advertising of the MQTT broker.
 
         :param name: The name of the service. Must be unique.
+        :param serviceType: The name of the service type under which the broker
+            will be advertised.
         :param address: The broker's address. Defaults to the machine running
             the advertising thread.
         :param port: The broker's port number.
@@ -35,8 +38,8 @@ class Advertiser(Thread):
         """
         self.port = port
         self.serviceName = name
-        if not name.endswith("_mqtt._tcp.local."):
-            name += "._mqtt._tcp.local."
+        if not name.endswith(serviceType):
+            name = f'{name}.{serviceType}'
         self.properties = properties or {}
 
         # TODO: IPv6 support?
@@ -44,7 +47,7 @@ class Advertiser(Thread):
         self.ipVersion = IPVersion.V4Only
 
         self.info = ServiceInfo(
-                "_mqtt._tcp.local.",
+                serviceType,
                 name,
                 addresses=[socket.inet_aton(self.address)],
                 port=self.port,
