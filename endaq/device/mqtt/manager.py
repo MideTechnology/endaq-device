@@ -5,6 +5,7 @@ MQTT Device Manager
 from collections import defaultdict
 from io import BytesIO
 import os.path
+import struct
 import sys
 from time import time
 from typing import Any, ByteString, Dict, Optional, Tuple, Union
@@ -22,10 +23,11 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+from ..command_interfaces import CommandInterface
 from .advertising import Advertiser
 from .mqtt_discovery import DEFAULT_NAME, splitServiceName
 from .mqtt_client import MQTTClient
-from .mqtt_interface import STATE_TOPIC, HEADER_TOPIC, MEASUREMENT_TOPIC
+from .mqtt_interface import STATE_TOPIC, HEADER_TOPIC, MEASUREMENT_TOPIC, COMMAND_TOPIC
 
 # ===========================================================================
 #
@@ -37,6 +39,8 @@ EBML_ID_BYTES = bytes([0x1A, 0x45, 0xDF, 0xA3])  # To identify `EBML` elements
 
 DEVICE_TIMEOUT = 60 * 5  # seconds
 
+# Maximum valid difference between device and system time
+MAX_DRIFT = 60 * 60 * 24 * 2
 
 # ===========================================================================
 #
@@ -68,10 +72,15 @@ class MQTTDevice:
         if isinstance(sn, int):
             self.sn = f'{sn:08d}'
 
+        self.lastContact: float = None
+
         # Device info, received via `state` topic.
         self.devinfo: ByteString = None
+        self.infoTime: int = 0
 
         self.status: tuple[Optional[int], Optional[str]] = None, None
+        self.system: tuple[Optional[int], Optional[str]] = None, None
+        self.lockId: Optional[bytes] = None
         self.totalMsgs = 0
 
         # For parsing the `measurement` data to extract IDE header
@@ -88,12 +97,59 @@ class MQTTDevice:
         self.manager.client.subscribe(self.measurementTopic)
         logger.debug(f'Subscribed to {self.measurementTopic}')
 
+        self.commandTopic = COMMAND_TOPIC.format(sn=self.sn)
+        # TODO: Subscribe to command topic to scrape SetLockID commands
+
 
     def __del__(self):
         try:
             self.manager.client.unsubscribe(self.measurementTopic)
         except (AttributeError, TypeError, RuntimeError):
             pass
+
+
+    def updateState(self, info):
+        """ Update the information with data published by the actual device
+            to its `state` topic.
+        """
+        now = time()
+
+        self.status = (info.get('DeviceStatusCode'),
+                       info.get('DeviceStatusMessage'))
+        self.system = (info.get('SystemStateCode', self.status[0]),
+                       info.get('SystemStateMessage', self.status[1]))
+        self.lockId = info.get('LockID', '\x00' * 16)
+
+        try:
+            t = CommandInterface._TIME_PARSER.unpack_from(info['ClockTime'])[0]
+            if abs(now - t) < MAX_DRIFT:
+                self.infoTime = t
+            else:
+                logger.warning(f'state update from {self.sn} ClockTime '
+                               f'differs from system by {now - t}')
+        except KeyError:
+            pass
+        except (struct.error, IndexError):
+            logger.error(f'state update from {self.sn} ClockTime '
+                         f'had bad value: {info["ClockTime"]!r}!')
+
+        if self.lastContact is None:
+            # First state update, probably a retained message
+            self.lastContact = self.infoTime or now
+        else:
+            self.lastContact = now
+
+        try:
+            getinfo = info['GetInfoResponse']
+            index = getinfo.get('InfoIndex', 0)
+            if index != 0:
+                logger.error(f'state update from {self.sn} '
+                             f'had wrong InfoIndex ({index})!')
+            else:
+                self.devinfo = getinfo
+        except KeyError as err:
+            logger.error(f'state update from {self.sn} '
+                         f'missing element: {err.args[0]!r}!')
 
 
     @synchronized
@@ -301,9 +357,6 @@ class MQTTDeviceManager(MQTTClient):
         # Last message from each topic. For testing, might remove later.
         self.lastMessages: dict[str, ByteString] = {}
         
-        # Last contact times on any topic (serial number, epoch timestamp)
-        self.lastContact: dict[int, int] = {}
-
         self.stateSubTopic = STATE_TOPIC.format(sn='+')
         self.client.message_callback_add(self.stateSubTopic, self.onStateMessage)
 
@@ -382,17 +435,7 @@ class MQTTDeviceManager(MQTTClient):
         #  (identified by bit 31 being set) don't need to be tracked the same way.
 
         device = self.getDevice(sn)
-        device.status = response.get('DeviceStatusCode'), response.get('DeviceStatusMessage')
-
-        try:
-            getinfo = response['GetInfoResponse']
-            index = getinfo.get('InfoIndex', 0)
-            if index != 0:
-                logger.error(f'onStateMessage: state update from {sn} had wrong InfoIndex ({index})!')
-            else:
-                device.devinfo = getinfo
-        except KeyError as err:
-            logger.error(f'onStateMessage: Response from {sn} missing element {err.args[0]!r}!')
+        device.updateState(response)
 
 
     def onMeasurementMessage(self, _client, _userdata, message):
@@ -425,8 +468,9 @@ class MQTTDeviceManager(MQTTClient):
         timeout = payload.get('Timeout', DEVICE_TIMEOUT)
 
         for sn, dev in self.knownDevices.items():
-            last = int(self.lastContact.get(sn, time()))
-            if timeout and time() - last > timeout:
+            now = time()
+            last = max(dev.lastContact, dev.infoTime)
+            if timeout and now - last > timeout:
                 logger.debug(f'GetDeviceList: skipping {sn} due to timeout')
                 continue
 
