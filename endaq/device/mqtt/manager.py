@@ -93,7 +93,7 @@ class MQTTDevice:
 
         self.measurementTopic = MEASUREMENT_TOPIC.format(sn=self.sn)
         self.manager.client.message_callback_add(self.measurementTopic,
-                                                 manager.onMeasurementMessage)
+                                                 self.onMeasurementMessage)
         self.manager.client.subscribe(self.measurementTopic)
         logger.debug(f'Subscribed to {self.measurementTopic}')
 
@@ -153,14 +153,19 @@ class MQTTDevice:
 
 
     @synchronized
-    def append(self, msg: bytes):
+    def onCommandMessage(self, _client, _userdata, message):
+        self.lastContact = time()
+
+
+    @synchronized
+    def onMeasurementMessage(self, _client, _userdata, message):
         """ Handle an incoming chunk of IDE data. If the message completes
             an element, it is handled.
-
-            :param msg: A chunk of IDE data, the payload of a message
-                received on a 'measurement' topic.
         """
-        logger.debug(f'Received {len(msg)} bytes from {self.sn}')
+        self.lastContact = time()
+
+        msg = message.payload
+        logger.debug(f'Received {len(msg)} measurement bytes from {self.sn}')
         self.totalMsgs += 1
 
         if msg.startswith(EBML_ID_BYTES):
@@ -436,20 +441,6 @@ class MQTTDeviceManager(MQTTClient):
 
         device = self.getDevice(sn)
         device.updateState(response)
-
-
-    def onMeasurementMessage(self, _client, _userdata, message):
-        """ Handle a message received in the measurement topic. This is
-            *not* the registered MQTT message callback; that's `onMessage()`,
-            which calls this.
-        """
-        packet = message.payload
-        sn = self.getSenderSerial(message.topic)
-
-        if sn not in self.knownDevices:
-            logger.info(f'Got measurement from {sn!r} before status!')
-
-        self.getDevice(sn).append(packet)
 
 
     # =======================================================================
