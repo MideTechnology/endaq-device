@@ -12,10 +12,6 @@ from typing import Any, ByteString, Dict, Optional, Tuple, Union
 
 import ebmlite
 from ebmlite.decoding import readElementID, readElementSize
-from ..client import dump, synchronized
-from ..command_interfaces import CommandError
-from ..response_codes import DeviceStatusCode
-from .mqtt_interface import MQTT_BROKER, MQTT_PORT, getMyIP, makeClientID
 
 import paho.mqtt.client
 
@@ -23,11 +19,15 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-from ..command_interfaces import CommandInterface
+from ..client import dump, synchronized
+from ..response_codes import DeviceStatusCode
+from ..command_interfaces import CommandInterface, CommandError
+from .mqtt_interface import MQTT_BROKER, MQTT_PORT, getMyIP, makeClientID
 from .advertising import Advertiser
-from .mqtt_discovery import DEFAULT_NAME, splitServiceName
+from .mqtt_discovery import DEFAULT_NAME
 from .mqtt_client import MQTTClient
 from .mqtt_interface import STATE_TOPIC, HEADER_TOPIC, MEASUREMENT_TOPIC, COMMAND_TOPIC
+
 
 # ===========================================================================
 #
@@ -35,7 +35,10 @@ from .mqtt_interface import STATE_TOPIC, HEADER_TOPIC, MEASUREMENT_TOPIC, COMMAN
 
 MIDE_SCHEMA = ebmlite.loadSchema('mide_ide.xml')
 CDB_ID = MIDE_SCHEMA['ChannelDataBlock'].id
-EBML_ID_BYTES = bytes([0x1A, 0x45, 0xDF, 0xA3])  # To identify `EBML` elements
+EBML_ID_BYTES = bytes([0x1A, 0x45, 0xDF, 0xA3])  # To identify `EBML` elements in stream
+
+COMMAND_SCHEMA = ebmlite.loadSchema('command-response.xml')
+NEWLOCKID_ID_BYTES = struct.pack('>H', COMMAND_SCHEMA['NewLockID'].id)
 
 DEVICE_TIMEOUT = 60 * 5  # seconds
 
@@ -72,7 +75,9 @@ class MQTTDevice:
         if isinstance(sn, int):
             self.sn = f'{sn:08d}'
 
-        self.lastContact: float = None
+        self.lastContact: float = 0
+        self.lastCommand: float = 0
+        self.lastMeasurement: float = 0
 
         # Device info, received via `state` topic.
         self.devinfo: ByteString = None
@@ -80,7 +85,7 @@ class MQTTDevice:
 
         self.status: tuple[Optional[int], Optional[str]] = None, None
         self.system: tuple[Optional[int], Optional[str]] = None, None
-        self.lockId: Optional[bytes] = None
+        self.lockId: bytes =  '\x00' * 16
         self.totalMsgs = 0
 
         # For parsing the `measurement` data to extract IDE header
@@ -98,19 +103,30 @@ class MQTTDevice:
         logger.debug(f'Subscribed to {self.measurementTopic}')
 
         self.commandTopic = COMMAND_TOPIC.format(sn=self.sn)
+        self.manager.client.message_callback_add(self.commandTopic,
+                                                 self.onCommandMessage)
+        self.manager.client.subscribe(self.commandTopic)
+        logger.debug(f'Subscribed to {self.commandTopic}')
+
         # TODO: Subscribe to command topic to scrape SetLockID commands
 
 
     def __del__(self):
         try:
             self.manager.client.unsubscribe(self.measurementTopic)
+            self.manager.client.unsubscribe(self.commandTopic)
         except (AttributeError, TypeError, RuntimeError):
             pass
 
 
-    def updateState(self, info):
+    # =======================================================================
+    # State info management
+    # =======================================================================
+
+    @synchronized
+    def updateStateInfo(self, info):
         """ Update the information with data published by the actual device
-            to its `state` topic.
+            to its `state` topic. Called by the Manager.
         """
         now = time()
 
@@ -133,7 +149,7 @@ class MQTTDevice:
             logger.error(f'state update from {self.sn} ClockTime '
                          f'had bad value: {info["ClockTime"]!r}!')
 
-        if self.lastContact is None:
+        if not self.lastContact:
             # First state update, probably a retained message
             self.lastContact = self.infoTime or now
         else:
@@ -153,16 +169,71 @@ class MQTTDevice:
 
 
     @synchronized
-    def onCommandMessage(self, _client, _userdata, message):
-        self.lastContact = time()
+    def getStateInfo(self):
+        """ Get the device's state info.
+        """
+        item = {'SerialNumber': int(self.sn),
+                'LastContact': int(max(self.lastContact, self.infoTime)),
+                'LastMeasurement': int(self.lastMeasurement),
+                'GetInfoResponse': self.devinfo,
+                'LockID': self.lockId}
 
+        if self.status[0] is not None:
+            item['DeviceStatusCode'] = self.status[0]
+            if self.status[1]:
+                item['DeviceStatusMessage'] = self.status[1]
+        if self.system[0] is not None:
+            item['SystemStateCode'] = self.system[0]
+            if self.system[1]:
+                item['SystemStateMessage'] = self.system[1]
+
+        return item
+
+
+    # =======================================================================
+    # LockID management
+    # =======================================================================
+
+    @synchronized
+    def onCommandMessage(self, _client, _userdata, message):
+        """ Handle a command message to the device, scraping any change to
+            the `LockID`.
+        """
+        self.lastCommand = time()
+        msg = message.payload
+
+        if NEWLOCKID_ID_BYTES not in msg:
+            return
+
+        try:
+            command = (self.manager.command
+                       ._decodeCommand(msg)['EBMLCommand']['SetLockID'])
+            myId = self.lockId
+            oldId = command['CurrentLockID']
+            newId = command['NewLockID']
+
+            if not any(self.lockId) or self.lockId == oldId:
+                self.lockId = newId
+
+            if myId != newId:
+                logger.debug(f'Captured SetLockID command for {self.sn}: '
+                             f'{dump(newId, 0)!r}')
+
+        except KeyError as err:
+            logger.debug(repr(err))
+            pass
+
+
+    # =======================================================================
+    # IDE Header data scraping and management
+    # =======================================================================
 
     @synchronized
     def onMeasurementMessage(self, _client, _userdata, message):
         """ Handle an incoming chunk of IDE data. If the message completes
             an element, it is handled.
         """
-        self.lastContact = time()
+        self.lastMeasurement = self.lastContact = time()
 
         msg = message.payload
         logger.debug(f'Received {len(msg)} measurement bytes from {self.sn}')
@@ -322,6 +393,9 @@ class MQTTDevice:
             logger.error('Error saving header data', exc_info=True)
 
 
+
+
+
 # ===========================================================================
 #
 # ===========================================================================
@@ -440,7 +514,7 @@ class MQTTDeviceManager(MQTTClient):
         #  (identified by bit 31 being set) don't need to be tracked the same way.
 
         device = self.getDevice(sn)
-        device.updateState(response)
+        device.updateStateInfo(response)
 
 
     # =======================================================================
@@ -458,21 +532,12 @@ class MQTTDeviceManager(MQTTClient):
 
         timeout = payload.get('Timeout', DEVICE_TIMEOUT)
 
-        for sn, dev in self.knownDevices.items():
-            now = time()
-            last = max(dev.lastContact, dev.infoTime)
-            if timeout and now - last > timeout:
-                logger.debug(f'GetDeviceList: skipping {sn} due to timeout')
+        for dev in self.knownDevices.values():
+            item = dev.getStateInfo()
+
+            if timeout and time() - item['LastContact'] > timeout:
+                logger.debug(f'GetDeviceList: skipping {dev.sn} due to timeout')
                 continue
-
-            item = {'SerialNumber': sn,
-                    'LastContact': last,
-                    'GetInfoResponse': dev.devinfo}
-
-            if dev.status[0] is not None:
-                item['DeviceStatusCode'] = dev.status[0]
-            if dev.status[1]:
-                item['DeviceStatusMessage'] = dev.status[1]
 
             devices.append(item)
 
@@ -518,29 +583,29 @@ def run(host: Optional[str] = MQTT_BROKER,
     clientArgs = clientArgs.copy() if clientArgs else {}
     connectArgs = connectArgs.copy if connectArgs else {}
 
-    _basename, serviceType = splitServiceName(brokerName)
     host = connectArgs.pop('host', host) or getMyIP()
     port = connectArgs.pop('port', port) or MQTT_PORT
     clientArgs.setdefault('client_id', makeClientID("MQTTDeviceManager"))
 
-    logger.debug(f'Instantiating MQTT client ({clientArgs["client_id"]})')
+    logger.info(f'Instantiating MQTT client ({clientArgs["client_id"]}) '
+                f'for broker on {host}:{port}')
     client = paho.mqtt.client.Client(paho.mqtt.client.CallbackAPIVersion.VERSION2,
                                      **clientArgs)
-    logger.debug(f'Connecting to MQTT Broker on {host}:{port}')
     client.connect(host, port, 60, **connectArgs)
 
-    logger.debug('Instantiating MQTTDeviceManager')
+    logger.info('Instantiating MQTTDeviceManager')
     manager = MQTTDeviceManager(client)
+
     if advertise:
         kwargs = {'address': host, 'port': port, 'name': brokerName}
         if advertArgs:
             kwargs.update(advertArgs)
         manager.advertiser = Advertiser(**kwargs)
-        logger.debug(f'Starting advertising broker on {host}:{port} '
+        logger.info(f'Starting advertising broker on {host}:{port} '
                      f'as "{brokerName}"')
         manager.advertiser.start()
 
-    logger.debug("Starting manager's MQTT client loop thread")
+    logger.info("Starting manager's MQTT client loop thread")
 
     # Test code: this conditional block to be removed (probably)
     if background:

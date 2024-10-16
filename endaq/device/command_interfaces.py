@@ -89,8 +89,11 @@ class CommandInterface:
         # Last command sent: timestamp and a copy of the command (dict)
         self.lastCommand: Tuple[Optional[float], Optional[dict]] = (None, None)
 
-        # Last reported device status. Not available on all interfaces.
-        self.status: Tuple[Optional[int], Optional[str]] = (None, None)
+        # Last response (`status`) and last reported device system status
+        # (`system`): code number, optional message, and timestamp. Not
+        # available on all interfaces.
+        self.status: Tuple[Optional[int], Optional[str], float] = (None, None, None)
+        self.system: Tuple[Optional[int], Optional[str], float] = (None, None, None)
 
         # Some interfaces (i.e. serial) have a maximum packet size.
         self.maxCommandSize = self.DEFAULT_MAX_COMMAND_SIZE
@@ -1919,7 +1922,7 @@ class SerialCommandInterface(CommandInterface):
                     self._writeCommand(packet)
 
                     if timeout == 0 and not response:
-                        self.status = None, None
+                        self.status = None, None, now
                         return None
 
                     try:
@@ -1936,26 +1939,35 @@ class SerialCommandInterface(CommandInterface):
                         if not response:
                             logger.debug('Ignoring anticipated exception because '
                                          'response not required: {!r}'.format(err))
-                            self.status = None, None
+                            self.status = None, None, now
                             return None
                         else:
                             raise
 
                     if resp:
-                        code = resp.get('DeviceStatusCode', 0)
+                        code = resp.get('DeviceStatusCode')
                         msg = resp.get('DeviceStatusMessage')
+                        systemCode = resp.get('SystemStateCode')
+                        systemMsg = resp.get('SystemStateMessage')
                         queueDepth = resp.get('CMDQueueDepth', 1)
                         curLockId = resp.get('LockID', None)
 
                         if curLockId and not any(curLockId):
                             curLockId = None
 
-                        try:
-                            code = DeviceStatusCode(code)
-                        except ValueError:
-                            logger.debug('Received unknown DeviceStatusCode: {}'.format(code))
+                        if code is not None:
+                            try:
+                                code = DeviceStatusCode(code)
+                                self.status = code, msg, now
+                            except ValueError:
+                                logger.debug('Received unknown DeviceStatusCode: {}'.format(code))
+                        if systemCode is not None:
+                            try:
+                                systemCode = DeviceStatusCode(systemCode)
+                                self.system = systemCode, systemMsg, now
+                            except ValueError:
+                                logger.debug('Received unknown SystemStateCode: {}'.format(systemCode))
 
-                        self.status = code, msg
 
                         if code < 0:
                             # Only record LockID if the error response actually has one.
@@ -1993,7 +2005,7 @@ class SerialCommandInterface(CommandInterface):
                 if not response:
                     logger.debug('Ignoring timeout waiting for response '
                                  'because no response required')
-                    self.status = None, None
+                    self.status = None, None, now
                     return None
                 else:
                     raise

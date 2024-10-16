@@ -459,6 +459,8 @@ class MQTTConnectionManager:
                             device = devtype('remote', devinfo=info)
                             device.command = MQTTCommandInterface(device, self)
                             device._devinfo = MQTTDeviceInfo(device)
+                            device.lastContact = listItem.get('LastContact', 0)
+                            device.lastMeasurement = listItem.get('LastMeasurement', 0)
                             devices.append(device)
                             break
                 except KeyError as err:
