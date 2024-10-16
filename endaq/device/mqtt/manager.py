@@ -96,19 +96,23 @@ class MQTTDevice:
         self.readingHeader: bool = False
         self.headerTopic = HEADER_TOPIC.format(sn=self.sn)
 
+        header = self.loadHeader()
+        if header:
+            logger.debug(f'Loaded cached IDE header for {self.sn}')
+            self.header = bytearray(header)
+            self.publishHeader()
+
         self.measurementTopic = MEASUREMENT_TOPIC.format(sn=self.sn)
         self.manager.client.message_callback_add(self.measurementTopic,
                                                  self.onMeasurementMessage)
         self.manager.client.subscribe(self.measurementTopic)
-        logger.debug(f'Subscribed to {self.measurementTopic}')
+        # logger.debug(f'Subscribed to {self.measurementTopic}')
 
         self.commandTopic = COMMAND_TOPIC.format(sn=self.sn)
         self.manager.client.message_callback_add(self.commandTopic,
                                                  self.onCommandMessage)
         self.manager.client.subscribe(self.commandTopic)
-        logger.debug(f'Subscribed to {self.commandTopic}')
-
-        # TODO: Subscribe to command topic to scrape SetLockID commands
+        # logger.debug(f'Subscribed to {self.commandTopic}')
 
 
     def __del__(self):
@@ -137,6 +141,7 @@ class MQTTDevice:
         self.lockId = info.get('LockID', '\x00' * 16)
 
         try:
+            # Get device's time, which could be wrong (power loss, etc.)
             t = CommandInterface._TIME_PARSER.unpack_from(info['ClockTime'])[0]
             if abs(now - t) < MAX_DRIFT:
                 self.infoTime = t
@@ -233,14 +238,12 @@ class MQTTDevice:
         """ Handle an incoming chunk of IDE data. If the message completes
             an element, it is handled.
         """
-        self.lastMeasurement = self.lastContact = time()
-
-        msg = message.payload
-        logger.debug(f'Received {len(msg)} measurement bytes from {self.sn}')
         self.totalMsgs += 1
+        self.lastMeasurement = self.lastContact = time()
+        msg = message.payload
 
         if msg.startswith(EBML_ID_BYTES):
-            logger.debug(f'Received EBML header from {self.sn}')
+            logger.debug(f'Received start of header from {self.sn}')
             self.readingHeader = True
             self.elementSize = 0
             self.buffer = BytesIO()
@@ -262,7 +265,9 @@ class MQTTDevice:
                 if elementId == CDB_ID:
                     # Received data, assume previous elements were header,
                     # and now it's been read.
+                    logger.debug(f'Completed reading header from {self.sn}')
                     self.readingHeader = False
+                    self.publishHeader()
                     return
 
             if end >= self.elementSize:
@@ -303,41 +308,48 @@ class MQTTDevice:
             # Mandatory elements in the header
             for name in ('CalibrationList', 'RecordingProperties', 'TimeBaseUTC'):
                 if name not in dumped:
-                    logger.error(f'Header from {self.sn} did not contain required {name}')
+                    logger.error(f'Header from {self.sn} did not contain '
+                                 f'required element {name!r}')
                     return False
 
             # Optional elements in header (technically not required, but their
             # absence could mean something else is wrong)
-            for name in ('Sync', 'RecorderConfigurationList'):
+            # for name in ('Sync', 'RecorderConfiguration'):
+            for name in ('RecorderConfiguration',):
                 if name not in dumped:
-                    logger.warning(f'Header from {self.sn} contained no {name}')
+                    logger.warning(f'Header from {self.sn} contained no {name}'
+                                   ' (non-fatal)')
 
             return True
 
         except (IOError, TypeError, ValueError) as err:
-            logger.error(f"{type(err).__name__} validating header: {err}", exc_info=True)
+            logger.error(f"{type(err).__name__} validating header: {err}",
+                         exc_info=True)
             return False
 
 
     @synchronized
-    def processHeader(self, data: bytes):
+    def publishHeader(self):
         """ Handle a completed IDE header, either read 'live' from the stream
             or loaded from a cache.
-
-            :param data: Encoded EBML data containing the header of an IDE
-                file.
         """
-        if not self.validateHeader(data):
+        if not self.validateHeader(self.header):
             return
 
-        info = self.manager.client.publish(self.headerTopic, data, retain=True)
+        self.saveHeader(self.header)
+
+        info = self.manager.client.publish(self.headerTopic, self.header,
+                                           retain=True)
         if info.rc != paho.mqtt.client.MQTT_ERR_SUCCESS:
-            logger.error(f'Error publishing header: {info.rc!r}')
+            logger.error(f'Error publishing header to {self.headerTopic}: '
+                         f'{info.rc!r}')
             return
         try:
             info.wait_for_publish(1.0)
+            logger.debug(f'Published IDE header to {self.headerTopic}')
         except RuntimeError as err:
-            logger.error(f'Error waiting for header to publish: {err!r}')
+            logger.error(f'Error waiting for header to publish '
+                         f'to {self.headerTopic}: {err!r}')
 
 
     def _getCacheFile(self,
@@ -593,7 +605,7 @@ def run(host: Optional[str] = MQTT_BROKER,
                                      **clientArgs)
     client.connect(host, port, 60, **connectArgs)
 
-    logger.info('Instantiating MQTTDeviceManager')
+    # logger.info('Instantiating MQTTDeviceManager')
     manager = MQTTDeviceManager(client)
 
     if advertise:
