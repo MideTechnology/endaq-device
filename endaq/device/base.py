@@ -157,11 +157,12 @@ class Recorder:
         # Special case for temporary/fake Recorders used for getting info, etc.
         self._name = None
 
-        # For remote devices: timestamps of the device's last communication
-        # and the last block of streamed data. Initially set after
-        # instantiation, and not automatically updated.
-        self.lastContact: float = 0
-        self.lastMeasurement: float = 0
+        # For remote devices: timestamps of the device's last communication,
+        # last block of streamed data, and last header update. Initially set
+        # after instantiation, and not automatically updated.
+        self._lastContact: int = 0
+        self._lastMeasurement: int = 0
+        self._lastHeader: int = 0
 
 
     def _getDevinfo(self) -> DeviceInfo:

@@ -49,6 +49,10 @@ MAX_DRIFT = 60 * 60 * 24 * 2
 #
 # ===========================================================================
 
+class ValidationError(ValueError):
+    """ Exception raised if IDE header data fails validation. """
+
+
 class MQTTDevice:
     """
     This class is used by `MQTTDeviceManager` to keep track of a device/process
@@ -78,6 +82,7 @@ class MQTTDevice:
         self.lastContact: float = 0
         self.lastCommand: float = 0
         self.lastMeasurement: float = 0
+        self.lastHeader: float = 0
 
         # Device info, received via `state` topic.
         self.devinfo: ByteString = None
@@ -180,6 +185,7 @@ class MQTTDevice:
         item = {'SerialNumber': int(self.sn),
                 'LastContact': int(max(self.lastContact, self.infoTime)),
                 'LastMeasurement': int(self.lastMeasurement),
+                'LastHeader': int(self.lastHeader),
                 'GetInfoResponse': self.devinfo,
                 'LockID': self.lockId}
 
@@ -288,18 +294,23 @@ class MQTTDevice:
             # this must be revised if the exception type or message change!
             if str(err).startswith(('Invalid length', 'Cannot decode')):
                 return
-            logger.error("Unexpected IOError handling measurement EBML", exc_info=True)
+            logger.error("Unexpected IOError handling measurement EBML",
+                         exc_info=True)
 
         except (ValueError, TypeError, IndexError) as err:
             # Shouldn't happen in typical operation
-            logger.error(f"{type(err).__name__} handling measurement EBML: {err}", exc_info=True)
+            logger.error(f"{type(err).__name__} handling measurement EBML: {err}",
+                         exc_info=True)
 
 
-    def validateHeader(self, data: bytes) -> bool:
-        """ Verify that header data is complete and valid.
+    def validateHeader(self, data: bytes) -> Union[bool, Dict[str, Any]]:
+        """ Verify that header data is complete and valid. Raises a
+            `ValidationError` if validation fails.
 
             :param data: Encoded EBML data containing the header of an IDE
                 file.
+            :return: The header data in dictionary form if validation was
+                successful.
         """
         try:
             parsed = ebmlite.loadSchema('mide_ide.xml').loads(data)
@@ -310,7 +321,7 @@ class MQTTDevice:
                 if name not in dumped:
                     logger.error(f'Header from {self.sn} did not contain '
                                  f'required element {name!r}')
-                    return False
+                    raise ValidationError
 
             # Optional elements in header (technically not required, but their
             # absence could mean something else is wrong)
@@ -320,12 +331,12 @@ class MQTTDevice:
                     logger.warning(f'Header from {self.sn} contained no {name}'
                                    ' (non-fatal)')
 
-            return True
+            return dumped
 
         except (IOError, TypeError, ValueError) as err:
             logger.error(f"{type(err).__name__} validating header: {err}",
                          exc_info=True)
-            return False
+            raise ValidationError
 
 
     @synchronized
@@ -333,9 +344,12 @@ class MQTTDevice:
         """ Handle a completed IDE header, either read 'live' from the stream
             or loaded from a cache.
         """
-        if not self.validateHeader(self.header):
+        try:
+            validated = self.validateHeader(self.header)
+        except ValidationError:
             return
 
+        self.lastHeader = validated['TimeBaseUTC'][0]
         self.saveHeader(self.header)
 
         info = self.manager.client.publish(self.headerTopic, self.header,
@@ -347,6 +361,7 @@ class MQTTDevice:
         try:
             info.wait_for_publish(1.0)
             logger.debug(f'Published IDE header to {self.headerTopic}')
+            self.lastHeader = time()
         except RuntimeError as err:
             logger.error(f'Error waiting for header to publish '
                          f'to {self.headerTopic}: {err!r}')
