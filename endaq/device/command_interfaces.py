@@ -449,6 +449,34 @@ class CommandInterface:
                     raise
 
 
+    def _setStatus(self,
+                   statusCode: Optional[int] = None,
+                   statusMsg: Optional[str] = None,
+                   systemCode: Optional[int] = None,
+                   systemMsg: Optional[str] = None,
+                   lockId: Optional[bytes] = None):
+        """ Set the status, system state, and lock ID.
+        """
+        now = time()
+
+        if statusCode is not None:
+            try:
+                statusCode = DeviceStatusCode(statusCode)
+            except ValueError:
+                logger.debug('Received unknown DeviceStatusCode: {}'.format(statusCode))
+            self.status = statusCode, statusMsg, now
+        if systemCode is not None:
+            try:
+                systemCode = DeviceStatusCode(systemCode)
+            except ValueError:
+                logger.debug('Received unknown SystemStateCode: {}'.format(systemCode))
+            self.system = systemCode, systemMsg, now
+
+        lockId = lockId or '\x00' * 16
+        if lockId != self.lockId[1]:
+            self.lockId = now, lockId
+
+
     def _sendCommand(self,
                      cmd: dict,
                      response: bool = True,
@@ -1947,40 +1975,18 @@ class SerialCommandInterface(CommandInterface):
                     if resp:
                         code = resp.get('DeviceStatusCode')
                         msg = resp.get('DeviceStatusMessage')
-                        systemCode = resp.get('SystemStateCode')
-                        systemMsg = resp.get('SystemStateMessage')
                         queueDepth = resp.get('CMDQueueDepth', 1)
-                        curLockId = resp.get('LockID', None)
 
-                        if curLockId and not any(curLockId):
-                            curLockId = None
-
-                        if code is not None:
-                            try:
-                                code = DeviceStatusCode(code)
-                                self.status = code, msg, now
-                            except ValueError:
-                                logger.debug('Received unknown DeviceStatusCode: {}'.format(code))
-                        if systemCode is not None:
-                            try:
-                                systemCode = DeviceStatusCode(systemCode)
-                                self.system = systemCode, systemMsg, now
-                            except ValueError:
-                                logger.debug('Received unknown SystemStateCode: {}'.format(systemCode))
-
+                        self._setStatus(code, msg,
+                                        resp.get('SystemStateCode'),
+                                        resp.get('SystemStateMessage'),
+                                        resp.get('LockID'))
 
                         if code < 0:
-                            # Only record LockID if the error response actually has one.
-                            if 'LockID' in resp:
-                                self.lockId = now, curLockId
-
                             # Raise a CommandError or DeviceError. -20 and -30 refer
                             # to bad commands sent by the user.
                             EXC = CommandError if -30 <= code <= -20 else DeviceError
                             raise EXC(code, msg, self.lastCommand[1])
-
-                        else:
-                            self.lockId = now, curLockId
 
                         if queueDepth == 0:
                             logger.debug('Command queue full, retrying.')

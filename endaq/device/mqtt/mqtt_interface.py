@@ -73,7 +73,6 @@ def makeClientID(base: str) -> str:
 #
 # ===========================================================================
 
-
 class MQTTConnectionManager:
     """
     Class that manages the connection to the MQTT Broker and communication
@@ -414,6 +413,7 @@ class MQTTConnectionManager:
             raise DeviceError(f"Manager response did not contain {err.args[0]}")
 
 
+    @synchronized
     def getDevices(self,
                    known: Optional[Dict[int, "Recorder"]] = None,
                    timeout: Union[int, float] = 10.0,
@@ -448,27 +448,49 @@ class MQTTConnectionManager:
             for n, listItem in enumerate(items):
                 try:
                     sn = listItem['SerialNumber']
-                    if sn in known:
-                        devices.append(known[sn])
+                    info = bytes(listItem['GetInfoResponse']['InfoPayload'])
+                    device = known.get(sn)
+
+                    if not device:
+                        for devtype in RECORDER_TYPES:
+                            if devtype._isRecorder(info):
+                                device = devtype('remote', devinfo=info)
+                                device.command = MQTTCommandInterface(device, self)
+                                device._devinfo = MQTTDeviceInfo(device)
+                                devices.append(device)
+                                known[sn] = device
+                                break
+
+                    if not device:
+                        logger.error(f'getRemoteDevices(): Could not find '
+                                     f'Recorder subclass for {n}, continuing')
                         continue
 
-                    info = bytes(listItem['GetInfoResponse']['InfoPayload'])
-                    for devtype in RECORDER_TYPES:
-                        if devtype._isRecorder(info):
-                            device = devtype('remote', devinfo=info)
-                            device.command = MQTTCommandInterface(device, self)
-                            device._devinfo = MQTTDeviceInfo(device)
-                            device._lastContact = listItem.get('LastContact', 0)
-                            device._lastMeasurement = listItem.get('LastMeasurement', 0)
-                            device._lastHeader = listItem.get('LastHeader', 0)
-                            device._lastCommand = listItem.get('LastCommand', 0)
-                            devices.append(device)
-                            break
+                    self.updateDevice(device, listItem)
+
                 except KeyError as err:
                     logger.error(f'getRemoteDevices(): DeviceListItem {n} from Manager '
                                  f'did not contain {err.args[0]!r}, continuing')
 
         return devices
+
+
+    def updateDevice(self,
+                     device: Recorder,
+                     state: Dict[str, Any]) -> None:
+        """ Update the device's information with new state data from the
+            Device Manager.
+        """
+        device._lastContact = state.get('LastContact', 0)
+        device._lastMeasurement = state.get('LastMeasurement', 0)
+        device._lastHeader = state.get('LastHeader', 0)
+        device._lastCommand = state.get('LastCommand', 0)
+
+        device.command._setStatus(state.get('DeviceStatusCode'),
+                                  state.get('DeviceStatusMessage'),
+                                  state.get('SystemStateCode'),
+                                  state.get('SystemStateMessage'),
+                                  state.get('LockID'))
 
 
 class MQTTSerialPort(SimSerialPort):
