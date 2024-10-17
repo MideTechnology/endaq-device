@@ -133,7 +133,7 @@ class MQTTDevice:
     # =======================================================================
 
     @synchronized
-    def updateStateInfo(self, info):
+    def updateStateInfo(self, info: Dict[str, Any]):
         """ Update the information with data published by the actual device
             to its `state` topic. Called by the Manager.
         """
@@ -179,7 +179,7 @@ class MQTTDevice:
 
 
     @synchronized
-    def getStateInfo(self):
+    def getStateInfo(self) -> Dict[str, Any]:
         """ Get the device's state info.
         """
         item = {'SerialNumber': int(self.sn),
@@ -420,7 +420,16 @@ class MQTTDevice:
             logger.error('Error saving header data', exc_info=True)
 
 
+    @synchronized
+    def getHeader(self):
+        """ Get the device's IDE header data.
+        """
+        if not self.header:
+            raise CommandError(f'No header data available for {self.sn}')
+        if self.readingHeader:
+            raise CommandError(f'Header data for {self.sn} incomplete, try later')
 
+        return self.header
 
 
 # ===========================================================================
@@ -572,6 +581,32 @@ class MQTTDeviceManager(MQTTClient):
         return {'DeviceList': {'DeviceListItem': devices}}, None, None
 
 
+    def command_GetIDEHeader(
+                self,
+                payload: Any,
+                lockId: Optional[ByteString] = None
+            ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+        """ Handle a ``GetIDEHeader`` command (EBML ID 0x5C20).
+        """
+        sn = payload.get('SerialNumber')
+        if sn is None:
+            return {}, DeviceStatusCode.ERR_INVALID_COMMAND, "GetIDEHeader missing SerialNumber"
+
+        dev = self.knownDevices.get(sn)
+        if dev is None:
+            return {}, DeviceStatusCode.ERR_INVALID_COMMAND, f"Unknown serial number: {sn}"
+
+        try:
+            header = dev.getHeader()
+        except CommandError as err:
+            return {}, DeviceStatusCode.ERR_INVALID_COMMAND, str(err)
+
+        response = {'GetIDEHeaderResponse': {'SerialNumber': sn,
+                                             'IDEHeaderData': header}}
+
+        return response, None, None
+
+
 # ===========================================================================
 # Test code, will be removed.
 # ===========================================================================
@@ -659,6 +694,8 @@ def run(host: Optional[str] = MQTT_BROKER,
 
 if __name__ == "__main__":
     import argparse
+    import json
+
     parser = argparse.ArgumentParser(description=__doc__)
 
     parser.add_argument('-a', '--address', type=str, default=None,
@@ -669,14 +706,19 @@ if __name__ == "__main__":
                         help="Do not advertise the MQTT broker via mDNS.")
     parser.add_argument('-n', '--name', type=str, default=DEFAULT_NAME,
                         help="The advertised name of the MQTT broker.")
-    parser.add_argument('-c', '--config', type=str, default=None,
-                        help="The name of a configuration JSON file with additional"
-                             "arguments for the Device Manager and advertising."
-                             " (NOT IMPLEMENTED YET)")
+    parser.add_argument('-c', '--config', type=str, default=None, metavar="FILENAME",
+                        help="The name of a configuration JSON file with additional "
+                             "arguments for the Device Manager and advertising. "
+                             "Values in the config file will override other "
+                             "arguments.")
 
     args = parser.parse_args()
-    if args.config:
-        raise NotImplementedError('Additional config file not yet implemented!')
+    kwargs = {'host': args.address, 'port': args.port,
+              'advertise': not args.silent, 'brokerName': args.name}
 
-    run(host=args.address, port=args.port,
-        advertise=not args.silent, brokerName=args.name)
+    if args.config:
+        with open(args.config, 'r') as f:
+            config = json.load(f)
+            kwargs.update(config)
+
+    run(**kwargs)
