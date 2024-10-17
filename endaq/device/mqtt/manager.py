@@ -30,15 +30,13 @@ from .mqtt_interface import STATE_TOPIC, HEADER_TOPIC, MEASUREMENT_TOPIC, COMMAN
 
 
 # ===========================================================================
-#
+# 'Constants'
 # ===========================================================================
 
-MIDE_SCHEMA = ebmlite.loadSchema('mide_ide.xml')
-CDB_ID = MIDE_SCHEMA['ChannelDataBlock'].id
-EBML_ID_BYTES = bytes([0x1A, 0x45, 0xDF, 0xA3])  # To identify `EBML` elements in stream
-
-COMMAND_SCHEMA = ebmlite.loadSchema('command-response.xml')
-NEWLOCKID_ID_BYTES = struct.pack('>H', COMMAND_SCHEMA['NewLockID'].id)
+# EBML IDs for identifying elements, parsed or in the raw binary data
+CDB_ID = 0xA1  # EBML ID of IDE ChannelDataBlock element
+EBML_ID_BYTES = b'\x1A\x45\xDF\xA3'  # To identify `EBML` elements in stream
+NEWLOCKID_ID_BYTES = b'\x5A\x02'  # Raw `NewLockID`, to identify `SetLockID` commands
 
 DEVICE_TIMEOUT = 60 * 5  # seconds
 
@@ -186,6 +184,7 @@ class MQTTDevice:
                 'LastContact': int(max(self.lastContact, self.infoTime)),
                 'LastMeasurement': int(self.lastMeasurement),
                 'LastHeader': int(self.lastHeader),
+                'LastCommand': int(self.lastCommand),
                 'GetInfoResponse': self.devinfo,
                 'LockID': self.lockId}
 

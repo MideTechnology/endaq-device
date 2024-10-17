@@ -32,7 +32,7 @@ logger.setLevel(logging.DEBUG)
 
 MQTT_BROKER = None  # "localhost"
 MQTT_PORT = 1883
-KEEP_ALIVE_INTERVAL = 60*60  #: MQTT client 'keep alive' time (seconds)
+KEEP_ALIVE_INTERVAL = 60 * 60  #: MQTT client 'keep alive' time (seconds)
 THREAD_KEEP_ALIVE_INTERVAL = 60 * 5  #: Thread 'keep alive' time (seconds) if there are no connections
 
 # Default keyword arguments for `paho.mqtt.client.Client.__init__()` and `.connect()`
@@ -44,7 +44,6 @@ RESPONSE_TOPIC = "endaq/{sn}/control/response"
 STATE_TOPIC = "endaq/{sn}/control/state"
 HEADER_TOPIC = "endaq/{sn}/header"
 MEASUREMENT_TOPIC = "endaq/{sn}/measurement"
-
 
 
 # ===========================================================================
@@ -462,6 +461,7 @@ class MQTTConnectionManager:
                             device._lastContact = listItem.get('LastContact', 0)
                             device._lastMeasurement = listItem.get('LastMeasurement', 0)
                             device._lastHeader = listItem.get('LastHeader', 0)
+                            device._lastCommand = listItem.get('LastCommand', 0)
                             devices.append(device)
                             break
                 except KeyError as err:

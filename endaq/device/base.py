@@ -158,11 +158,14 @@ class Recorder:
         self._name = None
 
         # For remote devices: timestamps of the device's last communication,
-        # last block of streamed data, and last header update. Initially set
-        # after instantiation, and not automatically updated.
+        # last block of streamed data, last header update, and last command
+        # sent to the device (which may not have been processed if the device
+        # was asleep at the time). Initially set after instantiation, and not
+        # automatically updated.
         self._lastContact: int = 0
         self._lastMeasurement: int = 0
         self._lastHeader: int = 0
+        self._lastCommand: int = 0
 
 
     def _getDevinfo(self) -> DeviceInfo:
