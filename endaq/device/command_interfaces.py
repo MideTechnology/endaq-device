@@ -80,6 +80,13 @@ class CommandInterface:
         """
         self.schema = loadSchema('command-response.xml')
 
+        # Some interfaces (i.e. serial) have a maximum packet size.
+        self.maxCommandSize = self.DEFAULT_MAX_COMMAND_SIZE
+
+        # This host's ID. Used when calling `setLockID()`.
+        # This does not change after instantiation.
+        self.hostId: bytes = uuid4().bytes
+
         self.device = device
         self.index: int = randint(2**16, 2**31)
 
@@ -89,20 +96,21 @@ class CommandInterface:
         # Last command sent: timestamp and a copy of the command (dict)
         self.lastCommand: Tuple[Optional[float], Optional[dict]] = (None, None)
 
-        # Last response (`status`) and last reported device system status
-        # (`system`): code number, optional message, and timestamp. Not
-        # available on all interfaces.
-        self.status: Tuple[Optional[int], Optional[str], float] = (None, None, None)
-        self.system: Tuple[Optional[int], Optional[str], float] = (None, None, None)
-
-        # Some interfaces (i.e. serial) have a maximum packet size.
-        self.maxCommandSize = self.DEFAULT_MAX_COMMAND_SIZE
-
-        # This host's LockID. Used when calling `setLockID()`.
-        self.hostId: bytes = uuid4().bytes
+        # Last response (`DeviceStatus*`) and last reported device system
+        # status (`SystemState*`): timestamp, code number, and optional
+        # message. Not available on all interfaces.
+        self.status: Tuple[float, Optional[int], Optional[str]] = (0, None, None)
+        self.system: Tuple[float, Optional[int], Optional[str]] = (0, None, None)
 
         # The time and value of the device's last reported LockID.
-        self.lockId: Tuple[Optional[float], Optional[bytes]] = (None, None)
+        self.lockId: Tuple[Optional[float], Optional[bytes]] = (0, None)
+
+        # The time and value of the device's last reported battery status.
+        self._battery: Tuple[float, Optional[Dict]] = (0, None)
+
+        # Last received response. Not available on all interfaces.
+        self._response: Tuple[float, Optional[Dict]] = None  # (timestamp, parsed response)
+        self._lastbuf = None  # Raw binary of previous response, for debugging
 
 
     def __del__(self):
@@ -464,13 +472,13 @@ class CommandInterface:
                 statusCode = DeviceStatusCode(statusCode)
             except ValueError:
                 logger.debug('Received unknown DeviceStatusCode: {}'.format(statusCode))
-            self.status = statusCode, statusMsg, now
+            self.status = now, statusCode, statusMsg
         if systemCode is not None:
             try:
                 systemCode = DeviceStatusCode(systemCode)
             except ValueError:
                 logger.debug('Received unknown SystemStateCode: {}'.format(systemCode))
-            self.system = systemCode, systemMsg, now
+            self.system = now, systemCode, systemMsg
 
         lockId = lockId or '\x00' * 16
         if lockId != self.lockId[1]:
@@ -538,8 +546,8 @@ class CommandInterface:
 
         # Since no response is expected, a failure to read a response caused
         # by the device resetting will just set self.status to (None, None).
-        # Success is self.status[0] == None or the expected status code.
-        if self.status[0] is not None and self.status[0] != statusCode:
+        # Success is self.status[1] == None or the expected status code.
+        if self.status[1] is not None and self.status[1] != statusCode:
             return False
         # TODO: in later firmware with serial interface, ping the device
         #  until it returns a response. Also allow multiple status codes
@@ -548,6 +556,26 @@ class CommandInterface:
         return self.awaitReboot(timeout=timeout if wait else 0,
                                 timeoutMsg=timeoutMsg,
                                 callback=callback)
+
+
+    def _parseBatteryStatus(self, response: int) -> Dict[str, Any]:
+        """ Parse the bits of a `BatteryState` element.
+        """
+        hasBattery = bool(response & 0x8000)
+        reply = {'hasBattery': hasBattery}
+        if hasBattery:
+            reply["charging"] = bool(response & 0x0200)  # bit 9: battery charging
+            reply["percentage"] = bool(response & 0x0100)  # bit 8: reports percentage or 0/some/full
+            reply["level"] = response & 0x00ff  # Lower 8 bits: battery level
+
+            # External power indicator (bit 14). Indicates external power can
+            # be detected (not the same as charging).
+            # For future use; bit 14 will always be low until implemented in FW.
+            if response & 0x4000:  # bit 14: device can report external power
+                reply["externalPower"] = bool(response & 0x2000)
+
+        self._battery = time(), reply
+        return reply
 
 
     def startRecording(self,
@@ -1503,10 +1531,6 @@ class SerialCommandInterface(CommandInterface):
         self.portArgs = serial_kwargs
         self.portArgs.update(self.SERIAL_PARAMS)
 
-        # Last received response, primarily for debugging. may remove.
-        self._lastbuf = None  # Raw binary of previous response, verbatim
-        self._response = None  # (timestamp, parsed response)
-
 
     @classmethod
     def hasInterface(cls, device: "Recorder") -> bool:
@@ -1950,7 +1974,7 @@ class SerialCommandInterface(CommandInterface):
                     self._writeCommand(packet)
 
                     if timeout == 0 and not response:
-                        self.status = None, None, now
+                        self.status = now, None, None
                         return None
 
                     try:
@@ -1967,7 +1991,7 @@ class SerialCommandInterface(CommandInterface):
                         if not response:
                             logger.debug('Ignoring anticipated exception because '
                                          'response not required: {!r}'.format(err))
-                            self.status = None, None, now
+                            self.status = now, None, None
                             return None
                         else:
                             raise
@@ -2011,7 +2035,7 @@ class SerialCommandInterface(CommandInterface):
                 if not response:
                     logger.debug('Ignoring timeout waiting for response '
                                  'because no response required')
-                    self.status = None, None, now
+                    self.status = now, None, None
                     return None
                 else:
                     raise
@@ -2196,24 +2220,11 @@ class SerialCommandInterface(CommandInterface):
         cmd = {'EBMLCommand': {'GetBattery': {}}}
         response = self._sendCommand(cmd, timeout=timeout,
                                      callback=callback)
-        if not response:
+
+        if not response or response.get('BatteryState') is None:
             return None
-        response = response.get('BatteryState')
 
-        hasBattery = bool(response & 0x8000)
-        reply = {'hasBattery': hasBattery}
-        if hasBattery:
-            reply["charging"] = bool(response & 0x0200)  # bit 9: battery charging
-            reply["percentage"] = bool(response & 0x0100)  # bit 8: reports percentage or 0/some/full
-            reply["level"] = response & 0x00ff  # Lower 8 bits: battery level
-
-            # External power indicator (bit 14). Indicates external power can
-            # be detected (not the same as charging).
-            # For future use; bit 14 will always be low until implemented in FW.
-            if response & 0x4000:  # bit 14: device can report external power
-                reply["externalPower"] = bool(response & 0x2000)
-
-        return reply
+        return self._parseBatteryStatus(response.get('BatteryState'))
 
 
     def startRecording(self,

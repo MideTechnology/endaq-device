@@ -24,7 +24,7 @@ def test_client_basics():
     # An unsupported command
     with pytest.raises(CommandError):
         command.startRecording()
-    assert command.status[0] == DeviceStatusCode.ERR_UNKNOWN_COMMAND
+    assert command.status[1] == DeviceStatusCode.ERR_UNKNOWN_COMMAND
 
 
 def test_client_lockID():
@@ -48,12 +48,12 @@ def test_client_getInfo():
     # Basic: Nonexistent index
     with pytest.raises(CommandError):
         command._getInfo(1)
-    assert command.status[0] == DeviceStatusCode.ERR_BAD_INFO_INDEX
+    assert command.status[1] == DeviceStatusCode.ERR_BAD_INFO_INDEX
 
     # Info index requiring lock, but no lock
     with pytest.raises(CommandError):
         command._getInfo(5)
-    assert command.status[0] == DeviceStatusCode.ERR_BAD_LOCK_ID
+    assert command.status[1] == DeviceStatusCode.ERR_BAD_LOCK_ID
 
     # Info index requiring lock, lock set
     command.setLockID()

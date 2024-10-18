@@ -416,7 +416,7 @@ class MQTTConnectionManager:
     @synchronized
     def getDevices(self,
                    known: Optional[List[Recorder]] = None,
-                   update: bool = True,
+                   update: bool = False,
                    timeout: Union[int, float] = 10.0,
                    managerTimeout: Optional[int] = None,
                    callback: Optional[Callable] = None) -> List["Recorder"]:
@@ -426,7 +426,9 @@ class MQTTConnectionManager:
             :param known: A list of known recorders. To get a list of all
                 devices, local and remote, you can use the results of
                  `endaq.device.getDevices()`.
-            :param update: If `True`,
+            :param update: If `True`, update previously discovered devices
+                connected via USB (serial or storage device) to an MQTT
+                interface.
             :param timeout: Time (in seconds) to wait for a response from the
                 Device Manager before raising a `DeviceTimeout` exception. `None`
                 or -1 will wait indefinitely.
