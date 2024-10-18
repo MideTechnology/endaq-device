@@ -415,15 +415,18 @@ class MQTTConnectionManager:
 
     @synchronized
     def getDevices(self,
-                   known: Optional[Dict[int, "Recorder"]] = None,
+                   known: Optional[List[Recorder]] = None,
+                   update: bool = True,
                    timeout: Union[int, float] = 10.0,
                    managerTimeout: Optional[int] = None,
                    callback: Optional[Callable] = None) -> List["Recorder"]:
         """
             Get a list of data recorder objects from the MQTT broker.
 
-            :param known: A dictionary of known `Recorder` instances, keyed by
-                device serial number.
+            :param known: A list of known recorders. To get a list of all
+                devices, local and remote, you can use the results of
+                 `endaq.device.getDevices()`.
+            :param update: If `True`,
             :param timeout: Time (in seconds) to wait for a response from the
                 Device Manager before raising a `DeviceTimeout` exception. `None`
                 or -1 will wait indefinitely.
@@ -438,27 +441,25 @@ class MQTTConnectionManager:
         """
         # Imported here to avoid circular references.
         # I don't like doing this, but I think this case is okay.
-        from .. import _module_busy, RECORDER_TYPES
+        from .. import (_module_busy, RECORDER_TYPES, RECORDERS,
+                        RECORDERS_BY_SN, RECORDER_CACHE_SIZE)
 
         with _module_busy:
-            known = {} if known is None else known
-            devices = []
+            devices = [] if not known else known[:]
+
             items = self.getDeviceInfo(timeout, managerTimeout, callback)
 
             for n, listItem in enumerate(items):
                 try:
-                    sn = listItem['SerialNumber']
                     info = bytes(listItem['GetInfoResponse']['InfoPayload'])
-                    device = known.get(sn)
+                    device = RECORDERS.pop(hash(info), None)
 
-                    if not device:
+                    if not device or not device.isRemote:
                         for devtype in RECORDER_TYPES:
                             if devtype._isRecorder(info):
                                 device = devtype('remote', devinfo=info)
                                 device.command = MQTTCommandInterface(device, self)
                                 device._devinfo = MQTTDeviceInfo(device)
-                                devices.append(device)
-                                known[sn] = device
                                 break
 
                     if not device:
@@ -466,31 +467,37 @@ class MQTTConnectionManager:
                                      f'Recorder subclass for {n}, continuing')
                         continue
 
-                    self.updateDevice(device, listItem)
+                    device._lastContact = listItem.get('LastContact', 0)
+                    device._lastMeasurement = listItem.get('LastMeasurement', 0)
+                    device._lastHeader = listItem.get('LastHeader', 0)
+                    device._lastCommand = listItem.get('LastCommand', 0)
+                    device.command._setStatus(listItem.get('DeviceStatusCode'),
+                                              listItem.get('DeviceStatusMessage'),
+                                              listItem.get('SystemStateCode'),
+                                              listItem.get('SystemStateMessage'),
+                                              listItem.get('LockID'))
+
+                    exists = device in devices
+                    if exists and update:
+                        devices.remove(device)
+
+                    if not exists:
+                        devices.append(device)
+
+                    if not exists or update:
+                        RECORDERS[hash(info)] = device
+                        RECORDERS_BY_SN[device.serialInt] = device
 
                 except KeyError as err:
                     logger.error(f'getRemoteDevices(): DeviceListItem {n} from Manager '
                                  f'did not contain {err.args[0]!r}, continuing')
 
+        # Remove old cached devices. Ordered dictionaries assumed!
+        if len(RECORDERS) > RECORDER_CACHE_SIZE:
+            for k in list(RECORDERS.keys())[-RECORDER_CACHE_SIZE:]:
+                del RECORDERS[k]
+
         return devices
-
-
-    def updateDevice(self,
-                     device: Recorder,
-                     state: Dict[str, Any]) -> None:
-        """ Update the device's information with new state data from the
-            Device Manager.
-        """
-        device._lastContact = state.get('LastContact', 0)
-        device._lastMeasurement = state.get('LastMeasurement', 0)
-        device._lastHeader = state.get('LastHeader', 0)
-        device._lastCommand = state.get('LastCommand', 0)
-
-        device.command._setStatus(state.get('DeviceStatusCode'),
-                                  state.get('DeviceStatusMessage'),
-                                  state.get('SystemStateCode'),
-                                  state.get('SystemStateMessage'),
-                                  state.get('LockID'))
 
 
 class MQTTSerialPort(SimSerialPort):
