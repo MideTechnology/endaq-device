@@ -415,27 +415,23 @@ class MQTTConnectionManager:
 
     @synchronized
     def getDevices(self,
-                   known: Optional[List[Recorder]] = None,
                    update: bool = False,
                    timeout: Union[int, float] = 10.0,
                    managerTimeout: Optional[int] = None,
                    callback: Optional[Callable] = None) -> List["Recorder"]:
         """
-            Get a list of data recorder objects from the MQTT broker.
+            Get a list of remote data recorder objects from the MQTT broker.
 
-            :param known: A list of known recorders. To get a list of all
-                devices, local and remote, you can use the results of
-                 `endaq.device.getDevices()`.
             :param update: If `True`, update previously discovered devices
                 connected via USB (serial or storage device) to an MQTT
-                interface.
+                interface and include them in the results.
             :param timeout: Time (in seconds) to wait for a response from the
-                Device Manager before raising a `DeviceTimeout` exception. `None`
-                or -1 will wait indefinitely.
-            :param managerTimeout: A value (in seconds) that overrides the remote
-                Device Manager's timeout that excludes inactive devices. 0 will
-                return all devices, regardless of how long it has been since they
-                reported to the Device Manager.
+                Device Manager before raising a `DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
+            :param managerTimeout: A value (in seconds) that overrides the
+                remote Device Manager's timeout that excludes inactive
+                devices. 0 will return all devices, regardless of how long it
+                has been since they reported to the Device Manager.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function
@@ -447,52 +443,52 @@ class MQTTConnectionManager:
                         RECORDERS_BY_SN, RECORDER_CACHE_SIZE)
 
         with _module_busy:
-            devices = [] if not known else known[:]
+            devices = []
 
             items = self.getDeviceInfo(timeout, managerTimeout, callback)
 
             for n, listItem in enumerate(items):
+                sn = 'missing!'
                 try:
+                    sn = listItem['SerialNumber']
                     info = bytes(listItem['GetInfoResponse']['InfoPayload'])
-                    device = RECORDERS.pop(hash(info), None)
-
-                    if not device or not device.isRemote:
-                        for devtype in RECORDER_TYPES:
-                            if devtype._isRecorder(info):
-                                device = devtype('remote', devinfo=info)
-                                device.command = MQTTCommandInterface(device, self)
-                                device._devinfo = MQTTDeviceInfo(device)
-                                break
-
-                    if not device:
-                        logger.error(f'getRemoteDevices(): Could not find '
-                                     f'Recorder subclass for {n}, continuing')
-                        continue
-
-                    device._lastContact = listItem.get('LastContact', 0)
-                    device._lastMeasurement = listItem.get('LastMeasurement', 0)
-                    device._lastHeader = listItem.get('LastHeader', 0)
-                    device._lastCommand = listItem.get('LastCommand', 0)
-                    device.command._setStatus(listItem.get('DeviceStatusCode'),
-                                              listItem.get('DeviceStatusMessage'),
-                                              listItem.get('SystemStateCode'),
-                                              listItem.get('SystemStateMessage'),
-                                              listItem.get('LockID'))
-
-                    exists = device in devices
-                    if exists and update:
-                        devices.remove(device)
-
-                    if not exists:
-                        devices.append(device)
-
-                    if not exists or update:
-                        RECORDERS[hash(info)] = device
-                        RECORDERS_BY_SN[device.serialInt] = device
-
                 except KeyError as err:
-                    logger.error(f'getRemoteDevices(): DeviceListItem {n} from Manager '
+                    logger.error(f'DeviceListItem {n} (SN {sn}) from Manager '
                                  f'did not contain {err.args[0]!r}, continuing')
+                    continue
+
+                device = RECORDERS.get(hash(info), None)
+
+                if device and not update and not device.isRemote:
+                    continue
+
+                if not device or not device.isRemote:
+                    for devtype in RECORDER_TYPES:
+                        if devtype._isRecorder(info):
+                            device = devtype('remote', devinfo=info)
+                            device.command = MQTTCommandInterface(device, self)
+                            device._devinfo = MQTTDeviceInfo(device)
+                            break
+
+                if not device:
+                    logger.error(f'getRemoteDevices(): Could not find '
+                                 f'Recorder subclass for {n}, continuing')
+                    continue
+
+                device._lastContact = listItem.get('LastContact', 0)
+                device._lastMeasurement = listItem.get('LastMeasurement', 0)
+                device._lastHeader = listItem.get('LastHeader', 0)
+                device._lastCommand = listItem.get('LastCommand', 0)
+                device.command._setStatus(listItem.get('DeviceStatusCode'),
+                                          listItem.get('DeviceStatusMessage'),
+                                          listItem.get('SystemStateCode'),
+                                          listItem.get('SystemStateMessage'),
+                                          listItem.get('LockID'))
+
+                devices.append(device)
+                RECORDERS.pop(hash(info), None)
+                RECORDERS[hash(info)] = device
+                RECORDERS_BY_SN[device.serialInt] = device
 
         # Remove old cached devices. Ordered dictionaries assumed!
         if len(RECORDERS) > RECORDER_CACHE_SIZE:

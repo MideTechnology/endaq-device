@@ -561,6 +561,9 @@ class CommandInterface:
     def _parseBatteryStatus(self, response: int) -> Dict[str, Any]:
         """ Parse the bits of a `BatteryState` element.
         """
+        if response is None:
+            return None
+
         hasBattery = bool(response & 0x8000)
         reply = {'hasBattery': hasBattery}
         if hasBattery:
@@ -2221,7 +2224,7 @@ class SerialCommandInterface(CommandInterface):
         response = self._sendCommand(cmd, timeout=timeout,
                                      callback=callback)
 
-        if not response or response.get('BatteryState') is None:
+        if not response:
             return None
 
         return self._parseBatteryStatus(response.get('BatteryState'))
