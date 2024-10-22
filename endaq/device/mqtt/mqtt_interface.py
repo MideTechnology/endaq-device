@@ -451,7 +451,14 @@ class MQTTConnectionManager:
                 sn = 'missing!'
                 try:
                     sn = listItem['SerialNumber']
+                    infoIdx = listItem['GetInfoResponse']['InfoIndex']
                     info = bytes(listItem['GetInfoResponse']['InfoPayload'])
+
+                    if infoIdx != 0:
+                        logger.error(f'DeviceListItem {n} (SN {sn}) from Manager '
+                                     f'had wrong InfoIndex {infoIdx!r}, continuing')
+                        continue
+
                 except KeyError as err:
                     logger.error(f'DeviceListItem {n} (SN {sn}) from Manager '
                                  f'did not contain {err.args[0]!r}, continuing')

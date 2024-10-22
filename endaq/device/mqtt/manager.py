@@ -83,11 +83,9 @@ class MQTTDevice:
         self.lastHeader: float = 0
 
         # Device info, received via `state` topic.
-        self.devinfo: ByteString = None
+        self.stateInfo: Dict[str, Any] = None
         self.infoTime: int = 0
 
-        self.status: tuple[Optional[int], Optional[str]] = None, None
-        self.system: tuple[Optional[int], Optional[str]] = None, None
         self.lockId: bytes =  '\x00' * 16
         self.totalMsgs = 0
 
@@ -136,12 +134,7 @@ class MQTTDevice:
             to its `state` topic. Called by the Manager.
         """
         now = time()
-
-        self.status = (info.get('DeviceStatusCode'),
-                       info.get('DeviceStatusMessage'))
-        self.system = (info.get('SystemStateCode', self.status[0]),
-                       info.get('SystemStateMessage', self.status[1]))
-        self.lockId = info.get('LockID', '\x00' * 16)
+        self.stateInfo = info
 
         try:
             # Get device's time, which could be wrong (power loss, etc.)
@@ -163,41 +156,22 @@ class MQTTDevice:
         else:
             self.lastContact = now
 
-        try:
-            getinfo = info['GetInfoResponse']
-            index = getinfo.get('InfoIndex', 0)
-            if index != 0:
-                logger.error(f'state update from {self.sn} '
-                             f'had wrong InfoIndex ({index})!')
-            else:
-                self.devinfo = getinfo
-        except KeyError as err:
-            logger.error(f'state update from {self.sn} '
-                         f'missing element: {err.args[0]!r}!')
+        self.lockId = info.get('LockID', self.lockId)
+        self.stateInfo['SerialNumber'] = int(self.sn)
 
 
     @synchronized
     def getStateInfo(self) -> Dict[str, Any]:
         """ Get the device's state info.
         """
-        item = {'SerialNumber': int(self.sn),
-                'LastContact': int(max(self.lastContact, self.infoTime)),
+        item = {'LastContact': int(max(self.lastContact, self.infoTime)),
                 'LastMeasurement': int(self.lastMeasurement),
                 'LastHeader': int(self.lastHeader),
                 'LastCommand': int(self.lastCommand),
-                'GetInfoResponse': self.devinfo,
                 'LockID': self.lockId}
 
-        if self.status[0] is not None:
-            item['DeviceStatusCode'] = self.status[0]
-            if self.status[1]:
-                item['DeviceStatusMessage'] = self.status[1]
-        if self.system[0] is not None:
-            item['SystemStateCode'] = self.system[0]
-            if self.system[1]:
-                item['SystemStateMessage'] = self.system[1]
-
-        return item
+        self.stateInfo.update(item)
+        return self.stateInfo
 
 
     # =======================================================================
@@ -510,7 +484,6 @@ class MQTTDeviceManager(MQTTClient):
     # =======================================================================
     # Message handlers, called by the MQTT message callback (`onMessage()`).
     # =======================================================================
-
 
     def onConnect(self, *args):
         """ MQTT event handler called when the client connects.
