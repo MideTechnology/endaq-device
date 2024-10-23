@@ -3,7 +3,8 @@ Base class for software clients that respond like, or work with,
 enDAQ hardware.
 """
 
-from time import time
+from threading import Event, Thread
+from time import sleep, time
 from typing import Any, ByteString, Optional, Tuple, Union
 
 import ebmlite
@@ -39,35 +40,39 @@ class MQTTClient(CommandClient):
 
     def __init__(self,
                  client: paho.mqtt.client.Client,
+                 sn: Any,
                  make_crc: bool = True,
                  ignore_crc: bool = False,
-                 sn: Any = None,
-                 name: str = None):
+                 name: str = None,
+                 interval: int = 120):
         """ Base class for software clients that respond like, or work with,
             enDAQ hardware.
 
             :param client: The manager's MQTT client.
+            :param sn: The client's serial number. For recorder-like clients,
+                this should be an integer.
             :param make_crc: If `True`, generate CRCs for outgoing commands
                 and responses.
             :param ignore_crc: If `False`, do not validate incoming commands
                 or responses.
-            :param sn: The client's serial number (if applicable).
             :param name: The client's name (if applicable). Equivalent to
                 the name assigned to device during configuration.
+            :param interval: The time between published `state` updates. If
+                0, no `state` updates will be published.
         """
         self.client = client
         self.sn = sn
         self.name = name
+        self.interval = interval
         self._devinfo = None
 
         self.commandTopic = COMMAND_TOPIC.format(sn=self.sn)
         self.responseTopic = RESPONSE_TOPIC.format(sn=self.sn)
         self.stateTopic = STATE_TOPIC.format(sn=self.sn)
-
-        self.statusCode = DeviceStatusCode.IDLE
-        self.statusMsg = None
-
         self.commandBuffer = bytearray()
+
+        self.stopStateUpdates = Event()
+        self.updateThread = None
 
         super().__init__(make_crc=make_crc, ignore_crc=ignore_crc)
 
@@ -76,6 +81,46 @@ class MQTTClient(CommandClient):
 
         self.client.on_connect = self.onConnect
         self.client.on_disconnect = self.onDisconnect
+
+
+    def _stateUpdataLoop(self):
+        """ The state-updating loop.
+        """
+        logger.debug(f'Starting state update thread: {self.updateThread}')
+        deadline = time() + self.interval
+        while not self.stopStateUpdates.is_set():
+            if time() < deadline:
+                sleep(1)
+                continue
+            self.updateState()
+            deadline = time() + self.interval
+        logger.debug(f'Exiting state update thread: {self.updateThread}')
+
+
+    def startUpdateLoop(self):
+        """ Attempt to start the state-updating loop.
+        """
+        self.killUpdateLoop()
+        self.stopStateUpdates.clear()
+        self.updateThread = Thread(target=self._stateUpdataLoop, daemon=True)
+        self.updateThread.name = f'{type(self).__name__}{self.updateThread.name}'
+        self.updateThread.start()
+
+
+    def killUpdateLoop(self, timeout: float = 5.0) -> bool:
+        """ Attempt to shut down the state updating loop.
+        """
+        self.stopStateUpdates.set()
+        if self.updateThread is None:
+            return True
+
+        deadline = time() + timeout
+        while time() > deadline:
+            if self.updateThread and not self.updateThread.is_alive():
+                return True
+            sleep(0.1)
+        logger.error(f'Could not shut down state updating loop {self.updateThread}')
+        return False
 
 
     def onConnect(self, client, userdata, disconnect_flags, reason_code, properties):
@@ -89,36 +134,27 @@ class MQTTClient(CommandClient):
 
         self.updateState()
 
+        if self.interval:
+            self.startUpdateLoop()
 
-    def onDisconnect(self, client, userdata, disconnect_flags, reason_code, properties):
+
+    def onDisconnect(self, client, _userdata, _disconnect_flags, reason_code, _properties):
         """ MQTT event handler called when the client disconnects.
         """
+        self.killUpdateLoop()
         logger.info(f'Disconnected from MQTT broker {client.host}:{client.port} '
                     f'({reason_code.getName()})')
 
 
     def __del__(self):
         try:
+            self.stopStateUpdates.set()
+        except (AttributeError, TypeError, RuntimeError):
+            pass
+        try:
             self.client.unsubscribe(self.commandTopic)
         except (AttributeError, TypeError, RuntimeError):
             pass
-
-
-    @synchronized
-    def setStatus(self,
-                  statusCode: Union[DeviceStatusCode, int],
-                  statusMsg: Optional[str] = None):
-        """ Set the client's status code (and, optionally, message). Use this
-            method instead of setting `statusCode` or `statusMsg` directly,
-            in order to ensure responses don't get mismatched codes and
-            messages.
-
-            :param statusCode: The system status code.
-            :param statusMsg: An optional message describing the status.
-        """
-        self.statusCode = int(statusCode)
-        self.statusMsg = statusMsg
-        self.updateState()
 
 
     def iterChunks(self, buf: bytearray, newdata: ByteString = b'') -> ByteString:
@@ -189,10 +225,7 @@ class MQTTClient(CommandClient):
         """ Publish an updated set of data to the 'state' topic.
         """
         state, _statusCode, _statusMsg = self.command_GetInfo(0)
-        state['ClockTime'] = self.command._TIME_PARSER.pack(int(time()))
-        state['DeviceStatusCode'] = int(self.statusCode)
-        if self.statusMsg:
-            state['DeviceStatusMessage'] = self.statusMsg
+        state.update(self.command_GetClock(None)[0])
 
         packet = self.encodeResponse({'EBMLResponse': state})
         self.sendResponse(None, packet, self.stateTopic)

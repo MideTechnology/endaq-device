@@ -8,6 +8,7 @@ software in the enDAQ ecosystem.
 
 from functools import wraps
 from threading import RLock, get_native_id
+from time import time
 from typing import Any, ByteString, Dict, Optional, Tuple, Union
 
 import logging
@@ -110,13 +111,17 @@ class CommandClient:
                 commands.
         """
         if command is None:
-            command = SerialCommandInterface(None, make_crc=make_crc, ignore_crc=ignore_crc)
+            command = SerialCommandInterface(None, make_crc=make_crc,
+                                             ignore_crc=ignore_crc)
         self.command = command
 
         # Collect all the class' implemented command methods. See comments
         # near the end for more information.
         self.COMMANDS = {k.partition('_')[-1]: getattr(self, k) for k in dir(self)
                          if k.startswith('command_')}
+
+        self.stateCode: Optional[DeviceStatusCode] = DeviceStatusCode.IDLE_UNMOUNTED
+        self.stateMsg: Optional[str] = None
 
         self.lockId = b'\x00' * 16
 
@@ -141,6 +146,23 @@ class CommandClient:
     @ignore_crc.setter
     def ignore_crc(self, ignore):
         self.command.ignore_crc = ignore
+
+
+    @synchronized
+    def setStatus(self,
+                  stateCode: Union[DeviceStatusCode, int],
+                  stateMsg: Optional[str] = None):
+        """ Set the client's system state code (and, optionally, message).
+            Use this method instead of setting `stateCode` or `stateMsg`
+            directly, in order to ensure responses don't get mismatched
+            codes and messages.
+
+            :param stateCode: The client's `SystemStateCode`.
+            :param stateMsg: An optional description of the current state.
+        """
+        stateCode = DeviceStatusCode.IDLE_UNMOUNTED if self.stateCode is None else stateCode
+        self.stateCode = int(stateCode) if stateCode is not None else None
+        self.stateMsg = stateMsg
 
 
     @synchronized
@@ -177,7 +199,9 @@ class CommandClient:
         response = {'DeviceStatusCode': int(statusCode)}
         if statusMsg:
             response['DeviceStatusMessage'] = statusMsg
-        self.sendResponse(recipient, response)
+
+        packet = self.encodeResponse(response)
+        self.sendResponse(recipient, packet)
 
 
     def decodeCommand(self, packet: ByteString) -> Dict[str, Any]:
@@ -191,6 +215,13 @@ class CommandClient:
         """ Encode an outgoing response.
         """
         # Subclasses may override this as needed.
+        if self.stateCode is not None:
+            response['SystemStateCode'] = self.stateCode
+            if self.stateMsg:
+                response['SystemStateMsg'] = self.stateMsg
+        if self.lockId:
+            response['LockID'] = self.lockId
+
         return self.command._encodeResponse(response)
 
 
@@ -228,8 +259,8 @@ class CommandClient:
 
         commandName = None
         commandPayload = None
-        statusCode = DeviceStatusCode.IDLE
-        statusMsg = None
+        statusCode = self.stateCode
+        statusMsg = self.stateMsg
 
         for k, v in command.items():
             if k in self.COMMANDS:
@@ -268,7 +299,7 @@ class CommandClient:
         """ Verify that a command's LockID matches the object's. Returns
             `True` if the lock IDs match or no lock has been set.
         """
-        return not any(self.lockId) or lockId == self.lockId
+        return not self.lockId or not any(self.lockId) or lockId == self.lockId
 
 
     # =======================================================================
@@ -362,6 +393,16 @@ class CommandClient:
         
         except KeyError:
             return {}, DeviceStatusCode.ERR_BAD_PAYLOAD, None
+
+
+    def command_GetClock(self,
+                         payload: Dict[str, Any],
+                         lockId: Optional[ByteString] = None
+                         ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+        """ Handle a `<GetClock>` command (EBML ID 0x5500).
+        """
+        return ({'ClockTime': self.command._TIME_PARSER.pack(int(time()))},
+                None, None)
 
 
     def command_GetInfo(self,

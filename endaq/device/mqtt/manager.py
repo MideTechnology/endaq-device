@@ -434,7 +434,7 @@ class MQTTDeviceManager(MQTTClient):
             :param ignore_crc: If `False`, do not validate incoming commands
                 or responses.
         """
-        super().__init__(client, sn="manager", name="MQTT Device Manager",
+        super().__init__(client, "manager", name="MQTT Device Manager",
                          make_crc=make_crc, ignore_crc=ignore_crc)
 
         self.knownDevices: dict[int, MQTTDevice] = {}
@@ -503,7 +503,7 @@ class MQTTDeviceManager(MQTTClient):
         """
         if message.topic == self.stateTopic:
             # Ignore own state message
-            logger.debug('ignoring own state update')
+            # logger.debug('ignoring own state update')
             return
 
         packet = message.payload
