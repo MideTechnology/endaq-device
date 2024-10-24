@@ -49,9 +49,9 @@ class SimSerialPort:
 
     def read(self, size: int = 1) -> bytes:
         """
-        Read size bytes from the virtual serial port. If a timeout is set it
-        may return less characters as requested. With no timeout it will block
-        until the requested number of bytes is read.
+        Read size bytes from the virtual serial port. If a timeout is set, it
+        may return fewer characters than requested. With no timeout, it will
+        block until the requested number of bytes is read.
         """
         if not self._is_open.is_set():
             raise PortNotOpenError()

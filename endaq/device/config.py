@@ -16,8 +16,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import warnings
 
-from ebmlite.core import loadSchema
-from ebmlite.core import Document, Element, MasterElement
+from ebmlite.core import loadSchema, Schema
+from ebmlite.core import Document, MasterElement, UnknownElement
 from idelib.dataset import Channel, SubChannel
 
 from .exceptions import ConfigError, DeviceError, UnsupportedFeature
@@ -30,6 +30,11 @@ if TYPE_CHECKING:
     from .base import Recorder
 
 logger = logging.getLogger(__name__)
+
+
+__all__ = ('ConfigItem', 'ConfigInterface', 'VirtualConfigInterface',
+           'FileConfigInterface', 'RemoteConfigInterface',
+           'INTERFACES')
 
 
 # ===========================================================================
@@ -446,6 +451,8 @@ class ConfigInterface:
             :param device: The Recorder to configure.
         """
         self._schema = loadSchema('mide_config_ui.xml')
+        self._schema.UNKNOWN = self._handleUnknownField
+
         self.device: Optional["Recorder"] = device
         self.configUi: Optional[MasterElement] = None
         self.config: Optional[MasterElement] = None
@@ -468,6 +475,24 @@ class ConfigInterface:
         # The format version of the last config data read.
         self.configVersionRead = None
         self._supportedConfigVersions = None
+
+
+    @classmethod
+    def _handleUnknownField(cls, stream, offset: int, size: int,
+                            payloadOffset: int, eid: int, schema: Schema):
+        """ Handler for unknown special-case field subclasses. For forwards
+            compatibility, special-case fields fall back to their base type.
+            See `ebmlite.UnknownElement` for argument info.
+        """
+        # Field element IDs start 0x40nn. Low bits 4-0 define the base type.
+        baseId = eid & 0xff1f
+        if baseId & 0xff00 == 0x4000 and baseId in schema:
+            etype = schema[baseId]
+            logger.debug(f'Field type 0x{eid:04x} not in schema, '
+                         f'using base type {etype.name} (0x{baseId:04x})')
+            return etype(stream, offset, size, payloadOffset)
+        logger.debug(f'Unknown element in CONFIG.UI: 0x{eid:04x}')
+        return UnknownElement(stream, offset, payloadOffset, eid, schema)
 
 
     def close(self) -> bool:
@@ -545,7 +570,7 @@ class ConfigInterface:
 
 
     def parseConfigUI(self,
-                      configUi: Union[Document, Element]):
+                      configUi: Union[Document, MasterElement]):
         """ Recursively process CONFIG.UI data to populate the interface's
             dictionaries of configuration items.
 

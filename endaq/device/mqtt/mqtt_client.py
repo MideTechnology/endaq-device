@@ -40,7 +40,7 @@ class MQTTClient(CommandClient):
 
     def __init__(self,
                  client: paho.mqtt.client.Client,
-                 sn: Any,
+                 sn: Union[int, str],
                  make_crc: bool = True,
                  ignore_crc: bool = False,
                  name: str = None,
@@ -49,8 +49,9 @@ class MQTTClient(CommandClient):
             enDAQ hardware.
 
             :param client: The manager's MQTT client.
-            :param sn: The client's serial number. For recorder-like clients,
-                this should be an integer.
+            :param sn: The client's serial number. For recorder-like clients
+                that interact with the MQTT Device Manager, this should be an
+                integer.
             :param make_crc: If `True`, generate CRCs for outgoing commands
                 and responses.
             :param ignore_crc: If `False`, do not validate incoming commands
@@ -229,7 +230,7 @@ class MQTTClient(CommandClient):
 
         packet = self.encodeResponse({'EBMLResponse': state})
         self.sendResponse(None, packet, self.stateTopic)
-        logger.debug(f'Updated state topic {self.stateTopic}')
+        # logger.debug(f'Updated state topic {self.stateTopic}')
 
 
     def command_GetInfo_0(self,
