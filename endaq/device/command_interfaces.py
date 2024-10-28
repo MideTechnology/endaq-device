@@ -462,7 +462,8 @@ class CommandInterface:
                    statusMsg: Optional[str] = None,
                    systemCode: Optional[int] = None,
                    systemMsg: Optional[str] = None,
-                   lockId: Optional[bytes] = None):
+                   lockId: Optional[bytes] = None,
+                   lockTime: Optional[int] = None):
         """ Set the status, system state, and lock ID.
         """
         now = time()
@@ -482,7 +483,7 @@ class CommandInterface:
 
         lockId = lockId or '\x00' * 16
         if lockId != self.lockId[1]:
-            self.lockId = now, lockId
+            self.lockId = lockTime or now, lockId
 
 
     def _sendCommand(self,

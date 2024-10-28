@@ -490,7 +490,8 @@ class MQTTConnectionManager:
                                           listItem.get('DeviceStatusMessage'),
                                           listItem.get('SystemStateCode'),
                                           listItem.get('SystemStateMessage'),
-                                          listItem.get('LockID'))
+                                          listItem.get('LockID'),
+                                          listItem.get('LastLock'))
 
                 devices.append(device)
                 RECORDERS.pop(hash(info), None)

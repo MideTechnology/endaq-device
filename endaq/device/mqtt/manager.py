@@ -77,12 +77,14 @@ class MQTTDevice:
         if isinstance(sn, int):
             self.sn = f'{sn:08d}'
 
+        # Timestamps of various things to/from the device.
         self.lastContact: float = 0
         self.lastCommand: float = 0
         self.lastMeasurement: float = 0
         self.lastHeader: float = 0
+        self.lastLock: float = 0
 
-        # Device info, received via `state` topic.
+        # Device info, received via `state` topic, and device's reported time.
         self.stateInfo: Dict[str, Any] = None
         self.infoTime: int = 0
 
@@ -156,7 +158,11 @@ class MQTTDevice:
         else:
             self.lastContact = now
 
-        self.lockId = info.get('LockID', self.lockId)
+        lockId = info.get('LockID', self.lockId)
+        if lockId != self.lockId:
+            self.lastLock = self.lastContact
+        self.lockId = lockId
+
         self.stateInfo['SerialNumber'] = int(self.sn)
 
 
@@ -168,6 +174,7 @@ class MQTTDevice:
                 'LastMeasurement': int(self.lastMeasurement),
                 'LastHeader': int(self.lastHeader),
                 'LastCommand': int(self.lastCommand),
+                'LastLockID': self.lastLock,
                 'LockID': self.lockId}
 
         self.stateInfo.update(item)
@@ -198,6 +205,7 @@ class MQTTDevice:
 
             if not any(self.lockId) or self.lockId == oldId:
                 self.lockId = newId
+                self.lastLock = self.lastCommand
 
             if myId != newId:
                 logger.debug(f'Captured SetLockID command for {self.sn}: '
