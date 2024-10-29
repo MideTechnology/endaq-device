@@ -174,7 +174,7 @@ class MQTTDevice:
                 'LastMeasurement': int(self.lastMeasurement),
                 'LastHeader': int(self.lastHeader),
                 'LastCommand': int(self.lastCommand),
-                'LastLockID': self.lastLock,
+                'LastLock': self.lastLock,
                 'LockID': self.lockId}
 
         self.stateInfo.update(item)

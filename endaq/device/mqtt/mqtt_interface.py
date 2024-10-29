@@ -15,6 +15,7 @@ from weakref import WeakValueDictionary
 import paho.mqtt.client as mqtt
 from serial import PortNotOpenError
 
+from .mqtt_discovery import findBrokers
 from ..base import Recorder, NonRecorder
 from ..client import synchronized
 from ..command_interfaces import SerialCommandInterface
@@ -82,13 +83,13 @@ class MQTTConnectionManager:
     def __init__(self,
                  host: str = MQTT_BROKER,
                  port: int = MQTT_PORT,
+                 name: str = None,
                  username: Optional[str] = None,
                  password: Optional[str] = None,
                  mqttKeepAlive: int = KEEP_ALIVE_INTERVAL,
                  threadKeepAlive: int = THREAD_KEEP_ALIVE_INTERVAL,
                  clientArgs: Dict[str, Any] = None,
                  connectArgs: Dict[str, Any] = None,
-                 name: str = None,
                  **_kwargs):
         """
             Class that manages the connection to the MQTT Broker and
@@ -135,6 +136,32 @@ class MQTTConnectionManager:
         self._ports: Dict[str, "MQTTSerialPort"] = WeakValueDictionary()
 
         self.setup()
+
+
+    @classmethod
+    def find(cls, *patterns, **kwargs) -> "MQTTConnectionManager":
+        """ A convenience method for creating a new `MQTTConnectionManager`
+            using an MQTT broker discovered via mDNS. It calls
+            `endaq.device.mqtt.mqtt_discovery.findBrokers()` and then
+            instantiates an `MQTTConnectionManager` using the closest
+            matching broker name. All keywords for both are accepted.
+
+            :param patterns: Zero or more MQTT Broker names (multiple
+                positional arguments). Glob-like wildcards may be used
+                (case-sensitive). Defaults are used if no arguments are
+                provided.
+        """
+        scantime = kwargs.pop('scantime', 2)
+        timeout = kwargs.pop('timeout', 5)
+        callback = kwargs.pop('callback', None)
+
+        brokers = findBrokers(*patterns, scantime=scantime, timeout=timeout, callback=callback)
+        if not brokers:
+            raise NameError(f'No brokers found matching name pattern(s) {patterns!r}')
+
+        broker = brokers[0]
+        broker.update(kwargs)
+        return cls(**broker)
 
 
     def __repr__(self):

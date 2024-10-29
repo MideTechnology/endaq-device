@@ -1136,7 +1136,7 @@ class CommandInterface:
         if response is None:
             return None
 
-        return self._encodeResponseCodes(response.get('QueryWiFiResponse'))
+        return response.get('QueryWiFiResponse')
 
 
     def scanWifi(self,
@@ -1287,7 +1287,7 @@ class CommandInterface:
                                  interval=interval,
                                  callback=callback)
 
-        return self._encodeResponseCodes(response.get('NetworkStatusResponse'))
+        return response.get('NetworkStatusResponse')
 
 
     def getNetworkAddress(self,
@@ -2001,6 +2001,7 @@ class SerialCommandInterface(CommandInterface):
                             raise
 
                     if resp:
+                        self._encodeResponseCodes(resp)
                         code = resp.get('DeviceStatusCode')
                         msg = resp.get('DeviceStatusMessage')
                         queueDepth = resp.get('CMDQueueDepth', 1)

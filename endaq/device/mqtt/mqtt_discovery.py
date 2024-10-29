@@ -10,6 +10,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from zeroconf import Zeroconf, ServiceBrowser, ServiceInfo, ServiceStateChange
 
+from ..util import levenshtein
+
 
 # ===========================================================================
 #
@@ -110,10 +112,9 @@ def findBrokers(*patterns,
                                 state_change: ServiceStateChange):
         if state_change != ServiceStateChange.Removed:
             info = zeroconf.get_service_info(service_type, name)
-            basename, _servicename = splitServiceName(info.name)
             if not info:
                 return
-            if not patterns or any(fnmatchcase(basename, p) for p in patterns):
+            if not patterns or any(fnmatchcase(info.name, p) for p in patterns):
                 found.append(parseInfo(info))
 
     try:
@@ -134,6 +135,10 @@ def findBrokers(*patterns,
             sleep(0.1)
 
         browser.cancel()
+        if patterns and len(found) > 1:
+            # Sort by similarity to patterns
+            found.sort(key=lambda x: min(levenshtein(x['name'], p)
+                                         for p in patterns))
         return found
 
     finally:

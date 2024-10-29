@@ -1,3 +1,4 @@
+import itertools
 import logging
 import socket
 from threading import Event, Thread
@@ -5,6 +6,7 @@ from time import time, sleep
 from typing import Any, Callable, Dict, Optional
 
 from zeroconf import IPVersion, ServiceInfo, Zeroconf
+from zeroconf import NonUniqueNameException
 
 from .mqtt_interface import MQTT_BROKER, MQTT_PORT, getMyIP
 from .mqtt_discovery import DEFAULT_NAME, splitServiceName
@@ -20,6 +22,7 @@ class Advertiser(Thread):
 
     def __init__(self,
                  name: str = DEFAULT_NAME,
+                 rename: bool = True,
                  address: Optional[str] = MQTT_BROKER,
                  port: int = MQTT_PORT,
                  properties: Optional[Dict[str, Any]] = None):
@@ -34,6 +37,7 @@ class Advertiser(Thread):
             included in the service advertising.
         """
         self.port = port
+        self.rename = rename
         self.serviceName, self.serviceType = splitServiceName(name)
         self.properties = properties or {}
 
@@ -101,10 +105,26 @@ class Advertiser(Thread):
         zeroconf = Zeroconf(ip_version=self.ipVersion)
 
         try:
-            zeroconf.register_service(self.info)
+            if self.rename:
+                for n in itertools.count(1):
+                    try:
+                        zeroconf.register_service(self.info)
+                        break
+                    except NonUniqueNameException:
+                        self.fullName = f'{self.serviceName} {n}.{self.serviceType}'
+                        logger.info(f'Name not unique, trying {self.fullName}')
+                        self.info = ServiceInfo(
+                                self.serviceType,
+                                self.fullName,
+                                addresses=[socket.inet_aton(self.address)],
+                                port=self.port,
+                                properties=self.properties)
+            else:
+                zeroconf.register_service(self.info)
 
             while not self._stopEvent.is_set():
                 sleep(0.1)
+
         finally:
             logger.debug(f'Ending zeroconf advertising of {self.fullName} '
                          f'on {self.address}:{self.port}.')
