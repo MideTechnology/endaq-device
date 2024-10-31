@@ -167,6 +167,7 @@
         <IntegerElement name="DeviceStatusCode" id="0x5801" multiple="0" mandatory="0">Serial only, mandatory for serial. int16. Negative values are errors.
             110: Command Interface is going (or is currently) offline (for reason other than sleep)
             100: Device is currently in sleep mode, or will enter sleep mode soon after this response is received.
+            60: Device is currently streaming live data sensor data.
             50: Device Uploading (i.e. Wi-Fi Upload after recording finishes)
             40: Device Triggering (i.e. waiting for a trigger)
             30: Recording start pending (device will start recording soon after this message is sent)
@@ -191,6 +192,7 @@
         <IntegerElement name="SystemStateCode" id="0x5D01" multiple="0" mandatory="0"> System state of device unaffected by command errors. Values match those in Device Status Code.
             110: Command Interface is currently offline (for reason other than sleep)
             100: Device is currently in sleep mode
+            60: Device is currently streaming live data sensor data.
             50: Device Uploading
             40: Device Triggering (i.e. waiting for a trigger)
             30: Recording starting

@@ -25,8 +25,9 @@ class DeviceStatusCode(IntEnum):
     RECORDING = 10  #: Device is currently recording.
     RESET_PENDING = 20  #: Reset pending: the device will reset soon after this response is received.
     START_PENDING = 30  #: Recording start pending: the device will start recording soon after this response is received.
-    TRIGGERING = 40 #: Device is currently triggering.
-    UPLOADING = 50 #: Device is currently uploading a recording file over Wi-Fi.
+    TRIGGERING = 40  #: Device is currently triggering.
+    UPLOADING = 50  #: Device is currently uploading a recording file over Wi-Fi.
+    STREAMING = 60  #: Device is currently streaming live sensor data.
     SLEEPING = 100  #: Device is currently in sleep mode, or will enter sleep mode soon after this response is received. *For future use.*
     OFFLINE = 110  #: Command Interface is going (or is currently) offline, for reason other than sleep.
 

@@ -2015,7 +2015,7 @@ class SerialCommandInterface(CommandInterface):
                             # Raise a CommandError or DeviceError. -20 and -30 refer
                             # to bad commands sent by the user.
                             EXC = CommandError if -30 <= code <= -20 else DeviceError
-                            raise EXC(code, msg, self.lastCommand[1])
+                            raise EXC(code, msg)
 
                         if queueDepth == 0:
                             logger.debug('Command queue full, retrying.')
