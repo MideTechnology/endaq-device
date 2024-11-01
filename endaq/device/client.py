@@ -81,6 +81,26 @@ def requires_lock(method):
     return wrapped
 
 
+def optional_lock(method):
+    """ Decorator for command methods that require either no `LockID` has
+        been set, or the command's `LockID` matches the one set in the
+        client. It is assumed that the method being decorated is in a
+        class with a `lockId` attribute (i.e., a `CommandClient` subclass).
+    """
+    @wraps(method)
+    def wrapped(instance,
+                payload: Any,
+                lockId: Optional[int] = None
+            ) -> Tuple[Union[Dict[str, Any], ByteString],
+                       Optional[DeviceStatusCode],
+                       Optional[str]]:
+        if not instance.checkLockID(lockId):
+            logger.warning(f'Could not run {method.__name__} (mismatched LockID)')
+            return {}, DeviceStatusCode.ERR_BAD_LOCK_ID, None
+        return method(instance, payload, lockId)
+    return wrapped
+
+
 # ===========================================================================
 #
 # ===========================================================================

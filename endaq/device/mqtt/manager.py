@@ -432,7 +432,8 @@ class MQTTDeviceManager(MQTTClient):
     def __init__(self,
                  client: paho.mqtt.client.Client,
                  make_crc: bool = True,
-                 ignore_crc: bool = False):
+                 ignore_crc: bool = False,
+                 interval: int = 120):
         """ A client that monitors several MQTT topics, providing additional
             features for device discovery and data streaming.
 
@@ -441,9 +442,12 @@ class MQTTDeviceManager(MQTTClient):
                 and responses.
             :param ignore_crc: If `False`, do not validate incoming commands
                 or responses.
+            :param interval: The time between published `state` updates. If
+                0, no `state` updates will be published.
         """
         super().__init__(client, "manager", name="MQTT Device Manager",
-                         make_crc=make_crc, ignore_crc=ignore_crc)
+                         make_crc=make_crc, ignore_crc=ignore_crc,
+                         interval=interval)
 
         self.knownDevices: dict[int, MQTTDevice] = {}
 

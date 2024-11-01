@@ -84,7 +84,7 @@ class MQTTClient(CommandClient):
         self.client.on_disconnect = self.onDisconnect
 
 
-    def _stateUpdataLoop(self):
+    def _stateUpdateLoop(self):
         """ The state-updating loop.
         """
         logger.debug(f'Starting state update thread: {self.updateThread}')
@@ -103,7 +103,7 @@ class MQTTClient(CommandClient):
         """
         self.killUpdateLoop()
         self.stopStateUpdates.clear()
-        self.updateThread = Thread(target=self._stateUpdataLoop, daemon=True)
+        self.updateThread = Thread(target=self._stateUpdateLoop, daemon=True)
         self.updateThread.name = f'{type(self).__name__}{self.updateThread.name}'
         self.updateThread.start()
 
