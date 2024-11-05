@@ -5,7 +5,7 @@ enDAQ hardware.
 
 from threading import Event, Thread
 from time import sleep, time
-from typing import Any, ByteString, Optional, Tuple, Union
+from typing import Any, ByteString, Dict, Optional, Tuple, Union
 
 import ebmlite
 from ..client import CommandClient, synchronized
@@ -65,6 +65,7 @@ class MQTTClient(CommandClient):
         self.sn = sn
         self.name = name
         self.interval = interval
+        self._devinfoDict = None
         self._devinfo = None
 
         self.commandTopic = COMMAND_TOPIC.format(sn=self.sn)
@@ -233,14 +234,14 @@ class MQTTClient(CommandClient):
         # logger.debug(f'Updated state topic {self.stateTopic}')
 
 
-    def command_GetInfo_0(self,
-                          payload: ByteString,
-                          lockId: Optional[int] = None
-            ) -> Tuple[ByteString, Optional[DeviceStatusCode], Optional[str]]:
-        """ Retrieve the client's DEVINFO. Also used to generate the main
-            payload of 'state' topic updates.
+    def getDevinfo(self, refresh=True) -> Dict[str, Any]:
+        """ Get the MQTTClient's unencoded dictionary of DEVINFO data.
+
+            :param refresh: Clear the cached DEVINFO and generate a fresh
+                copy.
+            :return: A reference to the MQTTClient's unencoded DEVINFO data.
         """
-        if self._devinfo is None:
+        if self._devinfoDict is None or refresh:
             devinfo = self.DEFAULT_DEVINFO.copy()
 
             if isinstance(self.sn, int):
@@ -251,6 +252,20 @@ class MQTTClient(CommandClient):
             devinfo.setdefault('ProductName', type(self).__name__)
             devinfo.setdefault('PartNumber', type(self).__name__)
 
+            self._devinfoDict = devinfo
+
+        return self._devinfoDict
+
+
+    def command_GetInfo_0(self,
+                          payload: ByteString,
+                          lockId: Optional[int] = None
+            ) -> Tuple[ByteString, Optional[DeviceStatusCode], Optional[str]]:
+        """ Retrieve the client's DEVINFO. Also used to generate the main
+            payload of 'state' topic updates.
+        """
+        if self._devinfo is None:
+            devinfo = self.getDevinfo()
             schema = ebmlite.loadSchema('mide_ide.xml')
             self._devinfo = schema['RecorderInfo'].encode(devinfo)
 

@@ -2,7 +2,7 @@
 This module handles creating a connection to an MQTT broker, and
 communicating with an MQTT Device Manager.
 
-The main component in this module is `MQTTConnectionManager`.
+The main component in this module is `MQTTConnector`.
 """
 
 import logging
@@ -74,7 +74,7 @@ def makeClientID(base: str) -> str:
 #
 # ===========================================================================
 
-class MQTTConnectionManager:
+class MQTTConnector:
     """
     Class that manages the connection to the MQTT Broker and communication
     with the MQTT Device Manager.
@@ -139,11 +139,11 @@ class MQTTConnectionManager:
 
 
     @classmethod
-    def find(cls, *patterns, **kwargs) -> "MQTTConnectionManager":
-        """ A convenience method for creating a new `MQTTConnectionManager`
+    def find(cls, *patterns, **kwargs) -> "MQTTConnector":
+        """ A convenience method for creating a new `MQTTConnector`
             using an MQTT broker discovered via mDNS. It calls
             `endaq.device.mqtt.mqtt_discovery.findBrokers()` and then
-            instantiates an `MQTTConnectionManager` using the closest
+            instantiates an `MQTTConnector` using the closest
             matching broker name. All keywords for both are accepted.
 
             :param patterns: Zero or more MQTT Broker names (multiple
@@ -533,14 +533,28 @@ class MQTTConnectionManager:
         return devices
 
 
+def MQTTConnectionManager(*args, **kwargs):
+    """
+    Temporary placeholder for backwards compatibility, after renaming
+    `MQTTConnectionManager` as `MQTTConnector` to avoid confusion with the
+    `endaq.device.mqtt.manager.MQTTManager`.
+    """
+    logger.warning('MQTTConnectionManager is deprecated, use MQTTConnector instead')
+    return MQTTConnector(*args, **kwargs)
+
+
+# ===========================================================================
+#
+# ===========================================================================
+
 class MQTTSerialPort(SimSerialPort):
     """
     A virtual serial port, communicating over MQTT. Instances are created and
-    managed by `MQTTConnectionManager`.
+    managed by `MQTTConnector`.
     """
 
     def __init__(self,
-                 manager: MQTTConnectionManager,
+                 manager: MQTTConnector,
                  read: Optional[str] = None,
                  write: Optional[str] = None,
                  timeout: Optional[float] = None,
@@ -549,10 +563,10 @@ class MQTTSerialPort(SimSerialPort):
                  qos: int = 1):
         """
             A virtual serial port, communicating over MQTT. For convenience,
-            using `MQTTConnectionManager.newPort()` is recommended over
+            using `MQTTConnector.newPort()` is recommended over
             explicitly instantiating a `MQTTSerialPort` 'manually.'
 
-            :param manager: The port's supporting `MQTTConnectionManager`.
+            :param manager: The port's supporting `MQTTConnector`.
             :param read: The MQTT topic serving as RX. Can be `None` if the
                 port is only read from.
             :param write: The MQTT topic serving as TX. Can be `None` if the
@@ -629,7 +643,7 @@ class MQTTCommandInterface(SerialCommandInterface):
 
     def __init__(self,
                  device: 'Recorder',
-                 manager: MQTTConnectionManager,
+                 manager: MQTTConnector,
                  make_crc: bool = True,
                  ignore_crc: bool = False,
                  **kwargs):
@@ -637,7 +651,7 @@ class MQTTCommandInterface(SerialCommandInterface):
             Constructor.
 
             :param device: The Recorder to which to interface.
-            :param manager: The `MQTTConnectionManager` to manage the port.
+            :param manager: The `MQTTConnector` to manage the port.
             :param make_crc: If `True`, generate CRCs for outgoing packets.
             :param ignore_crc: If `True`, ignore the CRC on response packets.
 

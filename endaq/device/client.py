@@ -113,6 +113,10 @@ class CommandClient:
     the enDAQ ecosystem.
     """
 
+    stateCode: Optional[DeviceStatusCode] = DeviceStatusCode.IDLE_UNMOUNTED
+    stateMsg: Optional[str] = None
+
+
     def __init__(self,
                  command: Optional[CommandInterface] = None,
                  make_crc: bool = True,
@@ -139,9 +143,6 @@ class CommandClient:
         # near the end for more information.
         self.COMMANDS = {k.partition('_')[-1]: getattr(self, k) for k in dir(self)
                          if k.startswith('command_')}
-
-        self.stateCode: Optional[DeviceStatusCode] = DeviceStatusCode.IDLE_UNMOUNTED
-        self.stateMsg: Optional[str] = None
 
         self.lockId = b'\x00' * 16
 
