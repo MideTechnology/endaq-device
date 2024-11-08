@@ -559,7 +559,8 @@ class CommandInterface:
                                 callback=callback)
 
 
-    def _parseBatteryStatus(self, response: int) -> Dict[str, Any]:
+    @classmethod
+    def _parseBatteryStatus(cls, response: int) -> Dict[str, Any]:
         """ Parse the bits of a `BatteryState` element.
         """
         if response is None:
@@ -578,7 +579,6 @@ class CommandInterface:
             if response & 0x4000:  # bit 14: device can report external power
                 reply["externalPower"] = bool(response & 0x2000)
 
-        self._battery = time(), reply
         return reply
 
 
@@ -2229,7 +2229,9 @@ class SerialCommandInterface(CommandInterface):
         if not response:
             return None
 
-        return self._parseBatteryStatus(response.get('BatteryState'))
+        bat = self._parseBatteryStatus(response.get('BatteryState'))
+        self._battery = time(), bat
+        return bat
 
 
     def startRecording(self,

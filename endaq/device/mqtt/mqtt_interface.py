@@ -509,7 +509,8 @@ class MQTTConnector:
                                  f'Recorder subclass for {n}, continuing')
                     continue
 
-                device._lastContact = listItem.get('LastContact', 0)
+                lastContact = listItem.get('LastContact', 0)
+                device._lastContact = lastContact
                 device._lastMeasurement = listItem.get('LastMeasurement', 0)
                 device._lastHeader = listItem.get('LastHeader', 0)
                 device._lastCommand = listItem.get('LastCommand', 0)
@@ -519,6 +520,10 @@ class MQTTConnector:
                                           listItem.get('SystemStateMessage'),
                                           listItem.get('LockID'),
                                           listItem.get('LastLock'))
+
+                if 'BatteryState' in listItem:
+                    bs = device.command._parseBatteryStatus(listItem['BatteryState'])
+                    device.command._battery = lastContact, bs
 
                 devices.append(device)
                 RECORDERS.pop(hash(info), None)

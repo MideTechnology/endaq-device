@@ -105,6 +105,7 @@
         <MasterElement name="SetInfo" id="0x5B07" mandatory="0" multiple="0" >
             <IntegerElement name="InfoIndex" id="0x5B02" mandatory="1" multiple="0"> See GetInfo for index value </IntegerElement>
             <BinaryElement name="InfoPayload" id="0x5B03" mandatory="1" multiple="0"> Payload </BinaryElement>
+            <StringElement name="InfoEncoding" id="0x5B04" mandatory="0" multiple="0"> An optional encoding type, if an unusual encoding was used (e.g., JSON). Used by software components (MQTT Device Manager, etc.). </StringElement>
         </MasterElement>
 
         <!-- Network (MQTT) Device Manager commands (ID 0x5Cxx).
@@ -113,6 +114,7 @@
             <UIntegerElement name="Timeout" id="0x5C01" multiple="0" mandatory="0"> Optional timeout to exclude incommunicado devices, overriding manager's default </UIntegerElement>
         </MasterElement>
         <UIntegerElement name="GetIDEHeader" id="0x5C20" multiple="0" mandatory="0"> Request the IDE header data from a specific recording device. Value is the device's serial number. </UIntegerElement>
+        <MasterElement name="Shutdown" id="0x5CFF" multiple="0" mandatory="0"> Shut down the device/process. For non-sensors. </MasterElement>
     </MasterElement>
 
     <MasterElement name="EBMLResponse" id="0x86" multiple="0" mandatory="0">Response payload to above EBML command payload. Not all commands generate a response
@@ -232,24 +234,22 @@
             <UIntegerElement name="SerialNumber" id="0x5C12" multiple="0" mandatory="1"/>
             <BinaryElement name="IDEHeaderData" id="0x5C31" multiple="0" mandatory="1"/>
         </MasterElement>
-
-
     </MasterElement>
 
-<!--
-Attributes: a way to insert an arbitrary key/value into a structure, without revising (and potentially bloating) the
-schema itself. This data is typically non-critical. Strictly speaking, this may be considered an abuse of EBML, but it
-is flexible and moderately clean. This is used in several Mide schemata.
--->
-<MasterElement name="Attribute" id="0x6110" global="1" multiple="1"> Container For arbitrary name/value attributes, allowing additional data without revising (and bloating) the schema. It should contain exactly one `AttributeName` and one of the value elements.
-    <UnicodeElement name="AttributeName" id="0x612f" multiple="0" mandatory="1"> Attribute name. Should always be child of Attribute. </UnicodeElement>
-    <IntegerElement name="IntAttribute" id="0x6120" multiple="0"> Integer Attribute. Should always be child of Attribute. </IntegerElement>
-    <UIntegerElement name="UIntAttribute" id="0x6121" multiple="0"> Unsigned integer Attribute. Should always be child of Attribute. </UIntegerElement>
-    <FloatElement name="FloatAttribute" id="0x6122" multiple="0"> Floating point Attribute. Should always be child of Attribute. </FloatElement>
-    <StringElement name="StringAttribute" id="0x6123" multiple="0"> ASCII String Attribute. Should always be child of Attribute. </StringElement>
-    <DateElement name="DateAttribute" id="0x6124" multiple="0"> Date Attribute. Should always be child of Attribute. </DateElement>
-    <BinaryElement name="BinaryAttribute" id="0x6125" multiple="0"> Binary Attribute. Should always be child of Attribute. </BinaryElement>
-    <UnicodeElement name="UnicodeAttribute" id="0x6126" multiple="0"> Unicode String Attribute. Should always be child of Attribute. </UnicodeElement>
-</MasterElement>
+    <!--
+    Attributes: a way to insert an arbitrary key/value into a structure, without revising (and potentially bloating) the
+    schema itself. This data is typically non-critical. Strictly speaking, this may be considered an abuse of EBML, but it
+    is flexible and moderately clean. This is used in several Mide schemata.
+    -->
+    <MasterElement name="Attribute" id="0x6110" global="1" multiple="1"> Container For arbitrary name/value attributes, allowing additional data without revising (and bloating) the schema. It should contain exactly one `AttributeName` and one of the value elements.
+        <UnicodeElement name="AttributeName" id="0x612f" multiple="0" mandatory="1"> Attribute name. Should always be child of Attribute. </UnicodeElement>
+        <IntegerElement name="IntAttribute" id="0x6120" multiple="0"> Integer Attribute. Should always be child of Attribute. </IntegerElement>
+        <UIntegerElement name="UIntAttribute" id="0x6121" multiple="0"> Unsigned integer Attribute. Should always be child of Attribute. </UIntegerElement>
+        <FloatElement name="FloatAttribute" id="0x6122" multiple="0"> Floating point Attribute. Should always be child of Attribute. </FloatElement>
+        <StringElement name="StringAttribute" id="0x6123" multiple="0"> ASCII String Attribute. Should always be child of Attribute. </StringElement>
+        <DateElement name="DateAttribute" id="0x6124" multiple="0"> Date Attribute. Should always be child of Attribute. </DateElement>
+        <BinaryElement name="BinaryAttribute" id="0x6125" multiple="0"> Binary Attribute. Should always be child of Attribute. </BinaryElement>
+        <UnicodeElement name="UnicodeAttribute" id="0x6126" multiple="0"> Unicode String Attribute. Should always be child of Attribute. </UnicodeElement>
+    </MasterElement>
 
 </Schema>

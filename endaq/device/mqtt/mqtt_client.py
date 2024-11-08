@@ -8,7 +8,7 @@ from time import sleep, time
 from typing import Any, ByteString, Dict, Optional, Tuple, Union
 
 import ebmlite
-from ..client import CommandClient, synchronized
+from ..client import CommandClient, synchronized, requires_lock
 from ..hdlc import HDLC_BREAK_CHAR
 from ..response_codes import DeviceStatusCode
 from .mqtt_interface import COMMAND_TOPIC, RESPONSE_TOPIC, STATE_TOPIC
@@ -207,10 +207,13 @@ class MQTTClient(CommandClient):
                      recipient: Any,
                      packet: ByteString,
                      topic: str = None):
-        """ Transmit a complete, encoded command response packet
-            (or 'state' update).
+        """ Transmit a complete, encoded command response packet (or
+            'state' update). Called by methods in `CommandClient` that do all
+             the real work.
         """
-        # Called by methods in `CommandClient` that do all the real work
+        if not self.client or not self.client.is_connected():
+            return
+
         topic = topic or self.responseTopic
         info = self.client.publish(topic, bytes(packet))
         if info.rc != paho.mqtt.client.MQTT_ERR_SUCCESS:
@@ -226,6 +229,9 @@ class MQTTClient(CommandClient):
     def updateState(self):
         """ Publish an updated set of data to the 'state' topic.
         """
+        if not self.client or not self.client.is_connected():
+            return
+
         state, _statusCode, _statusMsg = self.command_GetInfo(0)
         state.update(self.command_GetClock(None)[0])
 
@@ -246,11 +252,11 @@ class MQTTClient(CommandClient):
 
             if isinstance(self.sn, int):
                 devinfo['RecorderSerial'] = self.sn
-            if self.name:
-                devinfo['UserDeviceName'] = self.name
 
-            devinfo.setdefault('ProductName', type(self).__name__)
-            devinfo.setdefault('PartNumber', type(self).__name__)
+            classname = type(self).__name__
+            devinfo['UserDeviceName'] = self.name or classname
+            devinfo.setdefault('ProductName', classname)
+            devinfo.setdefault('PartNumber', classname)
 
             self._devinfoDict = devinfo
 
