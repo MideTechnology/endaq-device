@@ -94,7 +94,7 @@ def optional_lock(method):
             ) -> Tuple[Union[Dict[str, Any], ByteString],
                        Optional[DeviceStatusCode],
                        Optional[str]]:
-        if not instance.checkLockID(lockId):
+        if not instance.checkLock(lockId):
             logger.warning(f'Could not run {method.__name__} (mismatched LockID)')
             return {}, DeviceStatusCode.ERR_BAD_LOCK_ID, None
         return method(instance, payload, lockId)

@@ -374,7 +374,7 @@ class MQTTConnector:
         if read in self._ports:
             port = self._ports[read]
             logger.debug(f'newPort(): returning existing port, '
-                         'read={port.readTopic} write={port.writeTopic}')
+                         f'read={port.readTopic} write={port.writeTopic}')
 
         else:
             logger.debug(f'newPort(): creating new serial port, {read=} {write=}')
@@ -432,6 +432,7 @@ class MQTTConnector:
             if managerTimeout is not None:
                 cmd['EBMLCommand']['GetDeviceList']['Timeout'] = managerTimeout
             response = devman.command._sendCommand(cmd, timeout=timeout, callback=callback)
+
             if not response['DeviceList']:
                 return []
             return response['DeviceList']['DeviceListItem']
@@ -493,16 +494,18 @@ class MQTTConnector:
 
                 device = RECORDERS.get(hash(info), None)
 
-                if device and not update and not device.isRemote:
-                    continue
+                # if device and not update and not device.isRemote:
+                #     continue
 
                 if not device or not device.isRemote:
-                    for devtype in RECORDER_TYPES:
-                        if devtype._isRecorder(info):
-                            device = devtype('remote', devinfo=info)
-                            device.command = MQTTCommandInterface(device, self)
-                            device._devinfo = MQTTDeviceInfo(device)
+                    devtype = Recorder
+                    for dt in RECORDER_TYPES:
+                        if dt._isRecorder(info):
+                            devtype = dt
                             break
+                    device = devtype('remote', devinfo=info)
+                    device.command = MQTTCommandInterface(device, self)
+                    device._devinfo = MQTTDeviceInfo(device)
 
                 if not device:
                     logger.error(f'getRemoteDevices(): Could not find '

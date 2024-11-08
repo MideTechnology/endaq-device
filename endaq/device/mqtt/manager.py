@@ -33,14 +33,18 @@ from .mqtt_interface import STATE_TOPIC, HEADER_TOPIC, MEASUREMENT_TOPIC, COMMAN
 # 'Constants'
 # ===========================================================================
 
-# EBML IDs for identifying elements, parsed or in the raw binary data
 CDB_ID = 0xA1  # EBML ID of IDE ChannelDataBlock element
+
+# Raw bytes of EBML IDs for quickly identifying elements in streams without
+# needing to parse the data.
 EBML_ID_BYTES = b'\x1A\x45\xDF\xA3'  # To identify `EBML` elements in stream
 NEWLOCKID_ID_BYTES = b'\x5A\x02'  # Raw `NewLockID`, to identify `SetLockID` commands
 
 DEVICE_TIMEOUT = 60 * 5  # seconds
 
-# Maximum valid difference between device and system time
+# Maximum valid difference between device and system time. Times reported by
+# the device that differ from system time by this amount or more are
+# considered untrustworthy.
 MAX_DRIFT = 60 * 60 * 24 * 2
 
 # ===========================================================================
@@ -648,7 +652,7 @@ def run(host: Optional[str] = MQTT_BROKER,
             kwargs.update(advertArgs)
         manager.advertiser = Advertiser(**kwargs)
         logger.info(f'Starting advertising broker on {host}:{port} '
-                     f'as "{brokerName}"')
+                     f'as "{manager.advertiser.fullName}"')
         manager.advertiser.start()
 
     logger.info("Starting manager's MQTT client loop thread")

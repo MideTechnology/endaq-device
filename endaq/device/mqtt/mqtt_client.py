@@ -62,15 +62,20 @@ class MQTTClient(CommandClient):
                 0, no `state` updates will be published.
         """
         self.client = client
-        self.sn = sn
         self.name = name
+        self.sn = sn
         self.interval = interval
         self._devinfoDict = None
         self._devinfo = None
 
-        self.commandTopic = COMMAND_TOPIC.format(sn=self.sn)
-        self.responseTopic = RESPONSE_TOPIC.format(sn=self.sn)
-        self.stateTopic = STATE_TOPIC.format(sn=self.sn)
+        if isinstance(sn, int):
+            self.snStr = f'{sn:08d}'
+        else:
+            self.snStr = f'{sn}'
+
+        self.commandTopic = COMMAND_TOPIC.format(sn=self.snStr)
+        self.responseTopic = RESPONSE_TOPIC.format(sn=self.snStr)
+        self.stateTopic = STATE_TOPIC.format(sn=self.snStr)
         self.commandBuffer = bytearray()
 
         self.stopStateUpdates = Event()
@@ -258,7 +263,7 @@ class MQTTClient(CommandClient):
             devinfo.setdefault('ProductName', classname)
             devinfo.setdefault('PartNumber', classname)
 
-            self._devinfoDict = devinfo
+            self._devinfoDict = {'RecordingProperties': {'RecorderInfo': devinfo}}
 
         return self._devinfoDict
 
@@ -273,6 +278,6 @@ class MQTTClient(CommandClient):
         if self._devinfo is None:
             devinfo = self.getDevinfo()
             schema = ebmlite.loadSchema('mide_ide.xml')
-            self._devinfo = schema['RecorderInfo'].encode(devinfo)
+            self._devinfo = schema.encodes(devinfo, headers=False)
 
         return self._devinfo, None, None
