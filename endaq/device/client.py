@@ -243,7 +243,7 @@ class CommandClient:
         if self.lockId:
             response['LockID'] = self.lockId
 
-        return self.command._encodeResponse(response)
+        return self.command._encodeResponse({'EBMLResponse': response})
 
 
     @synchronized
@@ -312,7 +312,7 @@ class CommandClient:
         if statusMsg:
             response['DeviceStatusMessage'] = statusMsg
 
-        packet = self.encodeResponse({'EBMLResponse': response})
+        packet = self.encodeResponse(response)
         self.sendResponse(sender, packet)
 
 

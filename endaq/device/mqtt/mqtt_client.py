@@ -8,7 +8,7 @@ from time import sleep, time
 from typing import Any, ByteString, Dict, Optional, Tuple, Union
 
 import ebmlite
-from ..client import CommandClient, synchronized, requires_lock
+from ..client import CommandClient, synchronized
 from ..hdlc import HDLC_BREAK_CHAR
 from ..response_codes import DeviceStatusCode
 from .mqtt_interface import COMMAND_TOPIC, RESPONSE_TOPIC, STATE_TOPIC
