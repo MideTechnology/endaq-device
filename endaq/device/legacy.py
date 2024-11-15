@@ -11,7 +11,7 @@ from typing import Any, AnyStr, Dict, TYPE_CHECKING, Union
 from ebmlite import loadSchema, Document, MasterElement
 
 import logging
-logger = logging.getLogger('endaq.device.legacy')
+logger = logging.getLogger(__name__)
 
 from .measurement import ACCELERATION
 

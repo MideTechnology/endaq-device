@@ -9,7 +9,7 @@ from importlib import import_module
 import logging
 from typing import Union
 
-logger = logging.getLogger('endaq.device')
+logger = logging.getLogger(__name__)
 
 # Special-case mapping of non-standard part numbers to default ConfigUI
 # modules (special/custom/OEM builds, etc.)

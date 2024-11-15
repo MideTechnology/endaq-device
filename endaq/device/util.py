@@ -6,13 +6,13 @@ import errno
 import os.path
 import pathlib
 import shutil
-import typing
+from typing import Any,ByteString, Dict, Union
 
 import logging
-logger = logging.getLogger("endaq.device")
+logger = logging.getLogger(__name__)
 
 
-def makeBackup(filename: typing.Union[str, pathlib.Path]) -> bool:
+def makeBackup(filename: Union[str, pathlib.Path]) -> bool:
     """ Create a backup copy of the given file. For use in conjunction with
         `restoreBackup()`.
     """
@@ -27,7 +27,7 @@ def makeBackup(filename: typing.Union[str, pathlib.Path]) -> bool:
     return False
 
 
-def restoreBackup(filename: typing.Union[str, pathlib.Path],
+def restoreBackup(filename: Union[str, pathlib.Path],
                   remove: bool = False) -> bool:
     """ Restore a backup copy of a file, overwriting the file. For use in
         conjunction with `makeBackup()`.
@@ -45,7 +45,7 @@ def restoreBackup(filename: typing.Union[str, pathlib.Path],
     return False
 
 
-def cleanProps(el: dict):
+def cleanProps(el: Dict[str, Any]) -> Dict[str, Any]:
     """ Recursively remove unknown elements (``"UnknownElement"`` keys) from
         a dictionary of device properties. The original data may contain
         nested dictionaries and lists. For preparing data dumped from EBML
@@ -64,3 +64,17 @@ def cleanProps(el: dict):
         return el
 
     return {k: cleanProps(v) for k, v in el.items() if k != "UnknownElement"}
+
+
+def dump(data: ByteString, length: int = 8) -> str:
+    """ Tool to render `bytes` and `bytearray` values in human-readable hex
+        (sets of 2 digits, separated by spaces), for debugging and/or
+        logging.
+
+        :param data: The `bytes` or `bytearray` data to render.
+        :param length: The maximum number of bytes to render. 0 or `None`
+            to render all bytes.
+    """
+    if not length:
+        length = len(data)
+    return ' '.join(f'{x:02x}' for x in data[:length])

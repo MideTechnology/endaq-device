@@ -6,13 +6,16 @@ data-logging devices.
 __author__ = "David Stokes"
 __copyright__ = "Copyright 2024 Mide Technology Corporation"
 
-import logging
 import os
 from pathlib import Path
 import string
 from threading import RLock
 from typing import Dict, List, Optional, Union
 from weakref import WeakValueDictionary
+
+import logging
+logger = logging.getLogger(__name__)
+# logger.setLevel(logging.DEBUG)
 
 import ebmlite.core
 from idelib.dataset import Dataset
@@ -26,14 +29,11 @@ from .response_codes import DeviceStatusCode
 from .slamstick import SlamStickX, SlamStickC, SlamStickS
 from .types import Drive, Filename, Epoch
 
-logger = logging.getLogger('endaq.device')
-# logger.setLevel(logging.DEBUG)
-
 # ============================================================================
 #
 # ============================================================================
 
-__version__ = "1.3.1"
+__version__ = "1.3.2"
 
 __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'DeviceError', 'DeviceTimeout', 'UnsupportedFeature',

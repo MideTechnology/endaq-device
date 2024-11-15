@@ -21,7 +21,7 @@ import warnings
 
 from .types import Drive, Epoch, Filename
 
-logger = logging.getLogger('endaq.device')
+logger = logging.getLogger(__name__)
 
 # ==============================================================================
 #
