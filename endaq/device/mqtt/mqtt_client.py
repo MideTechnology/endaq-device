@@ -240,7 +240,7 @@ class MQTTClient(CommandClient):
         state, _statusCode, _statusMsg = self.command_GetInfo(0)
         state.update(self.command_GetClock(None)[0])
 
-        packet = self.encodeResponse({'EBMLResponse': state})
+        packet = self.encodeResponse(state)
         self.sendResponse(None, packet, self.stateTopic)
         # logger.debug(f'Updated state topic {self.stateTopic}')
 
