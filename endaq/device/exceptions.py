@@ -3,8 +3,8 @@ Exceptions raised when interacting with a recording device.
 """
 
 __all__ = ('CommandError', 'CommunicationError', 'ConfigError',
-           'ConfigVersionError', 'DeviceError', 'DeviceTimeout',
-           'UnsupportedFeature')
+           'ConfigVersionError', 'CRCError', 'DeviceError',
+           'DeviceTimeout', 'UnsupportedFeature')
 
 
 class DeviceError(Exception):
@@ -14,6 +14,17 @@ class DeviceError(Exception):
         if len(self.args) > 1:
             return self.args[0]
         return None
+
+
+    def __str__(self):
+        if not self.args:
+            return repr(self)
+        elif len(self.args) == 1:
+            return str(self.args[0])
+        elif len(self.args) == 2:
+            return f'[{self.args[0]}] {self.args[1]}'
+        else:
+            return f'[{self.args[0]}] {self.args[1:]}'
 
 
 class CommandError(RuntimeError, DeviceError):

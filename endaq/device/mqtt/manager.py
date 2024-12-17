@@ -21,7 +21,7 @@ logger.setLevel(logging.DEBUG)
 
 from ..client import dump, synchronized
 from ..response_codes import DeviceStatusCode
-from ..command_interfaces import CommandInterface, CommandError
+from ..command_interfaces import CommandInterface, CommandError, CRCError, DeviceError
 from .mqtt_interface import MQTT_BROKER, MQTT_PORT, getMyIP, makeClientID
 from .advertising import Advertiser
 from .mqtt_discovery import DEFAULT_NAME
@@ -527,8 +527,11 @@ class MQTTDeviceManager(MQTTClient):
 
         try:
             response = self.command._decode(packet)['EBMLResponse']
-        except CommandError:
-            logger.error(f'onStateMessage: Bad packet from {sn!r} starting with {dump(packet)}')
+        except CRCError:
+            logger.error(f'onStateMessage: Bad packet CRC from {sn!r} starting with {dump(packet)}')
+            return
+        except DeviceError as err:
+            logger.error(f'onStateMessage: Error handling packet from {sn!r}: {err!r}')
             return
         except KeyError:
             logger.error(f'onStateMessage: Message from {sn!r} did not contain an EBMLResponse element')

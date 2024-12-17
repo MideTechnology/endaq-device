@@ -550,13 +550,16 @@ class CommandInterface:
         # Success is self.status[1] == None or the expected status code.
         if self.status[1] is not None and self.status[1] != statusCode:
             return False
-        # TODO: in later firmware with serial interface, ping the device
-        #  until it returns a response. Also allow multiple status codes
-        #  (e.g., RECORDING and START_PENDING, or IDLE and RESET_PENDING)
 
-        return self.awaitReboot(timeout=timeout if wait else 0,
-                                timeoutMsg=timeoutMsg,
-                                callback=callback)
+        if wait:
+            # TODO: in later firmware with serial interface, ping the device
+            #  until it returns a response. Also allow multiple status codes
+            #  (e.g., RECORDING and START_PENDING, or IDLE and RESET_PENDING)
+            return self.awaitReboot(timeout=timeout if wait else 0,
+                                    timeoutMsg=timeoutMsg,
+                                    callback=callback)
+
+        return True
 
 
     @classmethod
@@ -1963,24 +1966,24 @@ class SerialCommandInterface(CommandInterface):
         with self.device._busy:
             self.getSerialPort()
             try:
+                now = time()
+
+                if 'EBMLCommand' in cmd:
+                    if index:
+                        self.index += 1
+                        cmd['EBMLCommand']['CommandIdx'] = self.index
+                    if lock:
+                        cmd['EBMLCommand']['LockID'] = self.hostId or (b'\x00' * 16)
+
+                packet = self._encode(cmd)
+                self.lastCommand = now, deepcopy(cmd)
+                self._writeCommand(packet)
+
+                if timeout == 0 and not response:
+                    self.status = now, None, None
+                    return None
+
                 while True:
-                    now = time()
-
-                    if 'EBMLCommand' in cmd:
-                        if index:
-                            self.index += 1
-                            cmd['EBMLCommand']['CommandIdx'] = self.index
-                        if lock:
-                            cmd['EBMLCommand']['LockID'] = self.hostId or (b'\x00' * 16)
-
-                    packet = self._encode(cmd)
-                    self.lastCommand = now, deepcopy(cmd)
-                    self._writeCommand(packet)
-
-                    if timeout == 0 and not response:
-                        self.status = now, None, None
-                        return None
-
                     try:
                         resp = self._readResponse(timeout, callback=callback)
                     except (IOError, serial.SerialException) as err:
@@ -2020,8 +2023,8 @@ class SerialCommandInterface(CommandInterface):
                         if queueDepth == 0:
                             logger.debug('Command queue full, retrying.')
                         else:
-                            respIdx = resp.get('ResponseIdx')
-                            if not index or respIdx == self.index:
+                            respIdx = resp.get('ResponseIdx', self.index)
+                            if respIdx == self.index:
                                 return resp if response else None
                             else:
                                 logger.debug('Bad ResponseIdx; expected {}, got {}. '
@@ -2030,7 +2033,9 @@ class SerialCommandInterface(CommandInterface):
                         queueDepth = 1
 
                     # Failure!
-                    if timeout > 0 and now >= deadline:
+                    if timeout > 0 and time() >= deadline:
+                        if not response:
+                            return None
                         if queueDepth == 0:
                             raise DeviceTimeout('Timed out waiting for opening in command queue')
                         else:

@@ -497,19 +497,25 @@ class MQTTConnector:
                 # if device and not update and not device.isRemote:
                 #     continue
 
-                if not device or not device.isRemote:
-                    devtype = Recorder
-                    for dt in RECORDER_TYPES:
-                        if dt._isRecorder(info):
-                            devtype = dt
-                            break
-                    device = devtype('remote', devinfo=info)
-                    device.command = MQTTCommandInterface(device, self)
-                    device._devinfo = MQTTDeviceInfo(device)
+                try:
+                    if not device or not device.isRemote:
+                        devtype = Recorder
+                        for dt in RECORDER_TYPES:
+                            if dt._isRecorder(info):
+                                devtype = dt
+                                break
+                        device = devtype('remote', devinfo=info)
+                        device.command = MQTTCommandInterface(device, self)
+                        device._devinfo = MQTTDeviceInfo(device)
 
-                if not device:
-                    logger.error(f'getRemoteDevices(): Could not find '
-                                 f'Recorder subclass for {n}, continuing')
+                    if not device:
+                        logger.error(f'getDevices(): Could not find '
+                                     f'Recorder subclass for {n}, continuing')
+                        continue
+
+                except (DeviceError, ValueError) as err:
+                    logger.error(f'getDevices(): Error instantiating device for {n}: "'
+                                 f'{err!r}", continuing.')
                     continue
 
                 lastContact = listItem.get('LastContact', 0)
@@ -666,6 +672,8 @@ class MQTTCommandInterface(SerialCommandInterface):
             If additional keyword arguments are provided, they will be used
             when opening the serial port.
         """
+        if not device.serial:
+            raise ValueError('Device must have a serial number')
         self.manager = manager
         super().__init__(device, make_crc=make_crc, ignore_crc=ignore_crc, **kwargs)
 
