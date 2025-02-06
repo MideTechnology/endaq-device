@@ -2,7 +2,6 @@
 Find an enDAQ MQTT broker.
 """
 
-from dataclasses import dataclass
 from fnmatch import fnmatchcase
 import re
 from time import sleep, time
@@ -27,12 +26,13 @@ SERVICE_TYPE = "_endaq._tcp.local."
 #
 # ===========================================================================
 
+
 def splitServiceName(serviceName: str) -> Tuple[str, str]:
     """
     Split a full mDNS name (including service) into the base name and the
     service name.
     """
-    if m:=re.match(r"(.+)\.(_.+\._tcp\.local\.)", serviceName):
+    if m := re.match(r"(.+)\.(_.+\._tcp\.local\.)", serviceName):
         return m.groups()
     raise ValueError(f'Could not split name/service in {serviceName!r}')
 

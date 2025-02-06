@@ -622,11 +622,14 @@ class CommandInterface:
 
 
     def reset(self,
+              wait: bool = True,
               timeout: Union[int, float] = 5,
               callback: Optional[Callable] = None) -> bool:
         """ Reset (reboot) the recorder.
             Must be implemented in every subclass.
 
+            :param wait: If `True`, wait for the recorer to respond and/or
+                dismount, indicating the reset has started.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately; `None` or -1 will wait
                 indefinitely.
