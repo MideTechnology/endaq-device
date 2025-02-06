@@ -54,11 +54,9 @@ MEASUREMENT_TOPIC = "endaq/{sn}/measurement"
 def getMyIP() -> str:
     """ Retrieve the computer's IP address (v4).
     """
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect(("8.8.8.8", 80))
-    addr = s.getsockname()[0]
-    s.close()
-    return addr
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
 
 
 def makeClientID(base: str) -> str:
@@ -446,9 +444,12 @@ class MQTTConnector:
                    update: bool = False,
                    timeout: Union[int, float] = 10.0,
                    managerTimeout: Optional[int] = None,
+                   offline: bool = False,
                    callback: Optional[Callable] = None) -> List["Recorder"]:
         """
             Get a list of remote data recorder objects from the MQTT broker.
+            This method also updates the status of existing MQTT `Recorder`
+            instances.
 
             :param update: If `True`, update previously discovered devices
                 connected via USB (serial or storage device) to an MQTT
@@ -460,6 +461,8 @@ class MQTTConnector:
                 remote Device Manager's timeout that excludes inactive
                 devices. 0 will return all devices, regardless of how long it
                 has been since they reported to the Device Manager.
+            :param offline: If `True`, include devices that are reported to
+                have disconnected.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function
@@ -493,6 +496,11 @@ class MQTTConnector:
                     continue
 
                 device = RECORDERS.get(hash(info), None)
+                systemState = listItem.get('SystemStateCode')
+
+                if device is None and not offline and systemState in (100, -110):
+                    # Don't instantiate disconnected devices
+                    continue
 
                 # if device and not update and not device.isRemote:
                 #     continue
@@ -525,7 +533,7 @@ class MQTTConnector:
                 device._lastCommand = listItem.get('LastCommand', 0)
                 device.command._setStatus(listItem.get('DeviceStatusCode'),
                                           listItem.get('DeviceStatusMessage'),
-                                          listItem.get('SystemStateCode'),
+                                          systemState,
                                           listItem.get('SystemStateMessage'),
                                           listItem.get('LockID'),
                                           listItem.get('LastLock'))
@@ -534,10 +542,15 @@ class MQTTConnector:
                     bs = device.command._parseBatteryStatus(listItem['BatteryState'])
                     device.command._battery = lastContact, bs
 
-                devices.append(device)
                 RECORDERS.pop(hash(info), None)
                 RECORDERS[hash(info)] = device
                 RECORDERS_BY_SN[device.serialInt] = device
+
+                if not offline and systemState in (100, -110):
+                    # Update known offline devices, but don't return them
+                    continue
+
+                devices.append(device)
 
         # Remove old cached devices. Ordered dictionaries assumed!
         if len(RECORDERS) > RECORDER_CACHE_SIZE:
