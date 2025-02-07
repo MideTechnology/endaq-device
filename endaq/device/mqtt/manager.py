@@ -497,6 +497,34 @@ class MQTTDeviceManager(MQTTClient):
             return self.knownDevices.setdefault(sn, MQTTDevice(self, sn))
 
 
+    @synchronized
+    def updateState(self):
+        """ Publish an updated set of data to the 'state' topic.
+        """
+        # Schedule the next automatic update
+        self.nextUpdate = time() + self.interval
+
+        if not self.client or not self.client.is_connected():
+            return
+
+        state, _statusCode, _statusMsg = self.command_GetInfo(0)
+        state.update(self.command_GetClock(None)[0])
+
+        # Above is the same as `MQTTClient`. Below adds a subset of the
+        # `GetDeviceList` data; device DEVINFO is excluded.
+        devices = []
+        state['DeviceList'] = {'DeviceListItem': devices}
+
+        for dev in self.knownDevices.values():
+            item = dev.getStateInfo().copy()
+            item.pop('GetInfoResponse', None)
+            devices.append(item)
+
+        # Same as `MQTTClient`.
+        packet = self.encodeResponse(state)
+        self.sendResponse(None, packet, self.stateTopic)
+
+
     # =======================================================================
     # Message handlers, called by the MQTT message callback (`onMessage()`).
     # =======================================================================
@@ -537,11 +565,9 @@ class MQTTDeviceManager(MQTTClient):
             logger.error(f'onStateMessage: Message from {sn!r} did not contain an EBMLResponse element')
             return
 
-        # TODO: Check RecorderTypeUID to see if this is a recorder? Non-recorder entities
-        #  (identified by bit 31 being set) don't need to be tracked the same way.
-
         device = self.getDevice(sn)
         device.updateStateInfo(response)
+        self.updateState()
 
 
     # =======================================================================

@@ -80,6 +80,7 @@ class MQTTClient(CommandClient):
 
         self.stopStateUpdates = Event()
         self.updateThread = None
+        self.nextUpdate = 0
 
         super().__init__(make_crc=make_crc, ignore_crc=ignore_crc)
 
@@ -94,13 +95,10 @@ class MQTTClient(CommandClient):
         """ The state-updating loop.
         """
         logger.debug(f'Starting state update thread: {self.updateThread}')
-        deadline = time() + self.interval
         while not self.stopStateUpdates.is_set():
-            if time() < deadline:
-                sleep(1)
-                continue
-            self.updateState()
-            deadline = time() + self.interval
+            if time() > self.nextUpdate:
+                self.updateState()
+            sleep(1)
         logger.debug(f'Exiting state update thread: {self.updateThread}')
 
 
@@ -234,6 +232,9 @@ class MQTTClient(CommandClient):
     def updateState(self):
         """ Publish an updated set of data to the 'state' topic.
         """
+        # Schedule the next automatic update
+        self.nextUpdate = time() + self.interval
+
         if not self.client or not self.client.is_connected():
             return
 

@@ -15,6 +15,9 @@ from weakref import WeakValueDictionary
 import paho.mqtt.client as mqtt
 from serial import PortNotOpenError
 
+from .. import (_module_busy, RECORDER_TYPES, RECORDERS,
+                RECORDERS_BY_SN, RECORDER_CACHE_SIZE)
+
 from .mqtt_discovery import findBrokers
 from ..base import Recorder, NonRecorder
 from ..client import synchronized
@@ -88,6 +91,8 @@ class MQTTConnector:
                  threadKeepAlive: int = THREAD_KEEP_ALIVE_INTERVAL,
                  clientArgs: Dict[str, Any] = None,
                  connectArgs: Dict[str, Any] = None,
+                 autoupdate: bool = True,
+                 updateCallback: Callable = None,
                  **_kwargs):
         """
             Class that manages the connection to the MQTT Broker and
@@ -108,6 +113,12 @@ class MQTTConnector:
                 instantiation of the `paho.mqtt.client.Client`.
             :param connectArgs: Additional arguments to be used with
                 `paho.mqtt.client.Client.connect()`.
+            :param autoupdate: If `True`, known devices will have their
+                status automatically updated when the `MQTTDeviceManager`
+                publishes updates to its 'state' topic.
+            :param updateCallback: A function to be called when a 'state'
+                update is received from the `MQTTDeviceManager`. Only used
+                if `MQTTConnector.autoupdate` is `True`.
         """
         if not host:
             host = getMyIP()
@@ -123,6 +134,9 @@ class MQTTConnector:
         self.threadKeepAlive = threadKeepAlive
         self.clientArgs = dict(CLIENT_INIT_ARGS)
         self.connectArgs = dict(CLIENT_CONNECT_ARGS)
+        self._autoupdate = autoupdate  # Desired state of `autoupdate`
+        self._autoupdateActive = False  # Actual state of `autoupdate` (differs at startup)
+        self.updateCallback = updateCallback
 
         self.clientArgs.update(clientArgs or {})
         self.clientArgs.setdefault('client_id', makeClientID(type(self).__name__))
@@ -192,7 +206,31 @@ class MQTTConnector:
         self.connectArgs = kwargs.get('connectArgs', self.connectArgs)
 
         self.devManager = None
+        self._managerStateTopic = STATE_TOPIC.format(sn='manager')
         self.lastUsedTime = time()
+
+
+    @property
+    def autoupdate(self) -> bool:
+        """ Will device status get automatically updated by Device Manager
+            'state' messages?
+        """
+        return self._autoupdate
+
+
+    @autoupdate.setter
+    def autoupdate(self, active: bool):
+        if active == self._autoupdateActive:
+            return
+        if active:
+            self.client.subscribe(self._managerStateTopic, qos=0)
+            self.client.message_callback_add(self._managerStateTopic, self._onMessage)
+            logger.debug(f'autoupdate: Subscribed to {self._managerStateTopic}...')
+        else:
+            self.client.unsubscribe(self._managerStateTopic)
+            self.client.message_callback_remove(self._managerStateTopic)
+            logger.debug(f'autoupdate: Unsubscribed to {self._managerStateTopic}...')
+        self._autoupdate = self._autoupdateActive = active
 
 
     @synchronized
@@ -228,6 +266,7 @@ class MQTTConnector:
         deadline = time() + timeout
         while time() < deadline:
             if self.client.is_connected():
+                self.autoupdate = self._autoupdate
                 return
             sleep(0.01)
 
@@ -240,6 +279,10 @@ class MQTTConnector:
             devices' connections as well. It can be reconnected by calling
             `connect()`.
         """
+        autoupdate = self._autoupdate
+        self.autoupdate = False
+        self._autoupdate = autoupdate
+
         logger.debug('disconnect')
         if self.thread and self.thread.is_alive():
             self._stop.set()
@@ -314,8 +357,40 @@ class MQTTConnector:
         if message.topic in self._ports:
             self.lastUsedTime = time()
             self._ports[message.topic].append(message.payload)
+        elif message.topic == self._managerStateTopic:
+            self._onManagerState(_client, _userdata, message)
         else:
             logger.debug(f'Message from unknown topic: {message.topic}')
+
+
+    def _onManagerState(self, _client, _userdata, message):
+        """ MQTT event handler for ``endaq/manager/control/state`` updates.
+        """
+        devman = self._getDevManager()
+        if not devman:
+            logger.error(f'Device manager not available')
+
+        try:
+            response = devman.command._decode(message.payload)['EBMLResponse']
+            self._updateDeviceInfo(devman, response)
+        except KeyError as err:
+            logger.error(f'Device manager state message missing item: {err!r}')
+            return
+
+        try:
+            updatedDevices = []
+            deviceList = response['DeviceList']['DeviceListItem']
+            for listItem in deviceList:
+                sn = listItem.get('SerialNumber')
+                if sn in RECORDERS_BY_SN:
+                    self._updateDeviceInfo(RECORDERS_BY_SN[sn], listItem)
+                    # TODO: Exclude unchanged devices?
+                    updatedDevices.append(RECORDERS_BY_SN[sn])
+        except KeyError:
+            return
+
+        if self.updateCallback:
+            self.updateCallback(updatedDevices)
 
 
     # noinspection PyUnusedLocal
@@ -439,6 +514,34 @@ class MQTTConnector:
             raise DeviceError(f"Manager response did not contain {err.args[0]}")
 
 
+    def _updateDeviceInfo(self,
+                          device: "Recorder",
+                          info: Dict[str, Any]):
+        """
+            Apply metadata and status info from from the Device Manager to a
+            `Recorder`.
+
+            :param device:
+            :param info:
+            :return:
+        """
+        lastContact = info.get('LastContact', 0)
+        device._lastContact = lastContact
+        device._lastMeasurement = info.get('LastMeasurement', 0)
+        device._lastHeader = info.get('LastHeader', 0)
+        device._lastCommand = info.get('LastCommand', 0)
+        device.command._setStatus(info.get('DeviceStatusCode'),
+                                  info.get('DeviceStatusMessage'),
+                                  info.get('SystemStateCode'),
+                                  info.get('SystemStateMessage'),
+                                  info.get('LockID'),
+                                  info.get('LastLock'))
+
+        if 'BatteryState' in info:
+            bs = device.command._parseBatteryStatus(info['BatteryState'])
+            device.command._battery = lastContact, bs
+
+
     @synchronized
     def getDevices(self,
                    update: bool = False,
@@ -468,11 +571,6 @@ class MQTTConnector:
                 response will be cancelled. The callback function
                 requires no arguments.
         """
-        # Imported here to avoid circular references.
-        # I don't like doing this, but I think this case is okay.
-        from .. import (_module_busy, RECORDER_TYPES, RECORDERS,
-                        RECORDERS_BY_SN, RECORDER_CACHE_SIZE)
-
         with _module_busy:
             devices = []
 
@@ -526,21 +624,7 @@ class MQTTConnector:
                                  f'{err!r}", continuing.')
                     continue
 
-                lastContact = listItem.get('LastContact', 0)
-                device._lastContact = lastContact
-                device._lastMeasurement = listItem.get('LastMeasurement', 0)
-                device._lastHeader = listItem.get('LastHeader', 0)
-                device._lastCommand = listItem.get('LastCommand', 0)
-                device.command._setStatus(listItem.get('DeviceStatusCode'),
-                                          listItem.get('DeviceStatusMessage'),
-                                          systemState,
-                                          listItem.get('SystemStateMessage'),
-                                          listItem.get('LockID'),
-                                          listItem.get('LastLock'))
-
-                if 'BatteryState' in listItem:
-                    bs = device.command._parseBatteryStatus(listItem['BatteryState'])
-                    device.command._battery = lastContact, bs
+                self._updateDeviceInfo(device, listItem)
 
                 RECORDERS.pop(hash(info), None)
                 RECORDERS[hash(info)] = device

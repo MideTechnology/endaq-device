@@ -69,7 +69,7 @@ class CommandInterface:
     _TIME_PARSER = struct.Struct("<L")
 
 
-    def  __init__(self,
+    def __init__(self,
                  device: "Recorder"):
         """ `CommandInterface` instances are rarely (if ever) explicitly
             created; the parent `Recorder` object will create an instance of
