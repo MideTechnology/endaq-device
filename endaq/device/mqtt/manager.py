@@ -179,7 +179,7 @@ class MQTTDevice:
                 'LastMeasurement': int(self.lastMeasurement),
                 'LastHeader': int(self.lastHeader),
                 'LastCommand': int(self.lastCommand),
-                'LastLock': self.lastLock,
+                'LastLock': int(self.lastLock),
                 'LockID': self.lockId}
 
         self.stateInfo.update(item)
@@ -575,6 +575,7 @@ class MQTTDeviceManager(MQTTClient):
     # Commands: Methods for each command handled by the `CommandClient`.
     # =======================================================================
 
+    # noinspection PyUnusedLocal (lockId)
     def command_GetDeviceList(
                 self,
                 payload: Any,
@@ -599,6 +600,7 @@ class MQTTDeviceManager(MQTTClient):
         return {'DeviceList': {'DeviceListItem': devices}}, None, None
 
 
+    # noinspection PyUnusedLocal (lockId)
     def command_GetIDEHeader(
                 self,
                 payload: Any,
