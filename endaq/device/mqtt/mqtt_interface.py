@@ -644,16 +644,6 @@ class MQTTConnector:
         return devices
 
 
-def MQTTConnectionManager(*args, **kwargs):
-    """
-    Temporary placeholder for backwards compatibility, after renaming
-    `MQTTConnectionManager` as `MQTTConnector` to avoid confusion with the
-    `endaq.device.mqtt.manager.MQTTManager`.
-    """
-    logger.warning('MQTTConnectionManager is deprecated, use MQTTConnector instead')
-    return MQTTConnector(*args, **kwargs)
-
-
 # ===========================================================================
 #
 # ===========================================================================
