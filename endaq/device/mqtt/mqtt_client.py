@@ -97,7 +97,7 @@ class MQTTClient(CommandClient):
         logger.debug(f'Starting state update thread: {self.updateThread}')
         while not self.stopStateUpdates.is_set():
             if time() > self.nextUpdate:
-                self.updateState()
+                self.updateState()  # Note: this updates `nextUpdate`
             sleep(1)
         logger.debug(f'Exiting state update thread: {self.updateThread}')
 
