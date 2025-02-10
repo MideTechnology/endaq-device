@@ -575,7 +575,7 @@ class MQTTDeviceManager(MQTTClient):
     # Commands: Methods for each command handled by the `CommandClient`.
     # =======================================================================
 
-    # noinspection PyUnusedLocal (lockId)
+    # noinspection PyUnusedLocal
     def command_GetDeviceList(
                 self,
                 payload: Any,
@@ -600,7 +600,7 @@ class MQTTDeviceManager(MQTTClient):
         return {'DeviceList': {'DeviceListItem': devices}}, None, None
 
 
-    # noinspection PyUnusedLocal (lockId)
+    # noinspection PyUnusedLocal
     def command_GetIDEHeader(
                 self,
                 payload: Any,
