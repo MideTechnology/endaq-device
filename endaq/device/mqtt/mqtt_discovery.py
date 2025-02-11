@@ -32,9 +32,9 @@ def splitServiceName(serviceName: str) -> Tuple[str, str]:
     Split a full mDNS name (including service) into the base name and the
     service name.
     """
-    if m := re.match(r"(.+)\.(_.+\._tcp\.local\.)", serviceName):
+    if m := re.match(r"(.+)\.(.+\._tcp\.local\.)", serviceName):
         return m.groups()
-    raise ValueError(f'Could not split name/service in {serviceName!r}')
+    return serviceName, SERVICE_TYPE
 
 
 def parseInfo(info: ServiceInfo) -> Dict[str, Any]:
@@ -98,10 +98,15 @@ def findBrokers(*patterns,
         The callback function should require no arguments.
     :return: A list of MQTT Brokers.
     """
-    if patterns and patterns[0] is None:
+    if not patterns:
+        patterns = DEFAULT_NAMES[:]
+    elif patterns[0] is None:
         patterns = None
     else:
-        patterns = patterns or DEFAULT_NAMES[:]
+        # Add service name if the name doesn't have one.
+        patterns = list(patterns)
+        for i, n in enumerate(patterns):
+            patterns[i] = '{}.{}'.format(*splitServiceName(n))
 
     found = []
     zeroconf = Zeroconf()
