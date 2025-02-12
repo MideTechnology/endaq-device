@@ -7,6 +7,7 @@ The main component in this module is `MQTTConnector`.
 
 import logging
 import socket
+import string
 from threading import Event, Thread, get_native_id
 from time import sleep, time
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -642,6 +643,58 @@ class MQTTConnector:
                 del RECORDERS[k]
 
         return devices
+
+
+    def findDevice(self,
+                   sn: Optional[Union[str, int]] = None,
+                   chipId: Optional[Union[str, int]] = None,
+                   timeout: Union[int, float] = 10.0,
+                   managerTimeout: Optional[int] = None,
+                   offline: bool = False,
+                   callback: Optional[Callable] = None
+                   ) -> Union[Recorder, None]:
+        """ Find a specific remote recorder by serial number or unique chip
+            ID. One or the other must be provided, but not both. This is
+            equivalent to `endaq.device.findDevice()` for remote devices.
+
+            :param sn: The serial number of the recorder to find. Cannot be
+                used with `chipId`. It can be an integer or a formatted serial
+                number string (e.g., `12345` or `"S00012345"`).
+            :param chipId: The chip ID of the recorder to find. Cannot be used
+                with `sn`. It can be an integer or a hex string.
+            :param timeout: Time (in seconds) to wait for a response from the
+                Device Manager before raising a `DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
+            :param managerTimeout: A value (in seconds) that overrides the
+                remote Device Manager's timeout that excludes inactive
+                devices. 0 will return all devices, regardless of how long it
+                has been since they reported to the Device Manager.
+            :param offline: If `True`, include devices that are reported to
+                have disconnected.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will
+                be cancelled. The callback function requires no arguments.
+        """
+        with _module_busy:
+            if sn and chipId:
+                raise ValueError('Either a serial number or chip ID is required, not both')
+            elif sn is None and chipId is None:
+                raise ValueError('Either a serial number or chip ID is required')
+
+            if isinstance(sn, str):
+                sn = sn.lstrip(string.ascii_letters + "0")
+                if not sn:
+                    sn = 0
+                sn = int(sn)
+
+            for d in self.getDevices(timeout=timeout, managerTimeout=managerTimeout,
+                                     offline=offline, callback=callback):
+                if sn is not None and d.serialInt == sn:
+                    return d
+                elif chipId is not None and d.chipId == chipId:
+                    return d
+
+            return None
 
 
 # ===========================================================================
