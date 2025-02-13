@@ -514,12 +514,14 @@ class MQTTDeviceManager(MQTTClient):
         # Above is the same as `MQTTClient`. Below adds a subset of the
         # `GetDeviceList` data; device DEVINFO is excluded.
         devices = []
-        state['DeviceList'] = {'DeviceListItem': devices}
 
         for dev in self.knownDevices.values():
             item = dev.getStateInfo().copy()
             item.pop('GetInfoResponse', None)
             devices.append(item)
+
+        state['DeviceList'] = {'DeviceListItem': devices}
+        # logger.debug('Manager sending state update')
 
         # Same as `MQTTClient`.
         packet = self.encodeResponse(state)
@@ -550,6 +552,8 @@ class MQTTDeviceManager(MQTTClient):
             # Ignore own state message
             # logger.debug('ignoring own state update')
             return
+
+        # logger.debug(f'Received state update from {message.topic}')
 
         packet = message.payload
         sn = self.getSenderSerial(message.topic)

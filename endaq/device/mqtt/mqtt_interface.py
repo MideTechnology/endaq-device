@@ -378,8 +378,8 @@ class MQTTConnector:
             logger.error(f'Device manager state message missing item: {err!r}')
             return
 
+        updatedDevices = []
         try:
-            updatedDevices = []
             deviceList = response['DeviceList']['DeviceListItem']
             for listItem in deviceList:
                 sn = listItem.get('SerialNumber')
@@ -388,7 +388,7 @@ class MQTTConnector:
                     # TODO: Exclude unchanged devices?
                     updatedDevices.append(RECORDERS_BY_SN[sn])
         except KeyError:
-            return
+            pass
 
         if self.updateCallback:
             self.updateCallback(updatedDevices)
