@@ -149,6 +149,7 @@ class MockCommandSerialIO:
             mock_io.response = mock_io.encodeResponse({'EBMLResponse':
                                                        {'ResponseIdx': dev.command.index + 1,
                                                         'CMDQueueDepth': 1,
+                                                        'CommandResponseCode': 0,
                                                         'DeviceStatusCode': 0,
                                                         'PingReply': bytearray(b'hello')}},
                                                       resultcode=0)

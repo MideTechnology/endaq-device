@@ -113,8 +113,8 @@ class CommandClient:
     the enDAQ ecosystem.
     """
 
-    stateCode: Optional[DeviceStatusCode] = DeviceStatusCode.IDLE_UNMOUNTED
-    stateMsg: Optional[str] = None
+    statusCode: Optional[DeviceStatusCode] = DeviceStatusCode.IDLE_UNMOUNTED
+    statusMsg: Optional[str] = None
 
 
     def __init__(self,
@@ -178,12 +178,12 @@ class CommandClient:
             directly, in order to ensure responses don't get mismatched
             codes and messages.
 
-            :param stateCode: The client's `SystemStateCode`.
+            :param stateCode: The client's `DeviceStatusCode`.
             :param stateMsg: An optional description of the current state.
         """
-        stateCode = DeviceStatusCode.IDLE_UNMOUNTED if self.stateCode is None else stateCode
-        self.stateCode = int(stateCode) if stateCode is not None else None
-        self.stateMsg = stateMsg
+        stateCode = DeviceStatusCode.IDLE_UNMOUNTED if self.statusCode is None else stateCode
+        self.statusCode = int(stateCode) if stateCode is not None else None
+        self.statusMsg = stateMsg
 
 
     @synchronized
@@ -204,8 +204,8 @@ class CommandClient:
 
     def sendError(self,
                   recipient: Any,
-                  statusCode: DeviceStatusCode,
-                  statusMsg: Optional[str] = None):
+                  responseCode: DeviceStatusCode,
+                  responseMsg: Optional[str] = None):
         """ Helper to transmit a simple error response packet, containing
             nothing other than a status code and optional message, as
             returned when commands could not be parsed/processed.
@@ -214,12 +214,12 @@ class CommandClient:
                 command. Its type determined by the `CommandClient` subclass;
                 it can be `None` if not specifically needed by the subclass'
                 `sendResponse()` method.
-            :param statusCode: The error status code to send.
-            :param statusMsg: Optional descriptive error message.
+            :param responseCode: The error status code to send.
+            :param responseMsg: Optional descriptive error message.
         """
-        response = {'DeviceStatusCode': int(statusCode)}
-        if statusMsg:
-            response['DeviceStatusMessage'] = statusMsg
+        response = {'CommandResponseCode': int(responseCode)}
+        if responseMsg:
+            response['CommandResponseMessage'] = responseMsg
 
         packet = self.encodeResponse(response)
         self.sendResponse(recipient, packet)
@@ -236,10 +236,10 @@ class CommandClient:
         """ Encode an outgoing response.
         """
         # Subclasses may override this as needed.
-        if self.stateCode is not None:
-            response['SystemStateCode'] = self.stateCode
-            if self.stateMsg:
-                response['SystemStateMsg'] = self.stateMsg
+        if self.statusCode is not None:
+            response['DeviceStatusCode'] = self.statusCode
+            if self.statusMsg:
+                response['DeviceStatusMsg'] = self.statusMsg
         if self.lockId:
             response['LockID'] = self.lockId
 
@@ -280,8 +280,8 @@ class CommandClient:
 
         commandName = None
         commandPayload = None
-        statusCode = self.stateCode
-        statusMsg = self.stateMsg
+        statusCode = self.statusCode
+        statusMsg = self.statusMsg
 
         for k, v in command.items():
             if k in self.COMMANDS:
@@ -308,9 +308,9 @@ class CommandClient:
         else:
             statusCode = DeviceStatusCode.ERR_UNKNOWN_COMMAND
 
-        response['DeviceStatusCode'] = int(statusCode)
+        response['CommandResponseCode'] = int(statusCode)
         if statusMsg:
-            response['DeviceStatusMessage'] = statusMsg
+            response['CommandResponseMessage'] = statusMsg
 
         packet = self.encodeResponse(response)
         self.sendResponse(sender, packet)

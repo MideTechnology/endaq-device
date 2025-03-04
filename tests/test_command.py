@@ -38,11 +38,13 @@ TEST_RESPONSE = {
         'ResponseIdx': 2,
         'CMDQueueDepth': 1,
         'DeviceStatusCode': 0,
+        'CommandResponseCode': 0,
         'PingReply': b'hello world'}}
 
 # Response to a `scanWifi()` command
 WIFI_SCAN = {'EBMLResponse': {
                   'CMDQueueDepth': 1,
+                  'CommandResponseCode': 0,
                   'DeviceStatusCode': 0,
                   'ResponseIdx': 1,
                   'WiFiScanResult': {'AP': [{'AuthType': 3,

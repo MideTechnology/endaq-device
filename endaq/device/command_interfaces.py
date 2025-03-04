@@ -57,7 +57,7 @@ class CommandInterface:
     :ivar timeout: The underlying communication medium's response timeout (in
         seconds). This is not the same as the timeout for individual commands.
         Not used by all interface types.
-    :ivar status: The last reported device status. Not available on all
+    :ivar response: The last reported device status. Not available on all
         interface types. A tuple containing the status code and a
         status message string (optional).
     """
@@ -99,8 +99,8 @@ class CommandInterface:
         # Last response (`DeviceStatus*`) and last reported device system
         # status (`SystemState*`): timestamp, code number, and optional
         # message. Not available on all interfaces.
+        self.response: Tuple[float, Optional[int], Optional[str]] = (0, None, None)
         self.status: Tuple[float, Optional[int], Optional[str]] = (0, None, None)
-        self.system: Tuple[float, Optional[int], Optional[str]] = (0, None, None)
 
         # The time and value of the device's last reported LockID.
         self.lockId: Tuple[Optional[float], Optional[bytes]] = (0, None)
@@ -458,28 +458,28 @@ class CommandInterface:
 
 
     def _setStatus(self,
+                   responseCode: Optional[int] = None,
+                   responseMsg: Optional[str] = None,
                    statusCode: Optional[int] = None,
                    statusMsg: Optional[str] = None,
-                   systemCode: Optional[int] = None,
-                   systemMsg: Optional[str] = None,
                    lockId: Optional[bytes] = None,
                    lockTime: Optional[int] = None):
-        """ Set the status, system state, and lock ID.
+        """ Set the response code, device status, and lock ID.
         """
         now = time()
 
+        if responseCode is not None:
+            try:
+                responseCode = DeviceStatusCode(responseCode)
+            except ValueError:
+                logger.debug('Received unknown CommandResponseCode: {}'.format(responseCode))
+            self.response = now, responseCode, responseMsg
         if statusCode is not None:
             try:
                 statusCode = DeviceStatusCode(statusCode)
             except ValueError:
                 logger.debug('Received unknown DeviceStatusCode: {}'.format(statusCode))
             self.status = now, statusCode, statusMsg
-        if systemCode is not None:
-            try:
-                systemCode = DeviceStatusCode(systemCode)
-            except ValueError:
-                logger.debug('Received unknown SystemStateCode: {}'.format(systemCode))
-            self.system = now, systemCode, systemMsg
 
         lockId = lockId or '\x00' * 16
         if lockId != self.lockId[1]:
@@ -523,11 +523,11 @@ class CommandInterface:
                           callback: Optional[Callable] = None) -> bool:
         """ Send a command that will cause the device to reset/dismount. No
             response (other than a simple acknowledgement with a
-            ``<DeviceStatusCode>``, if the interface type reports one) is
+            ``<CommandResponseCode>``, if the interface type reports one) is
             expected/required.
 
             :param cmd: The command to execute.
-            :param statusCode: The ``<DeviceStatusCode>`` expected in the
+            :param statusCode: The ``<CommandResponseCode>`` expected in the
                 acknowledgement (if the interface supports one).
             :param wait: If `True`, wait for the recorer to respond and/or
                 dismount.
@@ -548,7 +548,7 @@ class CommandInterface:
         # Since no response is expected, a failure to read a response caused
         # by the device resetting will just set self.status to (None, None).
         # Success is self.status[1] == None or the expected status code.
-        if self.status[1] is not None and self.status[1] != statusCode:
+        if self.response[1] is not None and self.response[1] != statusCode:
             return False
 
         if wait:
@@ -1493,7 +1493,7 @@ class SerialCommandInterface(CommandInterface):
     """
     A mechanism for sending commands to a recorder via a serial port.
 
-    :ivar status: The last reported device status. Not available on all
+    :ivar response: The last reported device status. Not available on all
         interface types.
     :ivar make_crc: If `True`, generate CRCs for outgoing packets.
     :ivar ignore_crc: If `True`, ignore the CRC on response packets.
@@ -1983,7 +1983,7 @@ class SerialCommandInterface(CommandInterface):
                 self._writeCommand(packet)
 
                 if timeout == 0 and not response:
-                    self.status = now, None, None
+                    self.response = now, None, None
                     return None
 
                 while True:
@@ -2001,27 +2001,39 @@ class SerialCommandInterface(CommandInterface):
                         if not response:
                             logger.debug('Ignoring anticipated exception because '
                                          'response not required: {!r}'.format(err))
-                            self.status = now, None, None
+                            self.response = now, None, None
                             return None
                         else:
                             raise
 
                     if resp:
                         self._encodeResponseCodes(resp)
-                        code = resp.get('DeviceStatusCode')
-                        msg = resp.get('DeviceStatusMessage')
+                        responseCode = resp.get('CommandResponseCode')
+                        responseMsg = resp.get('CommandResponseMessage')
+                        statusCode = resp.get('DeviceStatusCode')
+                        statusMsg = resp.get('DeviceStatusMessage')
                         queueDepth = resp.get('CMDQueueDepth', 1)
 
-                        self._setStatus(code, msg,
-                                        resp.get('SystemStateCode'),
-                                        resp.get('SystemStateMessage'),
+                        # If either DeviceStatusCode or CommandResponseCode
+                        # are missing, default to whichever one exists.
+                        if responseCode is None:
+                            responseCode = statusCode
+                        elif statusCode is None:
+                            statusCode = responseCode
+                        if responseMsg is None:
+                            responseMsg = statusMsg
+                        elif statusMsg is None:
+                            statusMsg = responseMsg
+
+                        self._setStatus(responseCode, responseMsg,
+                                        statusCode, statusMsg,
                                         resp.get('LockID'))
 
-                        if code < 0:
+                        if responseCode < 0:
                             # Raise a CommandError or DeviceError. -20 and -30 refer
                             # to bad commands sent by the user.
-                            EXC = CommandError if -30 <= code <= -20 else DeviceError
-                            raise EXC(code, msg)
+                            EXC = CommandError if -30 <= responseCode <= -20 else DeviceError
+                            raise EXC(responseCode, responseMsg)
 
                         if queueDepth == 0:
                             logger.debug('Command queue full, retrying.')
@@ -2048,7 +2060,7 @@ class SerialCommandInterface(CommandInterface):
                 if not response:
                     logger.debug('Ignoring timeout waiting for response '
                                  'because no response required')
-                    self.status = now, None, None
+                    self.response = now, None, None
                     return None
                 else:
                     raise
@@ -2876,7 +2888,7 @@ class FileCommandInterface(CommandInterface):
             :param cmd: The command to execute. It is assumed to be a
                 legacy command, with no outer `<EBMLCommand>` wrapper.
                 Only the first 2 bytes will be sent.
-            :param statusCode: The ``<DeviceStatusCode>`` expected in the
+            :param statusCode: The ``<CommandResponseCode>`` expected in the
                 acknowledgement (if the interface supports one).
             :param wait: If `True`, wait for the recorer to respond and/or
                 dismount.
