@@ -532,10 +532,10 @@ class MQTTConnector:
         device._lastMeasurement = info.get('LastMeasurement', 0)
         device._lastHeader = info.get('LastHeader', 0)
         device._lastCommand = info.get('LastCommand', 0)
-        device.command._setStatus(info.get('DeviceStatusCode'),
+        device.command._setStatus(info.get('CommandResponseCode'),
+                                  info.get('CommandResponseMessage'),
+                                  info.get('DeviceStatusCode'),
                                   info.get('DeviceStatusMessage'),
-                                  info.get('SystemStateCode'),
-                                  info.get('SystemStateMessage'),
                                   info.get('LockID'),
                                   info.get('LastLock'))
 
@@ -596,7 +596,9 @@ class MQTTConnector:
                     continue
 
                 device = RECORDERS.get(hash(info), None)
-                systemState = listItem.get('SystemStateCode')
+                systemState = listItem.get('DeviceStatusCode')
+                if systemState is None:
+                    systemState = listItem.get('CommandResponseCode')
 
                 if device is None and not offline and systemState in (100, -110):
                     # Don't instantiate disconnected devices
