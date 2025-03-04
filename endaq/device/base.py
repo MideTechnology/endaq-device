@@ -154,6 +154,19 @@ class Recorder:
         # The source IDE `Dataset` used for 'virtual' devices.
         self._source: Optional[Dataset] = None
 
+        # Special case for temporary/fake Recorders used for getting info, etc.
+        self._name = None
+
+        # For remote devices: timestamps of the device's last communication,
+        # last block of streamed data, last header update, and last command
+        # sent to the device (which may not have been processed if the device
+        # was asleep at the time). Initially set after instantiation, and not
+        # automatically updated.
+        self._lastContact: int = 0
+        self._lastMeasurement: int = 0
+        self._lastHeader: int = 0
+        self._lastCommand: int = 0
+
 
     def _getDevinfo(self) -> DeviceInfo:
         """ Retrieve the appropriate `DeviceInfo` for the `Recorder`.
@@ -426,8 +439,8 @@ class Recorder:
             self.clockFile = self.userCalFile = self.configUIFile = None
             self.recpropFile = self.commandFile = None
 
-            if str(newpath).lower().startswith("mqtt"):
-                path = None
+            if str(newpath).lower().startswith(('mqtt', 'remote')):
+                path = newpath
 
             elif newpath is not None:
                 newpath = newpath.path if isinstance(newpath, Drive) else newpath
@@ -633,12 +646,14 @@ class Recorder:
             return False
         elif not self._path:
             return True
-        return str(self._path).lower().startswith(('mqtt',))
+        return str(self._path).lower().startswith(('mqtt', 'remote'))
 
 
     @property
     def name(self) -> str:
         """ The recording device's (user-assigned) name. """
+        if self._name:
+            return self._name
         try:
             return self.getInfo('UserDeviceName', '') or self.config.name
         except (AttributeError, KeyError, UnsupportedFeature):
@@ -1565,3 +1580,25 @@ class Recorder:
                 dev._calibration[k] = v
 
         return dev
+
+
+# ===========================================================================
+#
+# ===========================================================================
+
+class NonRecorder(Recorder):
+    """
+    Special-case `Recorder` subclass for objects that use the same interface
+    but are are not actual recorders, or do not correspond to a specific
+    device (e.g., a 'fake' recorder used to get data).
+    """
+
+    def __init__(self, path=None, name=None, **kwargs):
+        super().__init__(path, **kwargs)
+        self._name = name
+
+
+    def __repr__(self):
+        if self._name:
+            return f'<{type(self).__name__} "{self._name}">'
+        return object.__repr__(self)

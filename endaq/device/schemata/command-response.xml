@@ -105,12 +105,16 @@
         <MasterElement name="SetInfo" id="0x5B07" mandatory="0" multiple="0" >
             <IntegerElement name="InfoIndex" id="0x5B02" mandatory="1" multiple="0"> See GetInfo for index value </IntegerElement>
             <BinaryElement name="InfoPayload" id="0x5B03" mandatory="1" multiple="0"> Payload </BinaryElement>
+            <StringElement name="InfoEncoding" id="0x5B04" mandatory="0" multiple="0"> An optional encoding type, if an unusual encoding was used (e.g., JSON). Used by software components (MQTT Device Manager, etc.). </StringElement>
         </MasterElement>
 
         <!-- Network (MQTT) Device Manager commands (ID 0x5Cxx).
              These are for the Manager itself, and are not recognized by devices. -->
-        <MasterElement name="GetDeviceList" id="0x5C00" multiple="0" mandatory="0"> Request a list of remote network devices </MasterElement>
+        <MasterElement name="GetDeviceList" id="0x5C00" multiple="0" mandatory="0"> Request a list of remote network devices
+            <UIntegerElement name="Timeout" id="0x5C01" multiple="0" mandatory="0"> Optional timeout to exclude incommunicado devices, overriding manager's default </UIntegerElement>
+        </MasterElement>
         <UIntegerElement name="GetIDEHeader" id="0x5C20" multiple="0" mandatory="0"> Request the IDE header data from a specific recording device. Value is the device's serial number. </UIntegerElement>
+        <MasterElement name="Shutdown" id="0x5CFF" multiple="0" mandatory="0"> Shut down the device/process. For non-sensors. </MasterElement>
     </MasterElement>
 
     <MasterElement name="EBMLResponse" id="0x86" multiple="0" mandatory="0">Response payload to above EBML command payload. Not all commands generate a response

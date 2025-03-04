@@ -7,7 +7,8 @@ software in the enDAQ ecosystem.
 """
 
 from functools import wraps
-from threading import RLock
+from threading import RLock, get_native_id
+from time import time
 from typing import Any, ByteString, Dict, Optional, Tuple, Union
 
 import logging
@@ -25,7 +26,8 @@ from .util import dump
 
 def synchronized(method):
     """ Decorator for making methods use a lock, modeled after the one in
-        Java.
+        Java. It uses `threading.RLock`; synchronized methods called from
+        the same thread that has claimed the lock are not blocked.
     """
     @wraps(method)
     def wrapped(instance, *args, **kwargs):
@@ -38,6 +40,28 @@ def synchronized(method):
     return wrapped
 
 
+def _synchronized(method):
+    """ Decorator for making methods use a lock, modeled after the one in
+        Java. This version does some debug logging.
+    """
+    @wraps(method)
+    def wrapped(instance, *args, **kwargs):
+        try:
+            lock = instance._synchronized_lock
+        except AttributeError:
+            lock = instance._synchronized_lock = RLock()
+        with lock:
+            # Don't log the `in_waiting` property checks (too many calls)
+            if 'waiting' not in str(method):
+                logger.debug(f'>>> calling synchronized method {method} (thread {get_native_id()})')
+            try:
+                return method(instance, *args, **kwargs)
+            finally:
+                if 'waiting' not in str(method):
+                    logger.debug(f'<<< exiting synchronized method {method} (thread {get_native_id()})')
+    return wrapped
+
+
 def requires_lock(method):
     """ Decorator for command methods that require a `LockID`. It is
         assumed that the method being decorated is in a class with a
@@ -47,8 +71,30 @@ def requires_lock(method):
     def wrapped(instance,
                 payload: Any,
                 lockId: Optional[int] = None
-            ) -> Tuple[Union[Dict[str, Any], ByteString], Optional[DeviceStatusCode], Optional[str]]:
+            ) -> Tuple[Union[Dict[str, Any], ByteString],
+                       Optional[DeviceStatusCode],
+                       Optional[str]]:
         if lockId != instance.lockId:
+            logger.warning(f'Could not run {method.__name__} (mismatched LockID)')
+            return {}, DeviceStatusCode.ERR_BAD_LOCK_ID, None
+        return method(instance, payload, lockId)
+    return wrapped
+
+
+def optional_lock(method):
+    """ Decorator for command methods that require either no `LockID` has
+        been set, or the command's `LockID` matches the one set in the
+        client. It is assumed that the method being decorated is in a
+        class with a `lockId` attribute (i.e., a `CommandClient` subclass).
+    """
+    @wraps(method)
+    def wrapped(instance,
+                payload: Any,
+                lockId: Optional[int] = None
+            ) -> Tuple[Union[Dict[str, Any], ByteString],
+                       Optional[DeviceStatusCode],
+                       Optional[str]]:
+        if not instance.checkLock(lockId):
             logger.warning(f'Could not run {method.__name__} (mismatched LockID)')
             return {}, DeviceStatusCode.ERR_BAD_LOCK_ID, None
         return method(instance, payload, lockId)
@@ -63,9 +109,13 @@ class CommandClient:
     """
     A base class for receiving, parsing, and responding to enDAQ commands in
     the same way as (or similar to) an enDAQ data recorder. It is intended
-    for testing `endaq.device` and developing non-embedded software in the
-    enDAQ ecosystem.
+    for testing `endaq.device` and for developing non-embedded software in
+    the enDAQ ecosystem.
     """
+
+    stateCode: Optional[DeviceStatusCode] = DeviceStatusCode.IDLE_UNMOUNTED
+    stateMsg: Optional[str] = None
+
 
     def __init__(self,
                  command: Optional[CommandInterface] = None,
@@ -76,14 +126,17 @@ class CommandClient:
             recorder.
 
             :param command: An existing `CommandInterface` to use, if
-                required. Defaults to a standard `SerialCommandInterface`.
-                Mainly for use in subclasses that override `__init__()`.
+                required. Defaults to a standard `SerialCommandInterface`,
+                although it is only used for encoding/decoding packets (in
+                the base class), not communication. Mainly for use in
+                subclasses that override `__init__()`.
             :param make_crc: If `True`, generate CRCs for outgoing responses.
             :param ignore_crc: If `False`, do not validate incoming
                 commands.
         """
         if command is None:
-            command = SerialCommandInterface(None, make_crc=make_crc, ignore_crc=ignore_crc)
+            command = SerialCommandInterface(None, make_crc=make_crc,
+                                             ignore_crc=ignore_crc)
         self.command = command
 
         # Collect all the class' implemented command methods. See comments
@@ -117,11 +170,34 @@ class CommandClient:
 
 
     @synchronized
+    def setStatus(self,
+                  stateCode: Union[DeviceStatusCode, int],
+                  stateMsg: Optional[str] = None):
+        """ Set the client's system state code (and, optionally, message).
+            Use this method instead of setting `stateCode` or `stateMsg`
+            directly, in order to ensure responses don't get mismatched
+            codes and messages.
+
+            :param stateCode: The client's `SystemStateCode`.
+            :param stateMsg: An optional description of the current state.
+        """
+        stateCode = DeviceStatusCode.IDLE_UNMOUNTED if self.stateCode is None else stateCode
+        self.stateCode = int(stateCode) if stateCode is not None else None
+        self.stateMsg = stateMsg
+
+
+    @synchronized
     def sendResponse(self,
                      recipient: Any,
                      packet: ByteString):
         """ Transmit a complete, encoded response packet. 
             Must be implemented for each subclass.
+
+            :param recipient: The device/computer/connection that sent the
+                command. Its type determined by the `CommandClient` subclass;
+                it can be `None` if not specifically needed by the subclass'
+                `sendResponse()` method.
+            :param packet: The complete, encoded response packet to send.
         """
         raise NotImplementedError('CommandClient.sendResponse()')
 
@@ -135,14 +211,18 @@ class CommandClient:
             returned when commands could not be parsed/processed.
 
             :param recipient: The device/computer/connection that sent the
-                command. Its type determined by the `CommandClient` subclass.
+                command. Its type determined by the `CommandClient` subclass;
+                it can be `None` if not specifically needed by the subclass'
+                `sendResponse()` method.
             :param statusCode: The error status code to send.
             :param statusMsg: Optional descriptive error message.
         """
         response = {'DeviceStatusCode': int(statusCode)}
         if statusMsg:
             response['DeviceStatusMessage'] = statusMsg
-        self.sendResponse(recipient, response)
+
+        packet = self.encodeResponse(response)
+        self.sendResponse(recipient, packet)
 
 
     def decodeCommand(self, packet: ByteString) -> Dict[str, Any]:
@@ -156,7 +236,14 @@ class CommandClient:
         """ Encode an outgoing response.
         """
         # Subclasses may override this as needed.
-        return self.command._encodeResponse(response)
+        if self.stateCode is not None:
+            response['SystemStateCode'] = self.stateCode
+            if self.stateMsg:
+                response['SystemStateMsg'] = self.stateMsg
+        if self.lockId:
+            response['LockID'] = self.lockId
+
+        return self.command._encodeResponse({'EBMLResponse': response})
 
 
     @synchronized
@@ -167,7 +254,9 @@ class CommandClient:
 
             :param packet: The raw command message payload.
             :param sender: The device/computer/connection that sent the
-                command. Its type determined by the `CommandClient` subclass.
+                command. Its type determined by the `CommandClient` subclass;
+                it can be `None` if not specifically needed by the subclass'
+                `sendResponse()` method.
         """
         # Attempt to parse, and generate basic errors for bad packets.
         try:
@@ -191,8 +280,8 @@ class CommandClient:
 
         commandName = None
         commandPayload = None
-        statusCode = DeviceStatusCode.IDLE
-        statusMsg = None
+        statusCode = self.stateCode
+        statusMsg = self.stateMsg
 
         for k, v in command.items():
             if k in self.COMMANDS:
@@ -223,14 +312,15 @@ class CommandClient:
         if statusMsg:
             response['DeviceStatusMessage'] = statusMsg
 
-        self.sendResponse(sender, self.command._encodeResponse(response))
+        packet = self.encodeResponse(response)
+        self.sendResponse(sender, packet)
 
 
     def checkLock(self, lockId: ByteString) -> bool:
         """ Verify that a command's LockID matches the object's. Returns
             `True` if the lock IDs match or no lock has been set.
         """
-        return not any(self.lockId) or lockId == self.lockId
+        return not self.lockId or not any(self.lockId) or lockId == self.lockId
 
 
     # =======================================================================
@@ -261,15 +351,17 @@ class CommandClient:
     # Command methods must return a tuple containing:
     #   * Response dictionary. Commands that have no specific response should
     #     return an empty dict. Index-specific `GetInfo` methods should
-    #     return the binary value `InfoPayload`; `command_GetInfo()` builds
-    #     the rest of the response dictionary.
-    #   * A DeviceStatusCode to return (e.g., if the command generated an
-    #     error) which, if not None, overrides the system's DeviceStatusCode.
-    #   * A DeviceStatusMessage string which, if not None, overrides the
+    #     return the binary value for `InfoPayload`; `command_GetInfo()`
+    #     builds the rest of the response dictionary.
+    #   * A `DeviceStatusCode` to return (e.g., if the command generated an
+    #     error) which, if not `None`, overrides the instance's
+    #     `DeviceStatusCode`.
+    #   * A `DeviceStatusMessage` string which, if not `None`, overrides the
     #     system's DeviceStatusMessage. 
     # =======================================================================
 
-    def command_SendPing(self, 
+    # noinspection PyUnusedLocal
+    def command_SendPing(self,
                          payload: Any,
                          lockId: Optional[ByteString] = None
             ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
@@ -284,7 +376,8 @@ class CommandClient:
         return {'PingReply': payload}, None, None
     
 
-    def command_GetLockID(self, 
+    # noinspection PyUnusedLocal
+    def command_GetLockID(self,
                           payload: ByteString,
                           lockId: Optional[ByteString] = None
             ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
@@ -299,7 +392,8 @@ class CommandClient:
         return {'LockID': self.lockId}, None, None
 
 
-    def command_SetLockID(self, 
+    # noinspection PyUnusedLocal
+    def command_SetLockID(self,
                           payload: Dict[str, Any],
                           lockId: Optional[ByteString] = None
             ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
@@ -320,6 +414,16 @@ class CommandClient:
         
         except KeyError:
             return {}, DeviceStatusCode.ERR_BAD_PAYLOAD, None
+
+
+    def command_GetClock(self,
+                         payload: Dict[str, Any],
+                         lockId: Optional[ByteString] = None
+                         ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+        """ Handle a `<GetClock>` command (EBML ID 0x5500).
+        """
+        return ({'ClockTime': self.command._TIME_PARSER.pack(int(time()))},
+                None, None)
 
 
     def command_GetInfo(self,
@@ -364,10 +468,11 @@ class CommandClient:
 
     # =======================================================================
 
+    # noinspection PyUnusedLocal
     def command_GetInfo_0(self,
                           payload: ByteString,
                           lockId: Optional[int] = None
-            ) -> Tuple[Dict[str, ByteString], Optional[DeviceStatusCode], Optional[str]]:
+            ) -> Tuple[ByteString, Optional[DeviceStatusCode], Optional[str]]:
         """ Example of a `GetInfo` (0: `DEVINFO`) that does not require the
             lock be set. This should be overridden by subclasses. This
             implementation returns the same `ERR_BAD_INFO_INDEX` as is
@@ -381,11 +486,12 @@ class CommandClient:
                 'command_GetInfo_0() is only an example')
 
 
+    # noinspection PyUnusedLocal
     @requires_lock
     def command_GetInfo_5(self,
                           payload: ByteString,
                           lockId: Optional[int] = None
-            ) -> Tuple[Dict[str, ByteString], Optional[DeviceStatusCode], Optional[str]]:
+            ) -> Tuple[ByteString, Optional[DeviceStatusCode], Optional[str]]:
         """ Example of a `GetInfo` (5: `config.cfg`) that requires the lock
             be set. Note the use of the `requires_lock` decorator. This
             should be overridden in subclasses.  This implementation returns
