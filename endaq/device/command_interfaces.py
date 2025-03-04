@@ -229,7 +229,7 @@ class CommandInterface:
                                      f'({err})')
 
 
-    def _decodeCommand(self, packet:Union[bytearray, bytes]) -> Dict[str, Any]:
+    def _decodeCommand(self, packet: Union[bytearray, bytes]) -> Dict[str, Any]:
         """ Translate a command packet (EBML) into a dictionary. Only used in
             some special cases; not generally used in ordinary "Recorder"
             communication.
@@ -1594,7 +1594,7 @@ class SerialCommandInterface(CommandInterface):
         for port in serial.tools.list_ports.comports():
             sn = port.serial_number
             if not sn or len(sn) != 8:
-               continue
+                continue
             try:
                 if strict and (port.vid, port.pid) not in cls.USB_IDS:
                     continue

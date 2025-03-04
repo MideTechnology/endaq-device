@@ -19,7 +19,7 @@ from serial import PortNotOpenError
 from .. import (_module_busy, RECORDER_TYPES, RECORDERS,
                 RECORDERS_BY_SN, RECORDER_CACHE_SIZE)
 
-from .mqtt_discovery import findBrokers
+from .mqtt_discovery import findBrokers, SERVICE_TYPE
 from ..base import Recorder, NonRecorder
 from ..client import synchronized
 from ..command_interfaces import SerialCommandInterface
@@ -94,7 +94,7 @@ class MQTTConnector:
                  connectArgs: Dict[str, Any] = None,
                  autoupdate: bool = True,
                  updateCallback: Callable = None,
-                 **_kwargs):
+                 **kwargs):
         """
             Class that manages the connection to the MQTT Broker and
             communication with the MQTT Device Manager.
@@ -129,6 +129,7 @@ class MQTTConnector:
         self.host = host
         self.port = port
         self.name = name
+        self.service = kwargs.get('serviceType', SERVICE_TYPE)
         self.username = username
         self.password = password
         self.keepalive = mqttKeepAlive
