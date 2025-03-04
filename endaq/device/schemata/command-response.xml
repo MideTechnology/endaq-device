@@ -219,10 +219,10 @@
                 <UIntegerElement name="LastCommand" id="0x5C16" multiple="0" mandatory="1"> UNIX epoch timestamp of the last command sent to the device </UIntegerElement>
                 <UIntegerElement name="LastLock" id="0x5C17" multiple="0" mandatory="1"> UNIX epoch timestamp of the last time the device's LockID was set </UIntegerElement>
                 <MasterElement name="GetInfoResponse"> The same contents as returned by `GetInfo` index 0 (previously defined) </MasterElement>
-                <IntegerElement name="CommandResponseCode"> The originating device's last DeviceStatusCode (previously defined) </IntegerElement>
-                <UnicodeElement name="CommandResponseMessage"> The originating device's last DeviceStatusMessage (previously defined) </UnicodeElement>
-                <IntegerElement name="DeviceStatusCode"> System state of device unaffected by command errors. Values match those in Device Status Code. </IntegerElement>
-                <UnicodeElement name="DeviceStatusMessage">Optional description of the system state</UnicodeElement>
+                <IntegerElement name="CommandResponseCode"> The originating device's last CommandResponseCode (previously defined) </IntegerElement>
+                <UnicodeElement name="CommandResponseMessage"> The originating device's last CommandResponseMessage (previously defined) </UnicodeElement>
+                <IntegerElement name="DeviceStatusCode"> Device Status, unaffected by command errors. Values match those in CommandResponseCode. </IntegerElement>
+                <UnicodeElement name="DeviceStatusMessage">Optional description of the Device Status</UnicodeElement>
                 <BinaryElement name="LockID"> The originating device's last LockID (previously defined) </BinaryElement>
             </MasterElement>
         </MasterElement>
