@@ -462,7 +462,7 @@ class Recorder:
 
 
     @property
-    def volumeName(self):
+    def volumeName(self) -> Union[str, bool]:
         """ The recorder's user-specified filesystem label. """
         if self.isVirtual or self.isRemote:
             return False
@@ -634,13 +634,13 @@ class Recorder:
 
 
     @property
-    def isVirtual(self):
+    def isVirtual(self) -> bool:
         """ Is this actual hardware, or a virtual recorder? """
         return self._virtual
 
 
     @property
-    def isRemote(self):
+    def isRemote(self) -> bool:
         """ Is this device not directly connected to this computer? """
         if self.isVirtual:
             return False
@@ -676,7 +676,7 @@ class Recorder:
 
 
     @property
-    def partNumber(self):
+    def partNumber(self) -> str:
         """ The recording device's manufacturer-issued part number.
         """
         return self.getInfo('PartNumber', '')
@@ -702,7 +702,7 @@ class Recorder:
 
 
     @property
-    def mcuType(self):
+    def mcuType(self) -> Union[str, None]:
         """ The recorder's CPU/MCU type. """
         return self.getInfo('McuType', None)
 
@@ -1520,7 +1520,7 @@ class Recorder:
 
     @property
     def hasConfigInterface(self) -> bool:
-        """ Does the device have the ability to execute commands?
+        """ Can this device be configured?
         """
         try:
             return bool(self.config)
