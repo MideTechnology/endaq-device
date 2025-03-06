@@ -12,6 +12,7 @@ from time import time
 from typing import Any, ByteString, Dict, Optional, Tuple, Union
 
 import logging
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
@@ -280,8 +281,6 @@ class CommandClient:
 
         commandName = None
         commandPayload = None
-        statusCode = self.statusCode
-        statusMsg = self.statusMsg
 
         for k, v in command.items():
             if k in self.COMMANDS:
@@ -297,20 +296,20 @@ class CommandClient:
         if commandName:
             try:
                 commandFn = self.COMMANDS[commandName]
-                reply, replyCode, replyMsg = commandFn(commandPayload, lockId)
+                reply, responseCode, responseMsg = commandFn(commandPayload, lockId)
                 response.update(reply)
-                statusCode = replyCode or statusCode
-                statusMsg = replyMsg or statusMsg
+                responseCode = responseCode or self.statusCode
             except Exception as err:
                 logger.error(f'Error processing command {commandName!r}:', exc_info=True)
-                statusCode = DeviceStatusCode.ERR_INTERNAL_ERROR
-                statusMsg = f"{type(err).__name__}: {err}"
+                responseCode = DeviceStatusCode.ERR_INTERNAL_ERROR
+                responseMsg = f"{type(err).__name__}: {err}"
         else:
-            statusCode = DeviceStatusCode.ERR_UNKNOWN_COMMAND
+            responseCode = DeviceStatusCode.ERR_UNKNOWN_COMMAND
+            responseMsg = None
 
-        response['CommandResponseCode'] = int(statusCode)
-        if statusMsg:
-            response['CommandResponseMessage'] = statusMsg
+        response['CommandResponseCode'] = int(responseCode)
+        if responseMsg:
+            response['CommandResponseMessage'] = responseMsg
 
         packet = self.encodeResponse(response)
         self.sendResponse(sender, packet)
@@ -353,11 +352,10 @@ class CommandClient:
     #     return an empty dict. Index-specific `GetInfo` methods should
     #     return the binary value for `InfoPayload`; `command_GetInfo()`
     #     builds the rest of the response dictionary.
-    #   * A `DeviceStatusCode` to return (e.g., if the command generated an
-    #     error) which, if not `None`, overrides the instance's
-    #     `DeviceStatusCode`.
-    #   * A `DeviceStatusMessage` string which, if not `None`, overrides the
-    #     system's DeviceStatusMessage. 
+    #   * A `DeviceStatusCode` enum item to return as the `CommandResponseCode`
+    #     element if the command generated an error. If `None`, the system
+    #     `statusCode` is used.
+    #   * A string to return as the `CommandResponseMessage`, or `None`.
     # =======================================================================
 
     # noinspection PyUnusedLocal
@@ -416,6 +414,7 @@ class CommandClient:
             return {}, DeviceStatusCode.ERR_BAD_PAYLOAD, None
 
 
+    # noinspection PyUnusedLocal
     def command_GetClock(self,
                          payload: Dict[str, Any],
                          lockId: Optional[ByteString] = None
@@ -504,4 +503,3 @@ class CommandClient:
         return (b'',
                 DeviceStatusCode.ERR_BAD_INFO_INDEX,
                 'command_GetInfo_5() is only an example')
-
