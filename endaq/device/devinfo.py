@@ -13,6 +13,7 @@ from typing import Optional, Tuple, Union, TYPE_CHECKING
 
 from .types import Drive, Filename
 from .command_interfaces import SerialCommandInterface
+from .exceptions import UnsupportedFeature
 from . import util
 
 logger = logging.getLogger(__name__)
@@ -320,7 +321,11 @@ class SerialDeviceInfo(DeviceInfo):
         """ Get the recorder's user-defined calibration data as a dictionary
             of parameters.
         """
-        return self.device.command._getInfo(6) or None
+        self.device.command.setLockID()
+        try:
+            return self.device.command._getInfo(6, lock=True) or None
+        finally:
+            self.device.command.clearLockID()
 
 
     def writeUserCal(self,
@@ -330,8 +335,10 @@ class SerialDeviceInfo(DeviceInfo):
             :param caldata: The raw binary of an EBML `<CalibrationList>`
                 element..
         """
-        caldata = caldata or b''
-        self.device.command._setInfo(6, caldata)
+        if not self.device.available:
+            raise UnsupportedFeature('Cannot write calibration over serial')
+
+        return FileDeviceInfo.writeUserCal(self, caldata)
 
 
 # ===========================================================================
@@ -344,14 +351,6 @@ class MQTTDeviceInfo(SerialDeviceInfo):
     via MQTT. Its methods only read and write the raw binary; any parsing and/or
     encoding is done by the caller.
     """
-
-    # Very similar to SerialDeviceInfo, in that they get data via the command
-    # interface.
-    # XXX: PLACEHOLDER!
-    def __init__(self, device: 'Recorder', **_kwargs):
-        logger.warning('MQTTDeviceInfo not implemented!', NotImplemented)
-        super().__init__(device, **_kwargs)
-
 
     @classmethod
     def hasInterface(cls, device: "Recorder") -> bool:
@@ -367,8 +366,24 @@ class MQTTDeviceInfo(SerialDeviceInfo):
         if device.isVirtual:
             return False
 
-        # TODO: Better mechanism for identifying MQTT devices
-        return device.path and device.path.lower().startswith('mqtt')
+        # TODO: Better mechanism for identifying MQTT devices?
+        return device.path and device.path.lower().startswith(('mqtt', 'remote'))
+
+
+    def writeUserCal(self,
+                     caldata: Union[None, bytearray, bytes]):
+        """ Write user calibration to the device.
+
+            :param caldata: The raw binary of an EBML `<CalibrationList>`
+                element..
+        """
+        caldata = caldata or b''
+
+        self.device.command.setLockID()
+        try:
+            self.device.command._setInfo(6, caldata)
+        finally:
+            self.device.command.clearLockID()
 
 
 # ===========================================================================

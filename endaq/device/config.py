@@ -13,11 +13,11 @@ import errno
 import logging
 import os.path
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import warnings
 
-from ebmlite.core import loadSchema
-from ebmlite.core import Document, Element, MasterElement
+from ebmlite.core import loadSchema, Schema
+from ebmlite.core import Document, MasterElement, UnknownElement
 from idelib.dataset import Channel, SubChannel
 
 from .exceptions import ConfigError, DeviceError, UnsupportedFeature
@@ -25,10 +25,16 @@ from . import legacy
 from . import ui_defaults
 from . import util
 
+from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .base import Recorder
 
 logger = logging.getLogger(__name__)
+
+
+__all__ = ('ConfigItem', 'ConfigInterface', 'VirtualConfigInterface',
+           'FileConfigInterface', 'RemoteConfigInterface',
+           'INTERFACES')
 
 
 # ===========================================================================
@@ -445,6 +451,8 @@ class ConfigInterface:
             :param device: The Recorder to configure.
         """
         self._schema = loadSchema('mide_config_ui.xml')
+        self._schema.UNKNOWN = self._handleUnknownField
+
         self.device: Optional["Recorder"] = device
         self.configUi: Optional[MasterElement] = None
         self.config: Optional[MasterElement] = None
@@ -467,6 +475,24 @@ class ConfigInterface:
         # The format version of the last config data read.
         self.configVersionRead = None
         self._supportedConfigVersions = None
+
+
+    @classmethod
+    def _handleUnknownField(cls, stream, offset: int, size: int,
+                            payloadOffset: int, eid: int, schema: Schema):
+        """ Handler for unknown special-case field subclasses. For forwards
+            compatibility, special-case fields fall back to their base type.
+            See `ebmlite.UnknownElement` for argument info.
+        """
+        # Field element IDs start 0x40nn. Low bits 4-0 define the base type.
+        baseId = eid & 0xff1f
+        if baseId & 0xff00 == 0x4000 and baseId in schema:
+            etype = schema[baseId]
+            logger.debug(f'Field type 0x{eid:04x} not in schema, '
+                         f'using base type {etype.name} (0x{baseId:04x})')
+            return etype(stream, offset, size, payloadOffset)
+        logger.debug(f'Unknown element in CONFIG.UI: 0x{eid:04x}')
+        return UnknownElement(stream, offset, payloadOffset, eid, schema)
 
 
     def close(self) -> bool:
@@ -544,7 +570,7 @@ class ConfigInterface:
 
 
     def parseConfigUI(self,
-                      configUi: Union[Document, Element]):
+                      configUi: Union[Document, MasterElement]):
         """ Recursively process CONFIG.UI data to populate the interface's
             dictionaries of configuration items.
 
@@ -753,6 +779,14 @@ class ConfigInterface:
             self.config = {}
             return
 
+        self._loadConfig(config)
+
+
+    def _loadConfig(self, config: MasterElement):
+        """ Do the actual work of processing configuration data. Separated
+            from `loadConfig()` to allow subclasses to do special case
+            stuff before processing.
+        """
         dump = config.dump()
 
         root = dump.get('RecorderConfigurationList', dump)
@@ -1453,7 +1487,7 @@ class FileConfigInterface(ConfigInterface):
         else:
             versionRead = 2
 
-        super().loadConfig(config)
+        super()._loadConfig(config)
         self.configVersionRead = versionRead
 
 
@@ -1498,8 +1532,110 @@ class FileConfigInterface(ConfigInterface):
 #
 # ===========================================================================
 
+class RemoteConfigInterface(FileConfigInterface):
+    """
+    A configuration interface for remote devices (serial without MSD, MQTT,
+    etc.), using the device's `CommandInterface` to read and write data.
+    """
+
+    #: A command callback function, used when reading and writing data.
+    #  The same one is used for all reads/writes, but you may change the
+    #  value of `callback` before calling `loadConfig()` or `applyConfig()`,
+    #  or before modifying any configuration item values if the operations
+    #  need their own callbacks.
+    callback: Optional[Callable] = None
+
+
+    def _writeConfig(self, data: bytes) -> int:
+        """ Open and write to the device's config file. """
+        self.device.command.setLockID()
+        self.device.command._setInfo(5, data, callback=self.callback)
+
+
+    def _readConfig(self) -> bytes:
+        """ Open and read the device's config file. """
+        self.device.command.setLockID()
+        return self.device.command._getInfo(5, lock=True,
+                                            callback=self.callback)
+
+
+    def _readUi(self):
+        """ Open and read the device's `CONFIG.UI` file. """
+        return self.device.command._getInfo(2, callback=self.callback)
+
+
+    @staticmethod
+    def _isfile(filename: Union[str, Path]) -> bool:
+        """ Test whether a path is a regular file. For compatibility;
+            always returns `True` for `RemoteConfigInterface`.
+        """
+        return True
+
+
+    def _backupConfig(self) -> bool:
+        """ Create a backup copy of the device's config file. For
+            compatibility; does nothing for `RemoteConfigInterface`."""
+        return True
+
+
+    def _restoreConfig(self,
+                       remove: bool = False) -> bool:
+        """ Restore a backup copy of the device's config file. For
+            compatibility; does nothing for `RemoteConfigInterface`.
+        """
+        return True
+
+
+    # =======================================================================
+    #
+    # =======================================================================
+
+    @classmethod
+    def hasInterface(cls, device: "Recorder") -> bool:
+        """
+        Determine if a device supports this `ConfigInterface` type.
+
+        :param device: The Recorder to check.
+        :return: `True` if the device supports the interface.
+        """
+        if device.isVirtual or not device.isRemote:
+            return False
+
+        # TODO: FW version check?
+        return True
+
+
+    @property
+    def available(self) -> bool:
+        """ Is the device currently ready for configuration?
+
+            Note: This is intended for future configuration systems. Since
+            configuration is currently applied via the filesystem, it is
+            functionally the same as `Recorder.available`.
+        """
+        # FUTURE: This should ping the device.
+        return self.device.command.available
+
+
+    def loadConfig(self, config: Optional[MasterElement] = None):
+        """ Process a device's configuration data.
+
+            :param config: Optional, explicit configuration EBML data to
+                process. If none is provided, the data retrieved by
+                `getConfig()` will be used.
+        """
+        # FileCommandInterface legacy stuff not needed.
+        return super().loadConfig(config)
+
+
+# ===========================================================================
+#
+# ===========================================================================
+
 #: A list of all `ConfigInterface` types, used when finding a device's
 #   interface. `VirtualConfigInterface` should go last. New interface types
 #   defined elsewhere should append/insert themselves into this list (before
 #   their superclass, if their `hasInterface()` is more specific).
-INTERFACES = [FileConfigInterface, VirtualConfigInterface]
+INTERFACES = [FileConfigInterface,
+              VirtualConfigInterface,
+              RemoteConfigInterface]
