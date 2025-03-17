@@ -595,7 +595,7 @@ class MQTTDeviceManager(MQTTClient):
             item = dev.getStateInfo()
 
             if timeout and time() - item['LastContact'] > timeout:
-                logger.debug(f'GetDeviceList: skipping {dev.sn} due to timeout')
+                logger.debug(f'GetDeviceList: skipping {dev.sn} due to timeout ({time() - item["LastContact"]})')
                 continue
 
             devices.append(item)

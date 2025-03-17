@@ -481,6 +481,11 @@ class MQTTConnector:
         return self.devManager
 
 
+    @property
+    def command(self) -> "MQTTCommandInterface":
+        return self._getDevManager().command
+
+
     def getDeviceInfo(self,
                       timeout: Union[int, float] = 10.0,
                       managerTimeout: Optional[int] = None,
