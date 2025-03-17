@@ -264,7 +264,7 @@ class CommandInterface:
                            if k in response_codes.__dict__]:
             try:
                 response[name] = response_codes.__dict__[name](code)
-            except (AttributeError, TypeError):
+            except (AttributeError, TypeError, ValueError):
                 logger.debug('Received unknown {}: {}'.format(name, code))
                 pass
 

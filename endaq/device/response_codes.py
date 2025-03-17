@@ -21,11 +21,12 @@ class DeviceStatusCode(IntEnum):
         values denote errors. Used for command responses and system state.
     """
     IDLE = 0  #: Device idle, message successful. It is implied the device is mounted as a drive (if applicable).
-    IDLE_UNMOUNTED = 1  #: Device idle, not mounted as a drive. *For future use.*
+    IDLE_UNMOUNTED = 1  #: Device idle, not mounted as a drive.
     RECORDING = 10  #: Device is currently recording.
     RESET_PENDING = 20  #: Reset pending: the device will reset soon after this response is received.
-    START_PENDING = 30  #: Recording start pending: the device will start recording soon after this response is received.
-    TRIGGERING = 40  #: Device is currently triggering.
+    START_PENDING = 30  #: Recording start pending: the device will reset and start recording soon after this response is received.
+    STOP_PENDING = 31  #: Recording stop pending: The device will stop recording and reset soon after this response is received.
+    TRIGGERING = 40  #: Device is currently awaiting a configured trigger event.
     UPLOADING = 50  #: Device is currently uploading a recording file over Wi-Fi.
     STREAMING = 60  #: Device is currently streaming live sensor data.
     SLEEPING = 100  #: Device is currently in sleep mode, or will enter sleep mode soon after this response is received. *For future use.*
@@ -128,3 +129,6 @@ class WiFiConnectionError(IntEnum):
     ERR_ROAMING = 207
     ERR_ASSOC_COMEBACK_TIME_TOO_LONG = 208
     ERR_SA_QUERY_TIMEOUT = 209
+    ERR_NO_AP_FOUND_W_COMPATIBLE_SECURITY = 210
+    ERR_NO_AP_FOUND_IN_AUTHMODE_THRESHOLD = 211
+    ERR_NO_AP_FOUND_IN_RSSI_THRESHOLD = 212
