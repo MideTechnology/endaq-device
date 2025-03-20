@@ -48,7 +48,7 @@ class MQTTClient(CommandClient):
         """ Base class for software clients that respond like, or work with,
             enDAQ hardware.
 
-            :param client: The manager's MQTT client.
+            :param client: The MQTT client to use.
             :param sn: The client's serial number. For recorder-like clients
                 that interact with the MQTT Device Manager, this should be an
                 integer.
@@ -116,12 +116,13 @@ class MQTTClient(CommandClient):
         """ Attempt to shut down the state updating loop.
         """
         self.stopStateUpdates.set()
-        if self.updateThread is None:
+        deadline = time() + timeout
+
+        if not self.updateThread:
             return True
 
-        deadline = time() + timeout
         while time() > deadline:
-            if self.updateThread and not self.updateThread.is_alive():
+            if not self.updateThread.is_alive():
                 return True
             sleep(0.1)
         logger.error(f'Could not shut down state updating loop {self.updateThread}')

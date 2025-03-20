@@ -247,11 +247,13 @@ class MQTTConnector:
             logger.debug(f'instantiating {mqtt.Client}...')
             self.client = mqtt.Client(**self.clientArgs)
 
+            if self.username or self.password:
+                self.client.username_pw_set(self.username, self.password)
+
+            self.client.reconnect_delay_set()
             self.client.on_message = self._onMessage
             self.client.on_connect = self._onConnect
             self.client.on_disconnect = self._onDisconnect
-            if self.username or self.password:
-                self.client.username_pw_set(self.username, self.password)
 
         if not self.client.is_connected():
             logger.debug(f'Attempting to connect to Broker {self.host}:{self.port}...')
@@ -259,11 +261,13 @@ class MQTTConnector:
             if err != mqtt.MQTT_ERR_SUCCESS:
                 raise CommunicationError(f'Failed to connect to broker: {err!r}')
 
-        if not self.thread or not self.thread.is_alive():
-            self.thread = Thread(target=self._run, daemon=True)
-            self.thread.name = f'{type(self).__name__}{self.thread.name}'
-            self._stop.clear()
-            self.thread.start()
+        # if not self.thread or not self.thread.is_alive():
+        #     self.thread = Thread(target=self._run, daemon=True)
+        #     self.thread.name = f'{type(self).__name__}{self.thread.name}'
+        #     self._stop.clear()
+        #     self.thread.start()
+
+        self.client.loop_start()
 
         deadline = time() + timeout
         while time() < deadline:
@@ -285,14 +289,10 @@ class MQTTConnector:
         self.autoupdate = False
         self._autoupdate = autoupdate
 
-        logger.debug('disconnect')
-        if self.thread and self.thread.is_alive():
-            self._stop.set()
-            while self.thread.is_alive():
-                sleep(0.1)
-
-        if self.client and self.client.is_connected():
-            self.client.disconnect()
+        if self.client:
+            if self.client.is_connected():
+                self.client.disconnect()
+            self.client.loop_stop()
 
         self._stop.clear()
         self.client = None
