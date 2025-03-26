@@ -232,6 +232,12 @@ class MQTTDevice:
         """
         self.totalMsgs += 1
         self.lastMeasurement = self.lastContact = time()
+        if self.stateInfo:
+            # Device doesn't post state updates while streaming, set
+            # device status explicitly.
+            self.stateInfo['DeviceStatusCode'] = DeviceStatusCode.STREAMING
+            self.stateInfo['CommandResponseCode'] = DeviceStatusCode.STREAMING
+
         msg = message.payload
 
         if msg.startswith(EBML_ID_BYTES):
