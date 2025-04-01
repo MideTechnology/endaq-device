@@ -106,9 +106,8 @@ class MQTTDevice:
 
         header = self.loadHeader()
         if header:
-            logger.debug(f'Loaded cached IDE header for {self.sn}')
             self.header = bytearray(header)
-            self.publishHeader()
+            self.publishHeader(save=False)
 
         self.measurementTopic = MEASUREMENT_TOPIC.format(sn=self.sn)
         self.manager.client.message_callback_add(self.measurementTopic,
@@ -245,6 +244,7 @@ class MQTTDevice:
             self.readingHeader = True
             self.elementSize = 0
             self.buffer = BytesIO()
+            self.header.clear()
 
         if not self.readingHeader:
             return
@@ -332,9 +332,11 @@ class MQTTDevice:
 
 
     @synchronized
-    def publishHeader(self):
+    def publishHeader(self, save=True):
         """ Handle a completed IDE header, either read 'live' from the stream
             or loaded from a cache.
+
+            :param save: If `True`, write the header to a cache.
         """
         try:
             validated = self.validateHeader(self.header)
@@ -342,7 +344,9 @@ class MQTTDevice:
             return
 
         self.lastHeader = validated['TimeBaseUTC'][0]
-        self.saveHeader(self.header)
+
+        if save:
+            self.saveHeader(self.header)
 
         info = self.manager.client.publish(self.headerTopic, self.header,
                                            retain=True)
@@ -391,7 +395,9 @@ class MQTTDevice:
             filename = self._getCacheFile(create=False)
             if os.path.exists(filename):
                 with open(filename, 'rb') as f:
-                    return f.read()
+                    header = f.read()
+                logger.debug(f'Loaded cached header for {self.sn} ({len(header)} bytes)')
+                return header
         except IOError:
             logger.error('Error loading header data', exc_info=True)
 
@@ -404,6 +410,7 @@ class MQTTDevice:
             :param data: Encoded EBML data containing the header of an IDE
                 file.
         """
+        logger.debug(f'Saving header data for {self.sn} ({len(data)} bytes)')
         try:
             filename = self._getCacheFile(create=True)
             with open(filename, 'wb') as f:
@@ -618,10 +625,13 @@ class MQTTDeviceManager(MQTTClient):
             ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
         """ Handle a ``GetIDEHeader`` command (EBML ID 0x5C20).
         """
-        sn = payload.get('SerialNumber')
+        sn = payload
+        logger.debug(f'GetIDEHeader: sn={sn!r}')
+
         if sn is None:
             return {}, DeviceStatusCode.ERR_INVALID_COMMAND, "GetIDEHeader missing SerialNumber"
 
+        logger.debug(f'{self.knownDevices=}')
         dev = self.knownDevices.get(sn)
         if dev is None:
             return {}, DeviceStatusCode.ERR_INVALID_COMMAND, f"Unknown serial number: {sn}"
@@ -629,6 +639,7 @@ class MQTTDeviceManager(MQTTClient):
         try:
             header = dev.getHeader()
         except CommandError as err:
+            logger.error(f'Error in GetIDEHeader: {err!r}', exc_info=True)
             return {}, DeviceStatusCode.ERR_INVALID_COMMAND, str(err)
 
         response = {'GetIDEHeaderResponse': {'SerialNumber': sn,
