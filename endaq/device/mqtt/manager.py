@@ -8,7 +8,7 @@ import os.path
 import struct
 import sys
 from time import time
-from typing import Any, ByteString, Dict, Optional, Tuple, Union
+from typing import Any, ByteString, Dict, List, Optional, Tuple, Union
 
 import ebmlite
 from ebmlite.decoding import readElementID, readElementSize
@@ -46,6 +46,12 @@ DEVICE_TIMEOUT = 60 * 5  # seconds
 # the device that differ from system time by this amount or more are
 # considered untrustworthy.
 MAX_DRIFT = 60 * 60 * 24 * 2
+
+# Paths for cached data (IDE headers, etc.)
+if sys.platform == 'win32':
+    CACHE_PATH = os.path.expandvars(r'%APPDATA%\endaq\mqtt_manager')
+else:
+    CACHE_PATH = os.path.expanduser('~/.endaq/mqtt_manager')
 
 
 # ===========================================================================
@@ -364,25 +370,17 @@ class MQTTDevice:
 
 
     def _getCacheFile(self,
-                     filename: Optional[str] = None,
                      create: bool = True) -> str:
-        """ Get the full path to this device's cached header data.
+        """ Get the full path to this device's cached header data. The file
+            may or may not exist.
 
-            :param filename: The base name of the cache file, if not
-                ``<sn>_header.ide`` (the default).
             :param create: If `True`, create the directories for the
                 cache files. Mainly for use when saving.
             :return: The full path to the cache file.
         """
-        filename = filename or f'{self.sn}_header.ide'
-        if sys.platform == 'win32':
-            root = os.path.expandvars(r'%APPDATA%\endaq')
-        else:
-            root = os.path.expanduser('~/.endaq')
-        dirname = os.path.abspath(os.path.join(root, 'mqtt_manager'))
         if create:
-            os.makedirs(dirname, exist_ok=True)
-        return os.path.join(dirname, filename)
+            os.makedirs(CACHE_PATH, exist_ok=True)
+        return os.path.join(CACHE_PATH, f'{self.sn}_header.ide')
 
 
     def loadHeader(self) -> bytes:
@@ -541,6 +539,40 @@ class MQTTDeviceManager(MQTTClient):
         self.sendResponse(None, packet, self.stateTopic)
 
 
+    def cleanCache(self,
+                   root: Optional[str] = CACHE_PATH,
+                   retention: int = 24) -> Tuple[List[str], List[Exception]]:
+        """ Clean out cached header data.
+
+            :param root: The cache file directory, overriding the default.
+            :param retention: The cached file retention period. Files not
+                modified in `retention` hours will be removed.
+        """
+        logger.debug(f'MQTTDeviceManager.cleanCache: Clearing cached headers '
+                     f'older than {retention} hours from "{root}"...')
+        limit = retention * 60 * 60
+        errs = []
+        cleared = []
+        if os.path.isdir(root):
+            for f in os.listdir(root):
+                if f.lower().endswith('_header.ide'):
+                    try:
+                        filename = os.path.join(root, f)
+                        if time() - os.path.getmtime(filename) > limit:
+                            os.remove(filename)
+                            cleared.append(filename)
+                    except (IOError, OSError) as err:
+                        errs.append(err)
+
+        logger.debug(f'MQTTDeviceManager.cleanCache: {len(cleared)} files deleted, '
+                     f'{len(errs)} failed.')
+        if errs:
+            logger.error(f'MQTTDeviceManager.cleanCache failed to remove '
+                         f'some cached files: {errs!r}')
+
+        return cleared, errs
+
+
     # =======================================================================
     # Message handlers, called by the MQTT message callback (`onMessage()`).
     # =======================================================================
@@ -659,7 +691,9 @@ def run(host: Optional[str] = MQTT_BROKER,
         background: bool = False,
         clientArgs: Dict[str, Any] = None,
         connectArgs: Dict[str, Any] = None,
-        advertArgs: Dict[str, Any] = None):
+        advertArgs: Dict[str, Any] = None,
+        managerArgs: Dict[str, Any] = None,
+        clean: Optional[int] = None):
     """
     Start the Device Manager and (optionally) the mDNS advertiser.
     This is a temporary implementation and will be refactored.
@@ -680,11 +714,16 @@ def run(host: Optional[str] = MQTT_BROKER,
     :param advertArgs: A dictionary of additional keyword arguments to be
         used in the instantiation of the `Advertiser` (if `advertise` is
         `True`).
+    :param managerArgs: A dictionary of additional keyword arguments to be
+        used in the instantiation of the `MQTTDeviceManager`.
+    :param clean: If not `None`, remove cached header data older than
+        `clean` hours on Device Manager startup.
     :return: The running `MQTTDeviceManager` if `background`, else the
         function runs indefinitely without returning.
     """
     clientArgs = clientArgs.copy() if clientArgs else {}
-    connectArgs = connectArgs.copy if connectArgs else {}
+    connectArgs = connectArgs.copy() if connectArgs else {}
+    managerArgs = managerArgs.copy() if managerArgs else {}
 
     host = connectArgs.pop('host', host) or getMyIP()
     port = connectArgs.pop('port', port) or MQTT_PORT
@@ -697,7 +736,10 @@ def run(host: Optional[str] = MQTT_BROKER,
     client.connect(host, port, 60, **connectArgs)
 
     # logger.info('Instantiating MQTTDeviceManager')
-    manager = MQTTDeviceManager(client)
+    manager = MQTTDeviceManager(client, **managerArgs)
+
+    if clean is not None:
+        manager.cleanCache(retention=clean)
 
     if advertise:
         kwargs = {'address': host, 'port': port, 'name': brokerName}
@@ -752,10 +794,13 @@ if __name__ == "__main__":
                              "arguments for the Device Manager and advertising. "
                              "Values in the config file will override other "
                              "arguments.")
-
+    parser.add_argument('--clean', type=int, default=None,
+                        help="On startup, clean out cached header data older "
+                             "than this many hours.")
     args = parser.parse_args()
     kwargs = {'host': args.address, 'port': args.port,
-              'advertise': not args.silent, 'brokerName': args.name}
+              'advertise': not args.silent, 'brokerName': args.name,
+              'clean': args.clean}
 
     if args.config:
         with open(args.config, 'r') as f:
