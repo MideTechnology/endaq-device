@@ -24,7 +24,7 @@ from ..base import Recorder, NonRecorder
 from ..client import synchronized
 from ..command_interfaces import SerialCommandInterface
 from ..devinfo import MQTTDeviceInfo
-from ..exceptions import CommunicationError, DeviceError
+from ..exceptions import CommandError, CommunicationError, DeviceError
 from ..simserial import SimSerialPort
 
 logger = logging.getLogger(__name__)
@@ -518,7 +518,7 @@ class MQTTConnector:
             return response['DeviceList']['DeviceListItem']
 
         except KeyError as err:
-            raise DeviceError(f"Manager response did not contain {err.args[0]}")
+            raise DeviceError(f"Manager response did not contain element {err.args[0]!r}")
 
 
     def _updateDeviceInfo(self,
@@ -703,6 +703,28 @@ class MQTTConnector:
                     return d
 
             return None
+
+
+    def getCachedHeader(self, device: Union[int, Recorder]) -> bytearray:
+        """ Retrieve a device's cached IDE header data from the Device
+            Manager (if known).
+
+            :param device: The device for which to get the header data.
+                Either a `Recorder` instance or a device serial number.
+            :returns: The cached IDE header data, as undecoded EBML.
+        """
+        if isinstance(device, Recorder):
+            device = device.serialInt
+        try:
+            cmd = {'EBMLCommand': {'GetIDEHeader': device}}
+            response = self.command._sendCommand(cmd)
+            return response['GetIDEHeaderResponse']['IDEHeaderData']
+        except CommandError as err:
+            if 'Unknown serial number' not in str(err):
+                raise
+            logger.debug(f'Manager does not have cached header for {device}')
+        except KeyError as err:
+            raise DeviceError(f"Manager response did not contain {err.args[0]}")
 
 
 # ===========================================================================
