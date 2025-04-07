@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 from ..client import dump, synchronized
-from ..response_codes import DeviceStatusCode
+from ..response_codes import DeviceStatusCode, CommandResponseCode
 from ..command_interfaces import CommandInterface, CommandError, CRCError, DeviceError
 from .mqtt_interface import MQTT_BROKER, MQTT_PORT, getMyIP, makeClientID
 from .advertising import Advertiser
@@ -422,9 +422,11 @@ class MQTTDevice:
         """ Get the device's IDE header data.
         """
         if not self.header:
-            raise CommandError(f'No header data available for {self.sn}')
+            raise CommandError(DeviceStatusCode.ERR_BAD_PAYLOAD,
+                               f'No cached header available for {self.sn}')
         if self.readingHeader:
-            raise CommandError(f'Header data for {self.sn} incomplete, try later')
+            raise CommandError(DeviceStatusCode.ERR_INTERNAL_ERROR,
+                               f'Header data for {self.sn} incomplete, try later')
 
         return self.header
 
@@ -658,12 +660,10 @@ class MQTTDeviceManager(MQTTClient):
         """ Handle a ``GetIDEHeader`` command (EBML ID 0x5C20).
         """
         sn = payload
-        logger.debug(f'GetIDEHeader: sn={sn!r}')
 
         if sn is None:
             return {}, DeviceStatusCode.ERR_INVALID_COMMAND, "GetIDEHeader missing SerialNumber"
 
-        logger.debug(f'{self.knownDevices=}')
         dev = self.knownDevices.get(sn)
         if dev is None:
             return {}, DeviceStatusCode.ERR_INVALID_COMMAND, f"Unknown serial number: {sn}"
@@ -671,8 +671,11 @@ class MQTTDeviceManager(MQTTClient):
         try:
             header = dev.getHeader()
         except CommandError as err:
-            logger.error(f'Error in GetIDEHeader: {err!r}', exc_info=True)
-            return {}, DeviceStatusCode.ERR_INVALID_COMMAND, str(err)
+            if err.errno not in (CommandResponseCode.ERR_UNKNOWN_DEVICE,
+                                 CommandResponseCode.ERR_BAD_PAYLOAD):
+                logger.error(f'Error in GetIDEHeader: {err!r}',
+                             exc_info='header' not in str(err).lower())
+            return {}, err.errno, str(err)
 
         response = {'GetIDEHeaderResponse': {'SerialNumber': sn,
                                              'IDEHeaderData': header}}
