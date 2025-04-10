@@ -29,6 +29,7 @@ class DeviceStatusCode(IntEnum):
     TRIGGERING = 40  #: Device is currently awaiting a configured trigger event.
     UPLOADING = 50  #: Device is currently uploading a recording file over Wi-Fi.
     STREAMING = 60  #: Device is currently streaming live sensor data.
+    WAKING = 101  #: Device is waking from sleep. This is currently intended for use only by the MQTT Device Manager.
     SLEEPING = 100  #: Device is currently in sleep mode, or will enter sleep mode soon after this response is received. *For future use.*
     OFFLINE = 110  #: Command Interface is going (or is currently) offline, for reason other than sleep.
     RECORDING_PERIODIC = 310  #: Device is currently recording, checking Wi-Fi periodically.

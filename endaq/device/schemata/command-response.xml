@@ -172,10 +172,12 @@
 	        340: Device is currently triggering, checking Wi-Fi periodically
 	        310: Device is currently recording, checking Wi-Fi periodically
             110: Command Interface is going (or is currently) offline (for reason other than sleep)
+            101: Device is waking from sleep. This is currently intended for use only by the MQTT Device Manager.
             100: Device is currently in sleep mode, or will enter sleep mode soon after this response is received.
             60: Device is currently streaming live data sensor data.
             50: Device Uploading (i.e. Wi-Fi Upload after recording finishes)
             40: Device Triggering (i.e. waiting for a trigger)
+            31: Recording stop pending (device is rebooting after stopping recording)
             30: Recording start pending (device will start recording soon after this message is sent)
             20: Reset pending (device will reset soon after this message is sent)
             10: Device recording
