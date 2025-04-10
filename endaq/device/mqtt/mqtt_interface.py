@@ -136,8 +136,7 @@ class MQTTConnector:
         self.threadKeepAlive = threadKeepAlive
         self.clientArgs = dict(CLIENT_INIT_ARGS)
         self.connectArgs = dict(CLIENT_CONNECT_ARGS)
-        self._autoupdate = autoupdate  # Desired state of `autoupdate`
-        self._autoupdateActive = False  # Actual state of `autoupdate` (differs at startup)
+        self.autoupdate = autoupdate  # Desired state of `autoupdate`
         self.updateCallback = updateCallback
 
         self.clientArgs.update(clientArgs or {})
@@ -212,34 +211,11 @@ class MQTTConnector:
         self.lastUsedTime = time()
 
 
-    @property
-    def autoupdate(self) -> bool:
-        """ Will device status get automatically updated by Device Manager
-            'state' messages?
-        """
-        return self._autoupdate
-
-
-    @autoupdate.setter
-    def autoupdate(self, active: bool):
-        if active == self._autoupdateActive:
-            return
-        if active:
-            self.client.subscribe(self._managerStateTopic, qos=0)
-            self.client.message_callback_add(self._managerStateTopic, self._onMessage)
-            logger.debug(f'autoupdate: Subscribed to {self._managerStateTopic}...')
-        else:
-            self.client.unsubscribe(self._managerStateTopic)
-            self.client.message_callback_remove(self._managerStateTopic)
-            logger.debug(f'autoupdate: Unsubscribed to {self._managerStateTopic}...')
-        self._autoupdate = self._autoupdateActive = active
-
-
     @synchronized
     def connect(self, timeout=30):
         """
-            Connect/reconnect to the MQTT Broker (if not connected), and
-            (re-)start the thread (if not running).
+            Connect to the MQTT Broker (if not connected), and start the
+            thread (if not running).
         """
         self.lastUsedTime = time()
 
@@ -261,18 +237,18 @@ class MQTTConnector:
             if err != mqtt.MQTT_ERR_SUCCESS:
                 raise CommunicationError(f'Failed to connect to broker: {err!r}')
 
-        # if not self.thread or not self.thread.is_alive():
-        #     self.thread = Thread(target=self._run, daemon=True)
-        #     self.thread.name = f'{type(self).__name__}{self.thread.name}'
-        #     self._stop.clear()
-        #     self.thread.start()
+        result, _mid = self.client.subscribe(self._managerStateTopic, qos=0)
+        if result == mqtt.MQTT_ERR_SUCCESS:
+            self.client.message_callback_add(self._managerStateTopic, self._onMessage)
+            logger.debug(f'connect: Subscribed to {self._managerStateTopic}...')
+        else:
+            logger.error(f'Error subscribing to "{self._managerStateTopic}": {result!r}')
 
         self.client.loop_start()
 
         deadline = time() + timeout
         while time() < deadline:
             if self.client.is_connected():
-                self.autoupdate = self._autoupdate
                 return
             sleep(0.01)
 
@@ -285,10 +261,6 @@ class MQTTConnector:
             devices' connections as well. It can be reconnected by calling
             `connect()`.
         """
-        autoupdate = self._autoupdate
-        self.autoupdate = False
-        self._autoupdate = autoupdate
-
         if self.client:
             if self.client.is_connected():
                 self.client.disconnect()
@@ -339,12 +311,15 @@ class MQTTConnector:
         if not subscriber.writeTopic:
             raise IOError('Port is read-only')
 
-        self.connect()
+        if not self.client or not self.client.is_connected():
+            self.connect()
+
         info = self.client.publish(subscriber.writeTopic, bytes(message),
                                    qos=subscriber.qos)
         if info.rc != mqtt.MQTT_ERR_SUCCESS:
             logger.error(f'Error publishing to virtual serial: {info.rc!r}')
             return
+
         try:
             info.wait_for_publish(1.0)
         except RuntimeError as err:
@@ -352,15 +327,16 @@ class MQTTConnector:
                          f'{err!r}')
 
 
-    def _onMessage(self, _client, _userdata, message):
+    def _onMessage(self, client, userdata, message):
         """ MQTT event handler for messages.
         """
         logger.debug(f'received {len(message.payload)} bytes on {message.topic}')
+
         if message.topic in self._ports:
             self.lastUsedTime = time()
             self._ports[message.topic].append(message.payload)
         elif message.topic == self._managerStateTopic:
-            self._onManagerState(_client, _userdata, message)
+            self._onManagerState(client, userdata, message)
         else:
             logger.debug(f'Message from unknown topic: {message.topic}')
 
@@ -380,16 +356,18 @@ class MQTTConnector:
             return
 
         updatedDevices = []
-        try:
-            deviceList = response['DeviceList']['DeviceListItem']
-            for listItem in deviceList:
-                sn = listItem.get('SerialNumber')
-                if sn in RECORDERS_BY_SN:
-                    self._updateDeviceInfo(RECORDERS_BY_SN[sn], listItem)
-                    # TODO: Exclude unchanged devices?
-                    updatedDevices.append(RECORDERS_BY_SN[sn])
-        except KeyError:
-            pass
+
+        if self.autoupdate:
+            try:
+                deviceList = response['DeviceList']['DeviceListItem']
+                for listItem in deviceList:
+                    sn = listItem.get('SerialNumber')
+                    if sn in RECORDERS_BY_SN:
+                        self._updateDeviceInfo(RECORDERS_BY_SN[sn], listItem)
+                        # TODO: Exclude unchanged devices?
+                        updatedDevices.append(RECORDERS_BY_SN[sn])
+            except KeyError:
+                pass
 
         if self.updateCallback:
             self.updateCallback(updatedDevices)
@@ -413,16 +391,6 @@ class MQTTConnector:
         logger.debug(f'Disconnected from MQTT broker {client.host}:{client.port}'
                      f' ({reason_code.getName()})')
         pass
-
-
-    def _run(self):
-        """ Main thread loop.
-        """
-        while not self._stop.is_set():
-            self.client.loop()
-            if not self._ports and time() - self.lastUsedTime > self.threadKeepAlive:
-                break
-            sleep(0.01)
 
 
     def newPort(self,

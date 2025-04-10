@@ -1,8 +1,8 @@
 """
 MQTT Device Manager
 """
-
 from collections import defaultdict
+# import inspect
 from io import BytesIO
 import os.path
 import struct
@@ -451,7 +451,7 @@ class MQTTDeviceManager(MQTTClient):
                  client: paho.mqtt.client.Client,
                  make_crc: bool = True,
                  ignore_crc: bool = False,
-                 interval: int = 120):
+                 interval: int = 45):
         """ A client that monitors several MQTT topics, providing additional
             features for device discovery and data streaming.
 
@@ -515,6 +515,11 @@ class MQTTDeviceManager(MQTTClient):
     def updateState(self):
         """ Publish an updated set of data to the 'state' topic.
         """
+        # curframe = inspect.currentframe()
+        # calframe = inspect.getouterframes(curframe, 2)
+        # caller = calframe[2][3]
+        # logger.debug(f'Updating state topic {self.stateTopic} ({caller})')
+
         # Schedule the next automatic update
         self.nextUpdate = time() + self.interval
 
