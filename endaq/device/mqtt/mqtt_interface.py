@@ -147,6 +147,7 @@ class MQTTConnector:
         self.thread: Thread = None
         self._stop = Event()
         self._ports: Dict[str, "MQTTSerialPort"] = WeakValueDictionary()
+        self._subscriptions = {}
 
         self.setup()
 
@@ -211,6 +212,40 @@ class MQTTConnector:
         self.lastUsedTime = time()
 
 
+    def subscribe(self, topic, *args, **kwargs):
+        """ Wrapper for subscribing to MQTT topics, which are stored for
+            resubscribing if the broker connection changes (e.g., its IP
+            changed after rebooting).
+        """
+        if isinstance(topic, (list, tuple)):
+            for t in topic:
+                self._subscriptions[t] = args, kwargs
+        else:
+            self._subscriptions[topic] = args, kwargs
+        return self.client.subscribe(topic, *args, **kwargs)
+
+
+    def unsubscribe(self, topic, properties=None):
+        """ Wrapper for unsubscribing to MQTT topics, which also removes
+            them from the set of cached topics.
+        """
+        if isinstance(topic, (list, tuple)):
+            for t in topic:
+                self._subscriptions.pop(t, None)
+        else:
+            self._subscriptions.pop(topic, None)
+        return self.client.unsubscribe(topic, properties)
+
+
+    def resubscribe(self):
+        """ Resubscribe to all topics currently subscribed to. For use
+            after changing a broker connection (e.g., its IP changed
+            after rebooting).
+        """
+        for topic, (args, kwargs) in list(self._subscriptions.items()):
+            logger.debug(f'Resubscribing to topic {topic}')
+            self.client.subscribe(topic, *args, **kwargs)
+
     @synchronized
     def connect(self, timeout=30):
         """
@@ -237,7 +272,7 @@ class MQTTConnector:
             if err != mqtt.MQTT_ERR_SUCCESS:
                 raise CommunicationError(f'Failed to connect to broker: {err!r}')
 
-        result, _mid = self.client.subscribe(self._managerStateTopic, qos=0)
+        result, _mid = self.subscribe(self._managerStateTopic, qos=0)
         if result == mqtt.MQTT_ERR_SUCCESS:
             self.client.message_callback_add(self._managerStateTopic, self._onMessage)
             logger.debug(f'connect: Subscribed to {self._managerStateTopic}...')
@@ -284,7 +319,7 @@ class MQTTConnector:
         if subscriber not in self._ports.values():
             self._ports[subscriber.readTopic] = subscriber
 
-        result, _mid = self.client.subscribe(subscriber.readTopic,
+        result, _mid = self.subscribe(subscriber.readTopic,
                                              qos=subscriber.qos)
         if result != mqtt.MQTT_ERR_SUCCESS:
             logger.error(f'Error subscribing to {subscriber.readTopic!r}: '
@@ -299,7 +334,7 @@ class MQTTConnector:
         """
         self._ports.pop(subscriber.readTopic, None)
         if self.client and self.client.is_connected():
-            self.client.unsubscribe(subscriber.readTopic)
+            self.unsubscribe(subscriber.readTopic)
 
 
     @synchronized
@@ -379,9 +414,7 @@ class MQTTConnector:
         """
         logger.debug(f'Connected to MQTT broker {client.host}:{client.port}'
                      f' ({reason_code.getName()})')
-        for s in self._ports.values():
-            if s.readTopic:
-                self.addPort(s)
+        self.resubscribe()
 
 
     # noinspection PyUnusedLocal
