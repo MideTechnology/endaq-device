@@ -48,7 +48,9 @@ class MQTTClient(CommandClient):
         """ Base class for software clients that respond like, or work with,
             enDAQ hardware.
 
-            :param client: The MQTT client to use.
+            :param client: The MQTT client to use. Note: this class will set
+                the MQTT client's `on_connect` and `on_disconnect` mehtods.
+                Avoid reusing the same MQTT client in multiple instannces.
             :param sn: The client's serial number. For recorder-like clients
                 that interact with the MQTT Device Manager, this should be an
                 integer.
