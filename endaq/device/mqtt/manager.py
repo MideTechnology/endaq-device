@@ -91,6 +91,7 @@ class MQTTDevice:
         # Timestamps of various things to/from the device.
         self.lastContact: float = 0
         self.lastCommand: float = 0
+        self.lastCommandID: int = None
         self.lastMeasurement: float = 0
         self.lastHeader: float = 0
         self.lastLock: float = 0
@@ -187,6 +188,9 @@ class MQTTDevice:
                 'LastLock': int(self.lastLock),
                 'LockID': self.lockId}
 
+        if self.lastCommandID:
+            item['LastCommandID'] = self.lastCommandID
+
         self.stateInfo.update(item)
         return self.stateInfo
 
@@ -203,23 +207,29 @@ class MQTTDevice:
         self.lastCommand = time()
         msg = message.payload
 
-        if NEWLOCKID_ID_BYTES not in msg:
-            return
-
         try:
+            schema = ebmlite.loadSchema('command-response.xml')
             command = (self.manager.command
-                       ._decodeCommand(msg)['EBMLCommand']['SetLockID'])
-            myId = self.lockId
-            oldId = command['CurrentLockID']
-            newId = command['NewLockID']
+                       ._decodeCommand(msg)['EBMLCommand'])
+            for cmd in command:
+                if cmd != 'CommandIdx':
+                    self.lastCommandID = schema.elementsByName[cmd].id
+                    logger.debug(f'Command to {self.sn}: {cmd!r} ({hex(self.lastCommandID)})')
+                    break
 
-            if not any(self.lockId) or self.lockId == oldId:
-                self.lockId = newId
-                self.lastLock = self.lastCommand
+            if NEWLOCKID_ID_BYTES in msg:
+                setLock = command['SetLockID']
+                myId = self.lockId
+                oldId = setLock['CurrentLockID']
+                newId = setLock['NewLockID']
 
-            if myId != newId:
-                logger.debug(f'Captured SetLockID command for {self.sn}: '
-                             f'{dump(newId, 0)!r}')
+                if not any(self.lockId) or self.lockId == oldId:
+                    self.lockId = newId
+                    self.lastLock = self.lastCommand
+
+                if myId != newId:
+                    logger.debug(f'Captured SetLockID command for {self.sn}: '
+                                 f'{dump(newId, 0)!r}')
 
         except KeyError as err:
             logger.debug(repr(err))

@@ -160,12 +160,17 @@ class Recorder:
         # For remote devices: timestamps of the device's last communication,
         # last block of streamed data, last header update, and last command
         # sent to the device (which may not have been processed if the device
-        # was asleep at the time). Initially set after instantiation, and not
-        # automatically updated.
+        # was asleep at the time). Initially set after instantiation, and
+        # automatically updated by the MQTTConnector with data from the
+        # Device Manager.
         self._lastContact: int = 0
         self._lastMeasurement: int = 0
         self._lastHeader: int = 0
         self._lastCommand: int = 0
+
+        # Also for remote devices: the EBML ID of the last command received,
+        # updated by the MQTTConnector using data from the Device Manager.
+        self._lastCommandID: int = None
 
 
     def _getDevinfo(self) -> DeviceInfo:

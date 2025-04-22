@@ -538,6 +538,7 @@ class MQTTConnector:
         device._lastMeasurement = info.get('LastMeasurement', 0)
         device._lastHeader = info.get('LastHeader', 0)
         device._lastCommand = info.get('LastCommand', 0)
+        device._lastCommandID = info.get('LastCommandID', None)
         device.command._setStatus(info.get('CommandResponseCode'),
                                   info.get('CommandResponseMessage'),
                                   info.get('DeviceStatusCode'),
