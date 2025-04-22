@@ -212,7 +212,7 @@ class MQTTDevice:
             command = (self.manager.command
                        ._decodeCommand(msg)['EBMLCommand'])
             for cmd in command:
-                if cmd != 'CommandIdx':
+                if cmd not in ('CommandIdx', 'LockID'):
                     self.lastCommandID = schema.elementsByName[cmd].id
                     logger.debug(f'Command to {self.sn}: {cmd!r} ({hex(self.lastCommandID)})')
                     break
