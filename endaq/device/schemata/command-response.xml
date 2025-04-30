@@ -79,19 +79,19 @@
         </MasterElement>
         <MasterElement name="QueryWiFi" id="0x85" multiple="0" mandatory="0">Get a response for current Wi-Fi State</MasterElement>
         <MasterElement name="NetworkStatus" id="0x87" multiple="0" mandatory="0">Get network identifiers </MasterElement>
-        <BinaryElement name="SetClock" id="0x5510" multiple="0" mandatory="0">Serial only. Set the real time clock. Expects a 10 byte value. Comparable to writing to the CLOCK file.</BinaryElement>
-        <MasterElement name="GetClock" id="0x5500" multiple="0" mandatory="0">Serial only. Request RTC clock time. Comparable to reading the CLOCK file.</MasterElement>
-        <MasterElement name="GetBattery" id="0x5600" multiple="0" mandatory="0">Serial only. Request the battery state.</MasterElement>
-        <BinaryElement name="SendPing" id="0x5700" multiple="0" mandatory="0">Serial only. Request the device echo the enclosed data.</BinaryElement>
-        <BinaryElement name="Blink" id="0x5800" multiple="0" mandatory="0">Serial only. Blinks LEDs on device for recognition purposes</BinaryElement>
+        <BinaryElement name="SetClock" id="0x5510" multiple="0" mandatory="0">Serial and Wireless only. Set the real time clock. Expects a 10 byte value. Comparable to writing to the CLOCK file.</BinaryElement>
+        <MasterElement name="GetClock" id="0x5500" multiple="0" mandatory="0">Serial and Wireless only. Request RTC clock time. Comparable to reading the CLOCK file.</MasterElement>
+        <MasterElement name="GetBattery" id="0x5600" multiple="0" mandatory="0">Serial and Wireless only. Request the battery state.</MasterElement>
+        <BinaryElement name="SendPing" id="0x5700" multiple="0" mandatory="0">Serial and Wireless only. Request the device echo the enclosed data.</BinaryElement>
+        <BinaryElement name="Blink" id="0x5800" multiple="0" mandatory="0">Serial and Wireless only. Blinks LEDs on device for recognition purposes</BinaryElement>
 
         <MasterElement name="GetLockID" id ="0x90" mandatory="0" multiple="0"> Get the current Lock ID on the device</MasterElement>
         <MasterElement name="SetLockID" id ="0x91" mandatory="0" multiple="0"> Set the current Lock ID on the device
             <BinaryElement name="CurrentLockID" id="0x5A01" mandatory="1" multiple="0" />
             <BinaryElement name="NewLockID" id="0x5A02" mandatory="1" multiple="0" />
         </MasterElement>
-        <BinaryElement name="LockID" id="0x5A00" mandatory="0" multiple="0"> Serial Only, optional LockID </BinaryElement>
-        <IntegerElement name="GetInfo" id="0x5B00" mandatory="0" multiple="0"> Serial Only, Get device Info. The value corresponds to:
+        <BinaryElement name="LockID" id="0x5A00" mandatory="0" multiple="0"> Serial and Wireless Only, optional LockID </BinaryElement>
+        <IntegerElement name="GetInfo" id="0x5B00" mandatory="0" multiple="0"> Serial and Wireless Only, Get device Info. The value corresponds to:
             0: DEVINFO - Read Only
             1: DEVPROPS - Read Only
             2: CONFIG.UI - Read Only
@@ -105,12 +105,16 @@
         <MasterElement name="SetInfo" id="0x5B07" mandatory="0" multiple="0" >
             <IntegerElement name="InfoIndex" id="0x5B02" mandatory="1" multiple="0"> See GetInfo for index value </IntegerElement>
             <BinaryElement name="InfoPayload" id="0x5B03" mandatory="1" multiple="0"> Payload </BinaryElement>
+            <StringElement name="InfoEncoding" id="0x5B04" mandatory="0" multiple="0"> An optional encoding type, if an unusual encoding was used (e.g., JSON). Used by software components (MQTT Device Manager, etc.). </StringElement>
         </MasterElement>
 
         <!-- Network (MQTT) Device Manager commands (ID 0x5Cxx).
              These are for the Manager itself, and are not recognized by devices. -->
-        <MasterElement name="GetDeviceList" id="0x5C00" multiple="0" mandatory="0"> Request a list of remote network devices </MasterElement>
+        <MasterElement name="GetDeviceList" id="0x5C00" multiple="0" mandatory="0"> Request a list of remote network devices
+            <UIntegerElement name="Timeout" id="0x5C01" multiple="0" mandatory="0"> Optional timeout to exclude incommunicado devices, overriding manager's default </UIntegerElement>
+        </MasterElement>
         <UIntegerElement name="GetIDEHeader" id="0x5C20" multiple="0" mandatory="0"> Request the IDE header data from a specific recording device. Value is the device's serial number. </UIntegerElement>
+        <MasterElement name="Shutdown" id="0x5CFF" multiple="0" mandatory="0"> Shut down the device/process. For non-sensors. </MasterElement>
     </MasterElement>
 
     <MasterElement name="EBMLResponse" id="0x86" multiple="0" mandatory="0">Response payload to above EBML command payload. Not all commands generate a response
@@ -149,8 +153,8 @@
                 3: Connected to Wi-Fi with cloud connection
             </UIntegerElement>
         </MasterElement>
-		<BinaryElement name="ClockTime" id="0x5501" multiple="0" mandatory="0">Serial only. 10 byte RTC clock time. Comparable to reading the CLOCK file.</BinaryElement>
-		<UIntegerElement name="BatteryState" id="0x5601" multiple="0" mandatory="0">Serial only. uint16 (big endian), low byte is charge level, high byte is bit flags.
+		<BinaryElement name="ClockTime" id="0x5501" multiple="0" mandatory="0">Serial and Wireless only. 10 byte RTC clock time. Comparable to reading the CLOCK file.</BinaryElement>
+		<UIntegerElement name="BatteryState" id="0x5601" multiple="0" mandatory="0">Serial and Wireless only. uint16 (big endian), low byte is charge level, high byte is bit flags.
             Bit 15: Battery present
             Bit 14: Device can report external power (for future use, will be 0)
             Bit 13: Device has external power, invalid w/o bit 14 == 1 (for future use)
@@ -161,13 +165,19 @@
               == 1: Approximate charge level 0-255
             Bits 7-0: Charge level (uint8) (percentage = value * 0.39216)
         </UIntegerElement>
-		<BinaryElement name="PingReply" id="0x5701" multiple="0" mandatory="0">Serial only. Contains the echo to a Ping command.</BinaryElement>
-        <IntegerElement name="DeviceStatusCode" id="0x5801" multiple="0" mandatory="0">Serial only, mandatory for serial. int16. Negative values are errors.
+		<BinaryElement name="PingReply" id="0x5701" multiple="0" mandatory="0">Serial and Wireless only. Contains the echo to a Ping command.</BinaryElement>
+        <IntegerElement name="CommandResponseCode" id="0x5801" multiple="0" mandatory="0">Serial and Wireless only, mandatory for serial and wireless. int16. Negative values are errors.
+            440: Device is currently triggering, Wi-Fi disconnected.
+	        410: Device is currently recording, Wi-Fi disconnected.
+	        340: Device is currently triggering, checking Wi-Fi periodically
+	        310: Device is currently recording, checking Wi-Fi periodically
             110: Command Interface is going (or is currently) offline (for reason other than sleep)
+            101: Device is waking from sleep. This is currently intended for use only by the MQTT Device Manager.
             100: Device is currently in sleep mode, or will enter sleep mode soon after this response is received.
             60: Device is currently streaming live data sensor data.
             50: Device Uploading (i.e. Wi-Fi Upload after recording finishes)
             40: Device Triggering (i.e. waiting for a trigger)
+            31: Recording stop pending (device is rebooting after stopping recording)
             30: Recording start pending (device will start recording soon after this message is sent)
             20: Reset pending (device will reset soon after this message is sent)
             10: Device recording
@@ -177,6 +187,7 @@
             -20: Command not valid
             -21: Command Lock ID invalid
             -22: Command Info Index Unknown / Invalid
+            -29: Bad parameter: One or more command parameters are invalid in some way.
             -30: Unknown command
             -40: Bad payload
             -50: EBML invalid
@@ -185,9 +196,10 @@
             -70: Preamble (CorBus packet header) invalid
             -110: The device is going to/has disconnected unexpectedly
             -10000: Unexpected internal error (generated by Device Manager, not enDAQ recorders)
+            -10010: Unknown device/serial number (generated by Device Manager, not enDAQ recorders)
         </IntegerElement>
-        <UnicodeElement name="DeviceStatusMessage" id="0x5901" multiple="0" mandatory="0">Serial only. Optional code for device status, including error message</UnicodeElement>
-        <IntegerElement name="SystemStateCode" id="0x5D01" multiple="0" mandatory="0"> System state of device unaffected by command errors. Values match those in Device Status Code.
+        <UnicodeElement name="CommandResponseMessage" id="0x5901" multiple="0" mandatory="0">Serial and Wireless only. Optional code for command response status, including error message</UnicodeElement>
+        <IntegerElement name="DeviceStatusCode" id="0x5D01" multiple="0" mandatory="0"> Device Status unaffected by command errors. Values match those in Command Response Code.
             110: Command Interface is currently offline (for reason other than sleep)
             100: Device is currently in sleep mode
             60: Device is currently streaming live data sensor data.
@@ -200,8 +212,8 @@
             0: Device idle. It is presumed the device is mounted as an MSD.
             -110: The device has disconnected unexpectedly.
         </IntegerElement>
-        <UnicodeElement name="SystemStateMessage" id="0x5E01" multiple="0" mandatory="0">Optional description of the system state</UnicodeElement>
-        <BinaryElement name="LockID" id="0x5A00" mandatory="0" multiple="0"> Serial Only, optional current LockID of device </BinaryElement>
+        <UnicodeElement name="DeviceStatusMessage" id="0x5E01" multiple="0" mandatory="0">Optional description of the Device Status</UnicodeElement>
+        <BinaryElement name="LockID" id="0x5A00" mandatory="0" multiple="0"> Serial and Wireless Only, optional current LockID of device </BinaryElement>
         <MasterElement name="GetInfoResponse" id="0x5B01" mandatory="0" multiple="0" >
             <IntegerElement name="InfoIndex" id="0x5B02" mandatory="1" multiple="0"> See GetInfo in EBMLCommand for index value</IntegerElement>
             <BinaryElement name="InfoPayload" id="0x5B03" mandatory="1" multiple="0"> Payload. Typically EBML using the payload's native schema. </BinaryElement>
@@ -219,10 +231,10 @@
                 <UIntegerElement name="LastCommand" id="0x5C16" multiple="0" mandatory="1"> UNIX epoch timestamp of the last command sent to the device </UIntegerElement>
                 <UIntegerElement name="LastLock" id="0x5C17" multiple="0" mandatory="1"> UNIX epoch timestamp of the last time the device's LockID was set </UIntegerElement>
                 <MasterElement name="GetInfoResponse"> The same contents as returned by `GetInfo` index 0 (previously defined) </MasterElement>
-                <IntegerElement name="DeviceStatusCode"> The originating device's last DeviceStatusCode (previously defined) </IntegerElement>
-                <UnicodeElement name="DeviceStatusMessage"> The originating device's last DeviceStatusMessage (previously defined) </UnicodeElement>
-                <IntegerElement name="SystemStateCode"> System state of device unaffected by command errors. Values match those in Device Status Code. </IntegerElement>
-                <UnicodeElement name="SystemStateMessage">Optional description of the system state</UnicodeElement>
+                <IntegerElement name="CommandResponseCode"> The originating device's last CommandResponseCode (previously defined) </IntegerElement>
+                <UnicodeElement name="CommandResponseMessage"> The originating device's last CommandResponseMessage (previously defined) </UnicodeElement>
+                <IntegerElement name="DeviceStatusCode"> Device Status, unaffected by command errors. Values match those in CommandResponseCode. </IntegerElement>
+                <UnicodeElement name="DeviceStatusMessage">Optional description of the Device Status</UnicodeElement>
                 <BinaryElement name="LockID"> The originating device's last LockID (previously defined) </BinaryElement>
             </MasterElement>
         </MasterElement>
