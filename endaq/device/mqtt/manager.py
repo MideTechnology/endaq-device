@@ -488,6 +488,33 @@ class MQTTDeviceManager(MQTTClient):
         self.stateSubTopic = STATE_TOPIC.format(sn='+')
         self.client.message_callback_add(self.stateSubTopic, self.onStateMessage)
 
+        self.advertiser: Optional[Advertiser] =  None
+
+
+    def __repr__(self):
+        """ Return repr(self).
+        """
+        if self.advertiser and self.advertiser.is_alive():
+            name = f'{self.advertiser.fullName!r} '
+        else:
+            name = ''
+        if self.client.is_connected():
+            status = f'{self.client.host}:{self.client.port}'
+            if name:
+                status = f'{name}@ {status}'
+        else:
+            status = name
+        return f'<{type(self).__name__} ({status})>'
+
+
+    def stop(self):
+        """ Shut down the Device Manager (and Advertiser, if running).
+        """
+        if self.advertiser and self.advertiser.is_alive():
+            self.advertiser.stop()
+        self.client.disconnect()
+        self.client.loop_stop()
+
 
     def getSenderSerial(self, topic: str) -> Union[int, str]:
         """ Extract the sending device's serial number from the name of an
@@ -699,7 +726,7 @@ class MQTTDeviceManager(MQTTClient):
 
 
 # ===========================================================================
-# Test code, will be removed.
+#
 # ===========================================================================
 
 def run(host: Optional[str] = MQTT_BROKER,
