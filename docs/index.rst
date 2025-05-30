@@ -29,7 +29,7 @@ The ``endaq-device`` package is `available on PyPI <https://pypi.org/project/end
 
 For the most recent features that are still under development, you can also use `pip` to install endaq directly from `the GitHub repository <https://github.com/MideTechnology/endaq-device/>`_::
 
-    pip install git+https://github.com/MideTechnology/endaq-device.git@development
+    pip install git+https://github.com/MideTechnology/endaq-device.git@develop
 
 Note: While ``endaq-device`` installs into the same ``endaq`` 'namespace' as `endaq-python <https://docs.endaq.com/en/latest/index.html>`_,
 it is otherwise separate; the two packages are not interdependent, and one can be installed without the other.
