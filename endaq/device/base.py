@@ -657,10 +657,13 @@ class Recorder:
     @property
     def name(self) -> str:
         """ The recording device's (user-assigned) name. """
-        if self._name:
+        if self._name is not None:
             return self._name
         try:
-            return self.getInfo('UserDeviceName', '') or self.config.name
+            name = self.getInfo('UserDeviceName', None)
+            if name is None:
+                return self.config.name
+            return name
         except (AttributeError, KeyError, UnsupportedFeature):
             return ''
 
@@ -797,6 +800,7 @@ class Recorder:
         bd = self.getInfo('DateOfManufacture')
         if bd is not None:
             return datetime.utcfromtimestamp(bd)
+        return None
 
     
     @property
@@ -1086,7 +1090,7 @@ class Recorder:
             return calPolys
         except (KeyError, IndexError, ValueError) as err:
             logger.debug("_parsePolynomials() raised a possibly-allowed exception: %r" % err)
-            pass
+            return {}
 
 
     def getManifest(self) -> Union[Dict[str, Any], None]:
