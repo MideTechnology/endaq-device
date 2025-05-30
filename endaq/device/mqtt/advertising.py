@@ -1,3 +1,8 @@
+"""
+This module contains the `Advertiser` class, used by the `MQTTDeviceManager`
+to announce the name and IP address of the MQTT Broker via zeroconf/mDNS.
+"""
+
 import itertools
 import logging
 import socket
@@ -9,7 +14,7 @@ from zeroconf import IPVersion, ServiceInfo, Zeroconf
 from zeroconf import NonUniqueNameException
 
 from .mqtt_interface import MQTT_BROKER, MQTT_PORT, getMyIP
-from .mqtt_discovery import DEFAULT_NAME, splitServiceName
+from .discovery import DEFAULT_NAME, splitServiceName
 
 
 logger = logging.getLogger(__name__)
@@ -84,7 +89,7 @@ class Advertiser(Thread):
             if timeout > 0 and time() > deadline:
                 raise TimeoutError('Timed out trying to shut down advertiser')
             if callback and callback():
-               break
+                break
             sleep(0.01)
 
         stopped = not self.is_alive()
@@ -130,9 +135,3 @@ class Advertiser(Thread):
                          f'on {self.address}:{self.port}.')
             zeroconf.unregister_service(self.info)
             zeroconf.close()
-
-
-# ===========================================================================
-#
-# ===========================================================================
-

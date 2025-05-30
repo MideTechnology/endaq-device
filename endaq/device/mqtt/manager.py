@@ -24,10 +24,11 @@ from ..response_codes import DeviceStatusCode, CommandResponseCode
 from ..command_interfaces import CommandInterface, CommandError, CRCError, DeviceError
 from .mqtt_interface import MQTT_BROKER, MQTT_PORT, getMyIP, makeClientID
 from .advertising import Advertiser
-from .mqtt_discovery import DEFAULT_NAME
+from .discovery import DEFAULT_NAME
 from .mqtt_client import MQTTClient
 from .mqtt_interface import STATE_TOPIC, HEADER_TOPIC, MEASUREMENT_TOPIC, COMMAND_TOPIC
 
+__all__ = ('MQTTDeviceManager', 'run')
 
 # ===========================================================================
 # 'Constants'

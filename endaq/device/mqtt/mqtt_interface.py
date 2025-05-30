@@ -2,7 +2,8 @@
 This module handles creating a connection to an MQTT broker, and
 communicating with an MQTT Device Manager.
 
-The main component in this module is `MQTTConnector`.
+The main component in this module is `MQTTConnector`, through which
+MQTT-enabled `Recorder` instances are created.
 """
 
 import logging
@@ -19,7 +20,7 @@ from serial import PortNotOpenError
 from .. import (_module_busy, RECORDER_TYPES, RECORDERS,
                 RECORDERS_BY_SN, RECORDER_CACHE_SIZE)
 
-from .mqtt_discovery import findBrokers, SERVICE_TYPE
+from .discovery import findBrokers, SERVICE_TYPE
 from ..base import Recorder, NonRecorder
 from ..client import synchronized
 from ..command_interfaces import SerialCommandInterface
@@ -30,6 +31,7 @@ from ..simserial import SimSerialPort
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+__all__ = ('MQTTConnector',)
 
 # ===========================================================================
 #
@@ -725,6 +727,7 @@ class MQTTConnector:
             if 'Unknown serial number' not in str(err):
                 raise
             logger.debug(f'Manager does not have cached header for {device}')
+            return None
         except KeyError as err:
             raise DeviceError(f"Manager response did not contain {err.args[0]}")
 
