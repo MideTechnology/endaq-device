@@ -732,8 +732,8 @@ class MQTTDeviceManager(MQTTClient):
 def run(host: Optional[str] = MQTT_BROKER,
         port: int = MQTT_PORT,
         advertise: bool = True,
-        brokerName: Optional[str] = DEFAULT_NAME,
-        background: bool = False,
+        name: Optional[str] = DEFAULT_NAME,
+        background: bool = True,
         clientArgs: Dict[str, Any] = None,
         connectArgs: Dict[str, Any] = None,
         advertArgs: Dict[str, Any] = None,
@@ -747,8 +747,8 @@ def run(host: Optional[str] = MQTT_BROKER,
         machine's.
     :param port: The port to which to connect.
     :param advertise: If `True`, start the mDNS advertising of the broker.
-    :param brokerName: The name under which the MQTT broker will be advertised.
-    :param background: *For testing.* If `True`, this function returns an
+    :param name: The name under which the MQTT broker will be advertised.
+    :param background: If `True`, this function returns an
         `MQTTDeviceManager` instance with the client loop running in a
         thread. If `False`, the function will run the client loop in the
         foreground and will not return.
@@ -787,7 +787,7 @@ def run(host: Optional[str] = MQTT_BROKER,
         manager.cleanCache(retention=clean)
 
     if advertise:
-        kwargs = {'address': host, 'port': port, 'name': brokerName}
+        kwargs = {'address': host, 'port': port, 'name': name}
         if advertArgs:
             kwargs.update(advertArgs)
         manager.advertiser = Advertiser(**kwargs)
@@ -844,8 +844,8 @@ if __name__ == "__main__":
                              "than this many hours.")
     args = parser.parse_args()
     kwargs = {'host': args.address, 'port': args.port,
-              'advertise': not args.silent, 'brokerName': args.name,
-              'clean': args.clean}
+              'advertise': not args.silent, 'name': args.name,
+              'clean': args.clean, 'background': True}
 
     if args.config:
         with open(args.config, 'r') as f:

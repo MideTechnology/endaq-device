@@ -37,24 +37,42 @@ If you have not previously created a Mosquitto configuration file, you will need
 
 Start Mosquitto in 'user space'
 '''''''''''''''''''''''''''''''
-
 Starting Mosquitto in a standard user process (as opposed to running as a system service) is nearly identical in Linux, MacOS, and Windows. On a shell command line, enter:
 
 .. code-block::
 
     mosquitto -v -c mosquitto.conf
 
-* ``-v`` turns on verbose output and is optional.
 * In Windows, you may need to explicitly state the path to the ``mosquitto`` executable, e.g., ``'C:\Program Files\mosquitto\mosquitto.exe'``
-* Similarly, if you are not in the directory containing ``mosquitto.conf``, you will need to provide its full path.
+* ``-v`` turns on verbose output and is optional.
+* ``-c`` specifies the confgiguration file to use. If you are not in the directory containing your ``mosquitto.conf``, you will need to provide its full path.
+
+Start the MQTT Device Manager and Advertising
+---------------------------------------------
+On the command line in another shell/terminal window, enter:
+
+.. code-block::
+
+    python -m endaq.device.mqtt.manager
+
+- If the MQTT Broker is running on a different computer, you will need to specify it by name or IP address, e.g.:
+  ``python -m endaq.device.mqtt.manager -a 192.160.0.100``
 
 Configure the enDAQ device
 --------------------------
 
-Start the MQTT Device Manager and Advertising
----------------------------------------------
+.. image:: ../_static/mqtt_config.png
+
+TODO: Screenshots and stuff
 
 Create an MQTTConnector and get a Recorder
 ------------------------------------------
+In the Python interactive console/REPL:
 
+.. code-block:: python
+
+    >>> from endaq.device.mqtt.mqtt_interface import MQTTConnector
+    >>> con = MQTTConnector.find()
+    >>> con.getDevices()
+    [ ... ] TODO: this
 
