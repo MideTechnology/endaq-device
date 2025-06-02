@@ -7,8 +7,6 @@
 Controlling and communicating with Wi-Fi enabled enDAQ devices is done via `MQTT <https://mqtt.org/>`_,
 a lightweight protocol widely used in IoT applications.
 
-Setup
-~~~~~
 A full setup for communicating with an enDAQ device over MQTT consists of three parts:
 
 1. An **MQTT Broker**. ``endaq.device`` requires the presence of a running MQTT broker supporting version 5.x of the protocol. The MQTT broker is *not* included in ``endaq.device`` and must be downloaded and installed separately. One such broker is `Mosquitto <https://mosquitto.org/>`_; its open source version (EPL/EDL license) is cross-platform, small, and can be run locally or on a server. The specific details of setting up the MQTT broker is beyond the scope of this document; consult the Broker's documentation for more information.
@@ -67,7 +65,7 @@ TODO: Screenshots and stuff
 
 Create an MQTTConnector and get a Recorder
 ------------------------------------------
-:class:`~.mqtt.mqtt_interface.MQTTConnector` handles communication with the MQTT broker, and presents
+:class:`~.mqtt.mqtt_interface.MQTTConnector` handles communication with the MQTT broker and manages MQTT-enabled instances of :class:`~.Recorder`. It provides methods equivalent to the standard functions :func:`~.findDevice` and :func:`getDevices`.
 
 In the Python interactive console/REPL (run from the command line in another shell/terminal window, through an IDE, etc.):
 
