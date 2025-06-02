@@ -67,12 +67,15 @@ TODO: Screenshots and stuff
 
 Create an MQTTConnector and get a Recorder
 ------------------------------------------
-In the Python interactive console/REPL:
+:class:`~.mqtt.mqtt_interface.MQTTConnector` handles communication with the MQTT broker, and presents
+
+In the Python interactive console/REPL (run from the command line in another shell/terminal window, through an IDE, etc.):
 
 .. code-block:: python
 
     >>> from endaq.device.mqtt.mqtt_interface import MQTTConnector
     >>> con = MQTTConnector.find()
     >>> con.getDevices()
-    [ ... ] TODO: this
+    [<EndaqW W8-E100D40 "Test device #1" SN:W0016827 (remote)>]
+    >>>
 

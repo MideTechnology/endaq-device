@@ -846,7 +846,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     kwargs = {'host': args.address, 'port': args.port,
               'advertise': not args.silent, 'name': args.name,
-              'clean': args.clean, 'background': True}
+              'clean': args.clean, 'background': False}
 
     if args.config:
         with open(args.config, 'r') as f:
