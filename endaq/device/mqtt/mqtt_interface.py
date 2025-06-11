@@ -39,12 +39,11 @@ __all__ = ('MQTTConnector',)
 
 MQTT_BROKER = None  # "localhost"
 MQTT_PORT = 1883
-KEEP_ALIVE_INTERVAL = 60 * 60  #: MQTT client 'keep alive' time (seconds)
-THREAD_KEEP_ALIVE_INTERVAL = 60 * 5  #: Thread 'keep alive' time (seconds) if there are no connections
+KEEP_ALIVE_INTERVAL = 60  #: MQTT client 'keep alive' time (seconds)
 
 # Default keyword arguments for `paho.mqtt.client.Client.__init__()` and `.connect()`
 CLIENT_INIT_ARGS = (('callback_api_version', mqtt.CallbackAPIVersion.VERSION2),)
-CLIENT_CONNECT_ARGS = ()
+CLIENT_CONNECT_ARGS = (('keepalive', KEEP_ALIVE_INTERVAL),)
 
 COMMAND_TOPIC = "endaq/{sn}/control/command"
 RESPONSE_TOPIC = "endaq/{sn}/control/response"
@@ -90,8 +89,6 @@ class MQTTConnector:
                  name: str = None,
                  username: Optional[str] = None,
                  password: Optional[str] = None,
-                 mqttKeepAlive: int = KEEP_ALIVE_INTERVAL,
-                 threadKeepAlive: int = THREAD_KEEP_ALIVE_INTERVAL,
                  clientArgs: Dict[str, Any] = None,
                  connectArgs: Dict[str, Any] = None,
                  autoupdate: bool = True,
@@ -101,17 +98,14 @@ class MQTTConnector:
             Class that manages the connection to the MQTT Broker and
             communication with the MQTT Device Manager.
 
-            :param host: The hostname/IP of the MQTT broker.
+            :param host: The hostname/IP of the MQTT broker. Defaults to
+                the local machine. Note that ``localhost`` and ``127.0.0.1``
+                are explicitly converted to the local machine's IP.
             :param port: The port to which to connect.
             :param username: The username to use to connect to the broker,
                 if required.
             :param password: The password to use to connect to the broker,
                 if required.
-            :param mqttKeepAlive: The number of seconds to keep the MQTT
-                client connection alive.
-            :param threadKeepAlive: The number of seconds to keep the
-                data-reading thread alive after all `MQTTSerialPort`
-                instances have closed.
             :param clientArgs: Additional arguments to be used in the
                 instantiation of the `paho.mqtt.client.Client`.
             :param connectArgs: Additional arguments to be used with
@@ -123,7 +117,7 @@ class MQTTConnector:
                 update is received from the `MQTTDeviceManager`. Only used
                 if `MQTTConnector.autoupdate` is `True`.
         """
-        if not host:
+        if not host or host in ('localhost', '127.0.0.1'):
             host = getMyIP()
         elif isinstance(host, (list, tuple)):
             host = host[0]
@@ -134,8 +128,6 @@ class MQTTConnector:
         self.service = kwargs.get('serviceType', SERVICE_TYPE)
         self.username = username
         self.password = password
-        self.keepalive = mqttKeepAlive
-        self.threadKeepAlive = threadKeepAlive
         self.clientArgs = dict(CLIENT_INIT_ARGS)
         self.connectArgs = dict(CLIENT_CONNECT_ARGS)
         self.autoupdate = autoupdate  # Desired state of `autoupdate`
@@ -151,16 +143,18 @@ class MQTTConnector:
         self._ports: Dict[str, "MQTTSerialPort"] = WeakValueDictionary()
         self._subscriptions = {}
 
-        self.setup()
+        self.devManager = None
+        self._managerStateTopic = STATE_TOPIC.format(sn='manager')
+        self.lastUsedTime = time()
 
 
     @classmethod
     def find(cls, *patterns, **kwargs) -> "MQTTConnector":
-        """ A convenience method for creating a new `MQTTConnector`
-            using an MQTT broker discovered via mDNS. It calls
-            `endaq.device.mqtt.mqtt_discovery.findBrokers()` and then
-            instantiates an `MQTTConnector` using the closest
-            matching broker name. All keywords for both are accepted.
+        """ A convenience method for creating a new `MQTTConnector` using
+            an MQTT broker discovered via mDNS. It calls
+            `endaq.device.mqtt.discovery.findBrokers()` and then instantiates
+            an `MQTTConnector` using the closest matching broker name. All
+            keywords for both are accepted.
 
             :param patterns: Zero or more MQTT Broker names (multiple
                 positional arguments). Glob-like wildcards may be used
@@ -184,34 +178,6 @@ class MQTTConnector:
         if self.name:
             return f'<{type(self).__name__} "{self.name}" {self.host}:{self.port}>'
         return f'<{type(self).__name__} {self.host}:{self.port}>'
-
-
-    @synchronized
-    def setup(self, **kwargs):
-        """
-            The actual initialization of a new instance. Separated from
-            the constructor so it can be used to change an existing
-            instance. Takes the same keyword arguments as `__init__()`.
-            Arguments that are unsupplied will remain unchanged.
-
-            This only needs to be explicitly called if changes were
-            made to the arguments.
-        """
-        if self.client and self.client.is_connected():
-            self.disconnect()
-        self.host = kwargs.get('host', self.host)
-        self.port = kwargs.get('port', self.port)
-        self.name = kwargs.get('name', self.name)
-        self.username = kwargs.get('username', self.username)
-        self.password = kwargs.get('password', self.password)
-        self.keepalive = kwargs.get('keepalive', self.keepalive)
-        self.threadKeepAlive = kwargs.get('threadKeepAlive', self.threadKeepAlive)
-        self.clientArgs = kwargs.get('clientArgs', self.clientArgs)
-        self.connectArgs = kwargs.get('connectArgs', self.connectArgs)
-
-        self.devManager = None
-        self._managerStateTopic = STATE_TOPIC.format(sn='manager')
-        self.lastUsedTime = time()
 
 
     def subscribe(self, topic, *args, **kwargs):
