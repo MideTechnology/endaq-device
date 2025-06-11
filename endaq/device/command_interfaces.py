@@ -3,6 +3,16 @@ Command interfaces: the mechanisms that communicate with
 and control the recording device.
 """
 
+from typing import TYPE_CHECKING
+from .response_codes import *
+from . import response_codes
+from .types import Epoch, Filename
+from .exceptions import CRCError
+from .hdlc import hdlc_decode, hdlc_encode, HDLC_BREAK_CHAR
+from .exceptions import DeviceError, CommandError, CommunicationError, DeviceTimeout, UnsupportedFeature
+import serial.tools.list_ports
+import serial
+from ebmlite import loadSchema
 import calendar
 from copy import deepcopy
 from datetime import datetime
@@ -21,16 +31,6 @@ import warnings
 import logging
 logger = logging.getLogger(__name__)
 
-from ebmlite import loadSchema
-import serial
-import serial.tools.list_ports
-
-from .exceptions import DeviceError, CommandError, CommunicationError, DeviceTimeout, UnsupportedFeature
-from .hdlc import hdlc_decode, hdlc_encode, HDLC_BREAK_CHAR
-from .exceptions import CRCError
-from .types import Epoch, Filename
-from . import response_codes
-from .response_codes import *
 
 if sys.platform == 'darwin':
     from . import macos as os_specific
@@ -39,7 +39,6 @@ elif 'win' in sys.platform:
 elif sys.platform == 'linux':
     from . import linux as os_specific
 
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .base import Recorder
 
@@ -67,7 +66,6 @@ class CommandInterface:
     DEFAULT_MAX_COMMAND_SIZE = None
 
     _TIME_PARSER = struct.Struct("<L")
-
 
     def __init__(self,
                  device: "Recorder"):
@@ -99,8 +97,10 @@ class CommandInterface:
         # Last response (`DeviceStatus*`) and last reported device system
         # status (`SystemState*`): timestamp, code number, and optional
         # message. Not available on all interfaces.
-        self.response: Tuple[float, Optional[int], Optional[str]] = (0, None, None)
-        self.status: Tuple[float, Optional[int], Optional[str]] = (0, None, None)
+        self.response: Tuple[float, Optional[int],
+                             Optional[str]] = (0, None, None)
+        self.status: Tuple[float, Optional[int],
+                           Optional[str]] = (0, None, None)
 
         # The time and value of the device's last reported LockID.
         self.lockId: Tuple[Optional[float], Optional[bytes]] = (0, None)
@@ -109,14 +109,13 @@ class CommandInterface:
         self._battery: Tuple[float, Optional[Dict]] = (0, None)
 
         # Last received response. Not available on all interfaces.
-        self._response: Tuple[float, Optional[Dict]] = None  # (timestamp, parsed response)
+        # (timestamp, parsed response)
+        self._response: Tuple[float, Optional[Dict]] = None
         self._lastbuf = None  # Raw binary of previous response, for debugging
-
 
     def __del__(self):
         # Destructor; does a bit of cleanup. Just in case.
         self.close()
-
 
     @classmethod
     def hasInterface(cls, device: "Recorder") -> bool:
@@ -128,12 +127,10 @@ class CommandInterface:
         """
         raise NotImplementedError
 
-
     @property
     def available(self) -> bool:
         """ Is the command interface available and able to accept commands? """
         return self.device and self.device.available
-
 
     @property
     def canCopyFirmware(self) -> bool:
@@ -141,13 +138,11 @@ class CommandInterface:
         # Modern devices can update firmware via files, assume True as default.
         return self.device and self.device.available
 
-
     @property
     def canRecord(self) -> bool:
         """ Can the device record on command? """
         # Modern devices can record on command, assume True as default
         return self.device and not self.device.isVirtual
-
 
     def resetConnection(self) -> bool:
         """
@@ -159,7 +154,6 @@ class CommandInterface:
         """
         return True
 
-
     def close(self) -> bool:
         """
         Close the interface. Only applicable to subclasses with a persistent
@@ -169,7 +163,6 @@ class CommandInterface:
             has no persistent connection).
         """
         return True
-
 
     def _encode(self, data: dict,
                 checkSize: bool = True) -> bytes:
@@ -187,10 +180,9 @@ class CommandInterface:
 
         if checkSize and self.maxCommandSize and len(ebml) > self.maxCommandSize:
             raise CommandError("Command too large ({}); max size is {}".format(
-                    len(ebml), self.maxCommandSize))
+                len(ebml), self.maxCommandSize))
 
         return ebml
-
 
     def _encodeResponse(self, data: dict) -> bytearray:
         """
@@ -204,7 +196,6 @@ class CommandInterface:
             wrapping or other preparations.
         """
         return CommandInterface._encode(self, data, checkSize=False)
-
 
     def _decode(self, packet: Union[bytearray, bytes]) -> dict:
         """
@@ -228,7 +219,6 @@ class CommandInterface:
             raise CommunicationError('Response from device could not be decoded '
                                      f'({err})')
 
-
     def _decodeCommand(self, packet: Union[bytearray, bytes]) -> Dict[str, Any]:
         """ Translate a command packet (EBML) into a dictionary. Only used in
             some special cases; not generally used in ordinary "Recorder"
@@ -239,7 +229,6 @@ class CommandInterface:
             :return: The response, as nested dictionaries.
         """
         return CommandInterface._decode(self, packet)
-
 
     # =======================================================================
     # The actual command sending and response receiving.
@@ -270,7 +259,6 @@ class CommandInterface:
 
         return response
 
-
     def _writeCommand(self, packet: Union[bytearray, bytes]) -> int:
         """
         Send an encoded EBMLCommand element. This is a low-level write; the
@@ -281,7 +269,6 @@ class CommandInterface:
         :return: The number of bytes written.
         """
         raise NotImplementedError
-
 
     def _readResponse(self,
                       timeout: Optional[Union[int, float]] = None,
@@ -301,7 +288,6 @@ class CommandInterface:
             the process to cancel.
         """
         raise NotImplementedError
-
 
     def _getTime(self,
                  pause: bool = True,
@@ -323,7 +309,6 @@ class CommandInterface:
             Both are epoch (UNIX) time (seconds since 1970-01-01T00:00:00).
         """
         raise NotImplementedError
-
 
     def _setTime(self,
                  t: Optional[int] = None,
@@ -355,7 +340,6 @@ class CommandInterface:
         """
         raise NotImplementedError
 
-
     def getTime(self,
                 epoch: bool = True,
                 timeout: Union[int, float] = 3
@@ -378,7 +362,6 @@ class CommandInterface:
 
         return (datetime.utcfromtimestamp(sysTime),
                 datetime.utcfromtimestamp(devTime))
-
 
     def setTime(self,
                 t: Union[Epoch, datetime, struct_time, tuple, None] = None,
@@ -425,7 +408,6 @@ class CommandInterface:
                 else:
                     raise
 
-
     def getClockDrift(self,
                       pause: bool = True,
                       retries: int = 1,
@@ -456,7 +438,6 @@ class CommandInterface:
                 else:
                     raise
 
-
     def _setStatus(self,
                    responseCode: Optional[int] = None,
                    responseMsg: Optional[str] = None,
@@ -472,19 +453,20 @@ class CommandInterface:
             try:
                 responseCode = DeviceStatusCode(responseCode)
             except ValueError:
-                logger.debug('Received unknown CommandResponseCode: {}'.format(responseCode))
+                logger.debug(
+                    'Received unknown CommandResponseCode: {}'.format(responseCode))
             self.response = now, responseCode, responseMsg
         if statusCode is not None:
             try:
                 statusCode = DeviceStatusCode(statusCode)
             except ValueError:
-                logger.debug('Received unknown DeviceStatusCode: {}'.format(statusCode))
+                logger.debug(
+                    'Received unknown DeviceStatusCode: {}'.format(statusCode))
             self.status = now, statusCode, statusMsg
 
         lockId = lockId or '\x00' * 16
         if lockId != self.lockId[1]:
             self.lockId = lockTime or now, lockId
-
 
     def _sendCommand(self,
                      cmd: dict,
@@ -512,7 +494,6 @@ class CommandInterface:
             :raise: DeviceTimeout
         """
         raise NotImplementedError
-
 
     def _runSimpleCommand(self,
                           cmd: dict,
@@ -561,7 +542,6 @@ class CommandInterface:
 
         return True
 
-
     @classmethod
     def _parseBatteryStatus(cls, response: int) -> Dict[str, Any]:
         """ Parse the bits of a `BatteryState` element.
@@ -572,8 +552,10 @@ class CommandInterface:
         hasBattery = bool(response & 0x8000)
         reply = {'hasBattery': hasBattery}
         if hasBattery:
-            reply["charging"] = bool(response & 0x0200)  # bit 9: battery charging
-            reply["percentage"] = bool(response & 0x0100)  # bit 8: reports percentage or 0/some/full
+            # bit 9: battery charging
+            reply["charging"] = bool(response & 0x0200)
+            # bit 8: reports percentage or 0/some/full
+            reply["percentage"] = bool(response & 0x0100)
             reply["level"] = response & 0x00ff  # Lower 8 bits: battery level
 
             # External power indicator (bit 14). Indicates external power can
@@ -583,7 +565,6 @@ class CommandInterface:
                 reply["externalPower"] = bool(response & 0x2000)
 
         return reply
-
 
     def startRecording(self,
                        wait: bool = True,
@@ -604,7 +585,6 @@ class CommandInterface:
         """
         raise UnsupportedFeature(self, self.startRecording)
 
-
     def stopRecording(self,
                       timeout: Union[int, float] = 5,
                       callback: Optional[Callable] = None):
@@ -619,7 +599,6 @@ class CommandInterface:
             :returns: `True` if the command was successful.
         """
         raise UnsupportedFeature(self, self.stopRecording)
-
 
     def reset(self,
               wait: bool = True,
@@ -640,7 +619,6 @@ class CommandInterface:
             :returns: `True` if the command was successful.
         """
         raise NotImplementedError
-
 
     def getBatteryStatus(self,
                          timeout: Union[int, float] = 1,
@@ -675,7 +653,6 @@ class CommandInterface:
         # Only interfaces that support this method will implement it.
         raise UnsupportedFeature(self, self.getBatteryStatus)
 
-
     def ping(self,
              data: Union[bytearray, bytes, None] = None,
              timeout: Union[int, float] = 5,
@@ -683,8 +660,8 @@ class CommandInterface:
         """ Verify the recorder is present and responding. Not supported on
             all devices.
 
-            :param data: An optional binary payload, returned by the recorder
-                verbatim.
+            :param data: An optional binary payload, no larger than 30 bytes, 
+                returned by the recorder verbatim.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately; `None` or -1 will wait
                 indefinitely.
@@ -700,7 +677,6 @@ class CommandInterface:
         """
         # Only interfaces that support this method will implement it.
         raise UnsupportedFeature(self, self.ping)
-
 
     def blink(self,
               duration: int = 3,
@@ -734,7 +710,6 @@ class CommandInterface:
             :param b: LED pattern 'B'.
         """
         raise UnsupportedFeature(self, self.blink)
-
 
     # =======================================================================
     # Firmware/userpage updating
@@ -781,7 +756,6 @@ class CommandInterface:
 
             timeoutMsg = timeoutMsg or "Timed out waiting for device to disconnect"
             raise DeviceTimeout(timeoutMsg)
-
 
     def awaitRemount(self,
                      update: bool = False,
@@ -834,7 +808,6 @@ class CommandInterface:
 
             raise DeviceTimeout("Timed out waiting for device to remount")
 
-
     def _updateAll(self,
                    secure: True,
                    wait: bool = True,
@@ -856,7 +829,6 @@ class CommandInterface:
         """
         raise NotImplementedError
 
-
     def _copyUpdateFile(self,
                         filename: Optional[str],
                         dest: str,
@@ -877,7 +849,8 @@ class CommandInterface:
         if filename:
             clean = True
             if not os.path.isfile(filename):
-                raise FileNotFoundError(errno.ENOENT, "File not found", filename)
+                raise FileNotFoundError(
+                    errno.ENOENT, "File not found", filename)
 
         if clean and os.path.isfile(dest):
             logger.debug('Removing {}'.format(dest))
@@ -892,7 +865,6 @@ class CommandInterface:
             os.sync()
 
         return os.path.isfile(dest)
-
 
     def updateDevice(self,
                      firmware: Optional[str] = None,
@@ -941,13 +913,14 @@ class CommandInterface:
 
         if firmware:
             if fw_ext not in ('.pkg', '.bin'):
-                raise TypeError("Firmware update file must be type .pkg or .bin")
+                raise TypeError(
+                    "Firmware update file must be type .pkg or .bin")
 
             if fw_ext == '.bin':
                 if keyRev:
                     raise ValueError(
-                            'Cannot apply unencrypted firmware (*.bin) to device '
-                            'with encryption; use *.pkg version if available.')
+                        'Cannot apply unencrypted firmware (*.bin) to device '
+                        'with encryption; use *.pkg version if available.')
 
                 # HACK: Unencrypted STM32-based firmware has `STM_` prefix
                 # FUTURE: Handle in Recorder subclass instead?
@@ -981,7 +954,6 @@ class CommandInterface:
 
             return self._updateAll(secure=secure, timeout=timeout, callback=callback)
 
-
     def setKeys(self,
                 keys: Union[bytearray, bytes],
                 timeout: Union[int, float] = 5,
@@ -1000,7 +972,6 @@ class CommandInterface:
         """
         cmd = {'EBMLCommand': {'SetKeys': keys}}
         return self._sendCommand(cmd, timeout=timeout, callback=callback)
-
 
     # =======================================================================
     # Wi-Fi
@@ -1057,8 +1028,8 @@ class CommandInterface:
 
                 sleep(min(timeout, 0.5))
 
-        raise DeviceTimeout('Timed out waiting to connect to AP SSID {}'.format(ssid))
-
+        raise DeviceTimeout(
+            'Timed out waiting to connect to AP SSID {}'.format(ssid))
 
     def setWifi(self,
                 wifi_data: dict,
@@ -1095,7 +1066,8 @@ class CommandInterface:
         #  as expected (not currently implemented in FW?)
 
         if not self.device.hasWifi:
-            raise UnsupportedFeature('{!r} has no Wi-Fi adapter'.format(self.device))
+            raise UnsupportedFeature(
+                '{!r} has no Wi-Fi adapter'.format(self.device))
 
         cmd = {'EBMLCommand': {'SetWiFi': {"AP": wifi_data}}}
 
@@ -1104,7 +1076,6 @@ class CommandInterface:
                           timeout=timeout,
                           interval=interval,
                           callback=callback)
-
 
     def queryWifi(self,
                   timeout: Union[int, float] = 10,
@@ -1130,7 +1101,8 @@ class CommandInterface:
                 without getting a response
         """
         if not self.device.hasWifi:
-            raise UnsupportedFeature('{!r} has no Wi-Fi adapter'.format(self.device))
+            raise UnsupportedFeature(
+                '{!r} has no Wi-Fi adapter'.format(self.device))
 
         response = self._sendCommand(
             {'EBMLCommand': {'QueryWiFi': {}}},
@@ -1143,7 +1115,6 @@ class CommandInterface:
             return None
 
         return response.get('QueryWiFiResponse')
-
 
     def scanWifi(self,
                  timeout: Union[int, float] = 10,
@@ -1180,7 +1151,8 @@ class CommandInterface:
         """
 
         if not self.device.hasWifi:
-            raise UnsupportedFeature('{!r} has no Wi-Fi adapter'.format(self.device))
+            raise UnsupportedFeature(
+                '{!r} has no Wi-Fi adapter'.format(self.device))
 
         cmd = {'EBMLCommand': {'WiFiScan': None}}
 
@@ -1193,7 +1165,8 @@ class CommandInterface:
         aps = []
         if 'WiFiScanResult' in response:  # If at least 1 Wi-Fi was found during the scan
             for ap in response['WiFiScanResult'].get('AP', []):
-                defaults = {'SSID': '', 'RSSI': -1, 'AuthType': 0, 'Known': 0, 'Selected': 0}
+                defaults = {'SSID': '', 'RSSI': -1,
+                            'AuthType': 0, 'Known': 0, 'Selected': 0}
 
                 defaults.update(ap)
                 defaults['Known'] = bool(defaults['Known'])
@@ -1203,7 +1176,6 @@ class CommandInterface:
                 aps.append(defaults)
 
             return aps
-
 
     def updateESP32(self,
                     firmware: str,
@@ -1232,7 +1204,8 @@ class CommandInterface:
         #  if/when we have another means of uploading (serial, wireless,
         #  etc.)
         if not self.device.hasWifi or "ESP" not in self.device.hasWifi:
-            raise UnsupportedFeature("{!r} does not have an ESP32".format(self.device))
+            raise UnsupportedFeature(
+                "{!r} does not have an ESP32".format(self.device))
 
         firmware = os.path.abspath(firmware)
 
@@ -1246,7 +1219,6 @@ class CommandInterface:
 
         cmd = {'EBMLCommand': {'LegacyESP': payload}}
         return self._runSimpleCommand(cmd, timeout=timeout, callback=callback)
-
 
     def getNetworkStatus(self,
                          timeout: Union[int, float] = 10,
@@ -1284,17 +1256,16 @@ class CommandInterface:
                 support Wi-Fi.
         """
         if not self.device.hasWifi:
-            raise UnsupportedFeature('{!r} has no network adapter'.format(self.device))
-
+            raise UnsupportedFeature(
+                '{!r} has no network adapter'.format(self.device))
 
         response = self._sendCommand({'EBMLCommand': {'NetworkStatus': None}},
-                                 response=True,
-                                 timeout=timeout,
-                                 interval=interval,
-                                 callback=callback)
+                                     response=True,
+                                     timeout=timeout,
+                                     interval=interval,
+                                     callback=callback)
 
         return response.get('NetworkStatusResponse')
-
 
     def getNetworkAddress(self,
                           timeout: Union[int, float] = 10,
@@ -1353,7 +1324,6 @@ class CommandInterface:
 
         return mac, ip
 
-
     # =======================================================================
     # Lock ID: A weakly-enforced means of claiming exclusive use of a device.
     # =======================================================================
@@ -1375,7 +1345,6 @@ class CommandInterface:
             :returns: The device's current lock ID, if any.
         """
         raise UnsupportedFeature(self, self.getLockID)
-
 
     def setLockID(self,
                   current: Union[bytearray, bytes, None] = None,
@@ -1407,7 +1376,6 @@ class CommandInterface:
         """
         raise UnsupportedFeature(self, self.setLockID)
 
-
     def clearLockID(self,
                     current: Union[bytearray, bytes, None] = None,
                     response: bool = True,
@@ -1433,7 +1401,6 @@ class CommandInterface:
         # Same as setting with new=b'\x00\x00\x00\x00', but more user-friendly
         raise UnsupportedFeature(self, self.clearLockID)
 
-
     # =======================================================================
     # General device info getting/setting
     # =======================================================================
@@ -1443,7 +1410,7 @@ class CommandInterface:
                  timeout: Union[int, float] = 10,
                  interval: float = .25,
                  callback: Optional[Callable] = None,
-                  **kwargs) -> bytes:
+                 **kwargs) -> bytes:
         """ Retrieve device system information. For 'local' devices, this
             is retrieved via the filesystem. This method is called indirectly
             by methods in `Recorder`. Different subclasses may have
@@ -1462,7 +1429,6 @@ class CommandInterface:
                 the correct schema, etc.).
         """
         raise UnsupportedFeature(self, self._getInfo)
-
 
     def _setInfo(self,
                  index: int,
@@ -1515,7 +1481,6 @@ class SerialCommandInterface(CommandInterface):
     #  the DEVINFO and should be fetched from it. Default is 128.
     DEFAULT_MAX_COMMAND_SIZE = 128
 
-
     def __init__(self,
                  device: 'Recorder',
                  make_crc: bool = True,
@@ -1541,7 +1506,6 @@ class SerialCommandInterface(CommandInterface):
         self.portArgs = serial_kwargs
         self.portArgs.update(self.SERIAL_PARAMS)
 
-
     @classmethod
     def hasInterface(cls, device: "Recorder") -> bool:
         """ Determine if a device supports this `CommandInterface` type.
@@ -1563,7 +1527,6 @@ class SerialCommandInterface(CommandInterface):
         # does not indicate so in the DEVINFO; find the port instead.
         return bool(cls.findSerialPort(device))
 
-
     @property
     def available(self) -> bool:
         """ Is the command interface available and able to accept commands? """
@@ -1578,7 +1541,6 @@ class SerialCommandInterface(CommandInterface):
             if 'No serial port found' in str(err):
                 return False
             raise
-
 
     @classmethod
     def _possibleRecorders(cls,
@@ -1603,7 +1565,6 @@ class SerialCommandInterface(CommandInterface):
                 # Probably text in serial number, ignore if so
                 if 'invalid literal' not in str(err).lower():
                     raise
-
 
     @classmethod
     def findSerialPort(cls,
@@ -1636,7 +1597,6 @@ class SerialCommandInterface(CommandInterface):
         for port, sn in cls._possibleRecorders(strict=strict):
             if sn == devSerial:
                 return port
-
 
     def getSerialPort(self,
                       reset: bool = False,
@@ -1706,7 +1666,6 @@ class SerialCommandInterface(CommandInterface):
         else:
             raise CommandError('No serial port found for device')
 
-
     # =======================================================================
     # The methods below are the ones shared across subclasses
     # =======================================================================
@@ -1718,7 +1677,6 @@ class SerialCommandInterface(CommandInterface):
         """
         self.getSerialPort(reset=True)
         return self.port is not None
-
 
     def close(self) -> bool:
         """ Close the serial connection.
@@ -1740,7 +1698,6 @@ class SerialCommandInterface(CommandInterface):
                              "{!r}".format(type(self).__name__, err))
         return True
 
-
     def _encode(self,
                 data: dict,
                 checkSize: bool = True) -> bytearray:
@@ -1760,7 +1717,6 @@ class SerialCommandInterface(CommandInterface):
         packet.extend(ebml)
         packet = hdlc_encode(packet, crc=self.make_crc)
         return packet
-
 
     def _encodeResponse(self, packet: dict) -> bytearray:
         """
@@ -1785,7 +1741,6 @@ class SerialCommandInterface(CommandInterface):
         packet.extend(ebml)
         packet = hdlc_encode(packet, crc=self.make_crc)
         return packet
-
 
     def _decode(self,
                 packet: bytearray) -> Dict[str, Any]:
@@ -1812,7 +1767,6 @@ class SerialCommandInterface(CommandInterface):
             raise CommunicationError('Response was corrupted or incomplete; '
                                      'did not have expected Corbus header')
 
-
     def _decodeCommand(self, packet: Union[bytearray, bytes]) -> Dict[str, Any]:
         """ Translate a command packet (EBML) into a dictionary. Only used in
             some special cases; not generally used in ordinary "Recorder"
@@ -1828,7 +1782,6 @@ class SerialCommandInterface(CommandInterface):
         else:
             raise CommunicationError('Received command was corrupted or incomplete; '
                                      'did not have expected Corbus header')
-
 
     def _writeCommand(self,
                       packet: Union[bytearray, bytes],
@@ -1850,7 +1803,8 @@ class SerialCommandInterface(CommandInterface):
                 port = self.getSerialPort()
 
                 if port.in_waiting:
-                    logger.debug('Flushing {} bytes from serial input'.format(port.in_waiting))
+                    logger.debug(
+                        'Flushing {} bytes from serial input'.format(port.in_waiting))
                     port.reset_input_buffer()
 
                 return port.write(packet)
@@ -1868,7 +1822,6 @@ class SerialCommandInterface(CommandInterface):
 
         return None
         # raise TimeoutError("Timed out attempting to send command via serial")
-
 
     def _readResponse(self,
                       timeout: Optional[float] = 0.5,
@@ -1905,13 +1858,15 @@ class SerialCommandInterface(CommandInterface):
                             response = self._decode(packet)
                             self._response = time(), response
                             if 'EBMLResponse' not in response:
-                                logger.warning('Response did not contain an EBMLResponse element')
+                                logger.warning(
+                                    'Response did not contain an EBMLResponse element')
                             return response.get('EBMLResponse', response)
                         else:
                             # In the future, there might be other devices on the
                             # bus, so a wrong header might be for a different
                             # address. Ignore.
-                            logger.debug("Packet incomplete or has wrong header, ignoring")
+                            logger.debug(
+                                "Packet incomplete or has wrong header, ignoring")
                 else:
                     sleep(.01)
 
@@ -1926,7 +1881,6 @@ class SerialCommandInterface(CommandInterface):
 
         return None
         # raise TimeoutError("Timeout waiting for response to serial command")
-
 
     def _sendCommand(self,
                      cmd: dict,
@@ -1976,7 +1930,8 @@ class SerialCommandInterface(CommandInterface):
                         self.index += 1
                         cmd['EBMLCommand']['CommandIdx'] = self.index
                     if lock:
-                        cmd['EBMLCommand']['LockID'] = self.hostId or (b'\x00' * 16)
+                        cmd['EBMLCommand']['LockID'] = self.hostId or (
+                            b'\x00' * 16)
 
                 packet = self._encode(cmd)
                 self.lastCommand = now, deepcopy(cmd)
@@ -2052,9 +2007,11 @@ class SerialCommandInterface(CommandInterface):
                         if not response:
                             return None
                         if queueDepth == 0:
-                            raise DeviceTimeout('Timed out waiting for opening in command queue')
+                            raise DeviceTimeout(
+                                'Timed out waiting for opening in command queue')
                         else:
-                            raise DeviceTimeout('Timed out waiting for command response')
+                            raise DeviceTimeout(
+                                'Timed out waiting for command response')
 
             except TimeoutError:
                 if not response:
@@ -2067,7 +2024,6 @@ class SerialCommandInterface(CommandInterface):
 
             finally:
                 self.port.close()
-
 
     def _getTime(self,
                  pause: bool = True,
@@ -2105,10 +2061,10 @@ class SerialCommandInterface(CommandInterface):
                 dt = response['ClockTime']
                 devTime = self._TIME_PARSER.unpack_from(dt)[0]
             except KeyError:
-                raise DeviceError("GetClock response did not contain ClockTime")
+                raise DeviceError(
+                    "GetClock response did not contain ClockTime")
 
         return sysTime, devTime
-
 
     def _setTime(self,
                  t: Optional[int] = None,
@@ -2151,7 +2107,6 @@ class SerialCommandInterface(CommandInterface):
 
         return t0, t
 
-
     def ping(self,
              data: Union[bytearray, bytes, None] = None,
              timeout: Union[int, float] = 10,
@@ -2160,7 +2115,8 @@ class SerialCommandInterface(CommandInterface):
         """ Verify the recorder is present and responding. Not supported on
             all devices.
 
-            :param data: Optional data, which will be returned verbatim.
+            :param data: An optional binary payload, no larger than 30 bytes, 
+                returned by the recorder verbatim.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
             :param interval: Time (in seconds) between checks for a
@@ -2172,6 +2128,9 @@ class SerialCommandInterface(CommandInterface):
             :return: The received data, which should be identical to the
                 data sent.
         """
+        if len(data) > 30:
+            raise ValueError("Payload larger than 30 bytes.")
+
         cmd = {'EBMLCommand': {'SendPing': b'' if data is None else data}}
         response = self._sendCommand(cmd, timeout=timeout, interval=interval,
                                      callback=callback)
@@ -2180,7 +2139,6 @@ class SerialCommandInterface(CommandInterface):
             raise DeviceError('Ping response did not contain a PingReply')
 
         return response['PingReply']
-
 
     def blink(self,
               duration: int = 3,
@@ -2214,7 +2172,6 @@ class SerialCommandInterface(CommandInterface):
         """
         payload = bytearray([val & 0xff for val in (duration, priority, a, b)])
         self._sendCommand({'EBMLCommand': {'Blink': payload}}, response=False)
-
 
     def getBatteryStatus(self,
                          timeout: Union[int, float] = 1,
@@ -2253,7 +2210,6 @@ class SerialCommandInterface(CommandInterface):
         self._battery = time(), bat
         return bat
 
-
     def startRecording(self,
                        wait: bool = True,
                        timeout: Union[int, float] = 5,
@@ -2276,7 +2232,6 @@ class SerialCommandInterface(CommandInterface):
                                       wait=wait,
                                       timeout=timeout,
                                       callback=callback)
-
 
     def stopRecording(self,
                       wait: bool = True,
@@ -2308,7 +2263,6 @@ class SerialCommandInterface(CommandInterface):
         self.awaitRemount(timeout, callback=callback)
         return True
 
-
     def reset(self,
               wait: bool = True,
               timeout: Union[int, float] = 5,
@@ -2331,7 +2285,6 @@ class SerialCommandInterface(CommandInterface):
                                       wait=wait,
                                       timeout=timeout,
                                       callback=callback)
-
 
     def _updateAll(self,
                    secure: bool = True,
@@ -2359,7 +2312,6 @@ class SerialCommandInterface(CommandInterface):
                                       wait=wait,
                                       timeout=timeout,
                                       callback=callback)
-
 
     def scanWifi(self,
                  timeout: Union[int, float] = 10,
@@ -2408,7 +2360,6 @@ class SerialCommandInterface(CommandInterface):
 
         return self._fileinterface.scanWifi(timeout, interval, callback)
 
-
     # =======================================================================
     # Lock ID: A weakly-enforced means of claiming exclusive use of a device.
     # =======================================================================
@@ -2449,7 +2400,7 @@ class SerialCommandInterface(CommandInterface):
                 return None
 
             lockId = response.get('LockID', None)
-            
+
             if isinstance(lockId, (bytearray, bytes)) and not any(lockId):
                 # All zeros; lock not set.
                 return None
@@ -2458,7 +2409,6 @@ class SerialCommandInterface(CommandInterface):
                 return None
 
             return lockId
-
 
     def setLockID(self,
                   current: Union[bytearray, bytes, None] = None,
@@ -2492,9 +2442,9 @@ class SerialCommandInterface(CommandInterface):
                 return True
 
             cmd = {'EBMLCommand':
-                       {'SetLockID':
-                            {'CurrentLockID': current or (b'\x00' * 16),
-                             'NewLockID': lockId}}}
+                   {'SetLockID':
+                    {'CurrentLockID': current or (b'\x00' * 16),
+                     'NewLockID': lockId}}}
 
             try:
                 self._sendCommand(cmd,
@@ -2509,7 +2459,6 @@ class SerialCommandInterface(CommandInterface):
                 raise
 
             return True
-
 
     def clearLockID(self,
                     current: Union[bytearray, bytes, None] = None,
@@ -2541,7 +2490,6 @@ class SerialCommandInterface(CommandInterface):
                                          response=response, timeout=timeout,
                                          callback=callback))
             return result
-
 
     # =======================================================================
     # General device info getting/setting
@@ -2588,9 +2536,11 @@ class SerialCommandInterface(CommandInterface):
             info = response['GetInfoResponse']['InfoPayload']
         except KeyError:
             if 'GetInfoResponse' in response:
-                raise DeviceError('Response did not contain expected GetInfoResponse element')
+                raise DeviceError(
+                    'Response did not contain expected GetInfoResponse element')
             else:
-                raise DeviceError('Response did not contain a payload of information')
+                raise DeviceError(
+                    'Response did not contain a payload of information')
 
         try:
             return bytes(info)
@@ -2598,7 +2548,6 @@ class SerialCommandInterface(CommandInterface):
             logger.debug('_getInfo() got unexpected payload: '
                          f"{response['GetInfoResponse']['InfoPayload']!r}")
             return info
-
 
     def _setInfo(self,
                  infoIdx: int,
@@ -2647,7 +2596,6 @@ class FileCommandInterface(CommandInterface):
 
         return len(packet)
 
-
     @classmethod
     def hasInterface(cls, device) -> bool:
         """ Determine if a device supports this `CommandInterface` type.
@@ -2671,13 +2619,11 @@ class FileCommandInterface(CommandInterface):
         # the absence of the `FileCommandInterface` element means 'yes'.
         return bool(device.getInfo('FileCommandInterface', 1))
 
-
     @property
     def available(self) -> bool:
         """ Is the command interface available and able to accept commands? """
         return (self.device.available
                 and os.path.isfile(self.device.commandFile))
-
 
     def _readResponse(self,
                       timeout: Optional[Union[int, float]] = None,
@@ -2695,7 +2641,8 @@ class FileCommandInterface(CommandInterface):
             the process to cancel.
         """
         with self.device._busy:
-            responseFile = os.path.join(self.device.path, self.device._RESPONSE_FILE)
+            responseFile = os.path.join(
+                self.device.path, self.device._RESPONSE_FILE)
             if not os.path.isfile(responseFile):
                 return None
 
@@ -2704,7 +2651,8 @@ class FileCommandInterface(CommandInterface):
                 data = self._decode(raw)
 
                 if 'EBMLResponse' not in data:
-                    logger.warning('Response did not contain an EBMLResponse element')
+                    logger.warning(
+                        'Response did not contain an EBMLResponse element')
 
                 return data.get('EBMLResponse', data)
 
@@ -2714,7 +2662,6 @@ class FileCommandInterface(CommandInterface):
                               .format(type(self).__name__, err))
 
         return None
-
 
     def _getTime(self,
                  pause=False,
@@ -2743,7 +2690,6 @@ class FileCommandInterface(CommandInterface):
             devTime = self._TIME_PARSER.unpack_from(devTime)[0]
 
         return sysTime, devTime
-
 
     def _setTime(self,
                  t: Optional[int] = None,
@@ -2785,7 +2731,6 @@ class FileCommandInterface(CommandInterface):
             f.write(payload)
 
         return t0, t
-
 
     def _sendCommand(self,
                      cmd: dict,
@@ -2868,8 +2813,8 @@ class FileCommandInterface(CommandInterface):
                              'because no response required')
                 return
 
-            raise DeviceTimeout("Timed out waiting for command response (%s seconds)" % timeout)
-
+            raise DeviceTimeout(
+                "Timed out waiting for command response (%s seconds)" % timeout)
 
     # =======================================================================
     # Firmware/Userpage/Bootloader updating
@@ -2911,7 +2856,6 @@ class FileCommandInterface(CommandInterface):
                                 timeoutMsg=timeoutMsg,
                                 callback=callback)
 
-
     def _updateAll(self,
                    secure: bool = True,
                    wait: bool = True,
@@ -2940,7 +2884,6 @@ class FileCommandInterface(CommandInterface):
                                       timeout=timeout,
                                       callback=callback)
 
-
     def startRecording(self,
                        wait: bool = True,
                        timeout: Union[int, float] = 10,
@@ -2968,7 +2911,6 @@ class FileCommandInterface(CommandInterface):
                                       wait=wait,
                                       timeout=timeout,
                                       callback=callback)
-
 
     def reset(self,
               wait: bool = True,
@@ -3022,24 +2964,20 @@ class LegacyFileCommandInterface(FileCommandInterface):
 
         return 17 <= device.firmwareVersion <= 19
 
-
     @property
     def canCopyFirmware(self) -> bool:
         """ Can the device get new firmware/userpage from a file? """
         return False
-
 
     @property
     def canRecord(self) -> bool:
         """ Can the device record on command? """
         return not (self.device.isVirtual or self.device.path is None)
 
-
     def setKeys(self, *args, **kwargs):
         """ Update the device's key bundle. Not supported on this device.
         """
         raise UnsupportedFeature(self, self.setKeys)
-
 
     def updateDevice(self, *args, **kwargs) -> bool:
         """ Apply a firmware package and/or device description data update.
