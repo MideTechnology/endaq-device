@@ -1,14 +1,17 @@
 """
 MQTT Device Manager
 """
+
 from collections import defaultdict
 # import inspect
 from io import BytesIO
 import os.path
+from pathlib import Path
 import struct
 import sys
 from time import time
 from typing import Any, ByteString, Dict, List, Optional, Tuple, Union
+from weakref import WeakSet
 
 import ebmlite
 from ebmlite.decoding import readElementID, readElementSize
@@ -28,7 +31,7 @@ from .discovery import DEFAULT_NAME
 from .mqtt_client import MQTTClient
 from .mqtt_interface import STATE_TOPIC, HEADER_TOPIC, MEASUREMENT_TOPIC, COMMAND_TOPIC
 
-__all__ = ('MQTTDeviceManager', 'run')
+__all__ = ('MQTTDeviceManager', 'start', 'stop', 'ValidationError')
 
 # ===========================================================================
 # 'Constants'
@@ -72,7 +75,7 @@ class MQTTDevice:
     and control purposes; this class is more abstract.
     """
 
-    def __init__(self, 
+    def __init__(self,
                  manager: "MQTTDeviceManager",
                  sn: int):
         """ Object for handling streamed IDE data arriving as a series of 
@@ -381,7 +384,7 @@ class MQTTDevice:
 
 
     def _getCacheFile(self,
-                     create: bool = True) -> str:
+                      create: bool = True) -> str:
         """ Get the full path to this device's cached header data. The file
             may or may not exist.
 
@@ -390,8 +393,8 @@ class MQTTDevice:
             :return: The full path to the cache file.
         """
         if create:
-            os.makedirs(CACHE_PATH, exist_ok=True)
-        return os.path.join(CACHE_PATH, f'{self.sn}_header.ide')
+            os.makedirs(self.manager.cachePath, exist_ok=True)
+        return os.path.join(self.manager.cachePath, f'{self.sn}_header.ide')
 
 
     def loadHeader(self) -> bytes:
@@ -451,18 +454,25 @@ class MQTTDeviceManager(MQTTClient):
     A client that monitors several MQTT topics, keeping track of sensors and
     other devices, and providing additional features for device discovery and
     data streaming.
+
+    Starting an `MQTTDeviceManager` is typically done via the `start()` function.
     """
 
     DEFAULT_DEVINFO = {
-        'RecorderTypeUID':  0b11 << 30,
+        'RecorderTypeUID':  0b11 << 30,  # Indicates it's a manager
     }
 
+    # For keeping track of running instances so they can be stopped,
+    # preventing zombie threads.
+    __instances__ = WeakSet()
 
     def __init__(self,
                  client: paho.mqtt.client.Client,
                  make_crc: bool = True,
                  ignore_crc: bool = False,
-                 interval: int = 45):
+                 interval: int = 45,
+                 cache: Union[str, Path] = CACHE_PATH,
+                 shutdown: bool = False):
         """ A client that monitors several MQTT topics, providing additional
             features for device discovery and data streaming.
 
@@ -473,10 +483,18 @@ class MQTTDeviceManager(MQTTClient):
                 or responses.
             :param interval: The time between published `state` updates. If
                 0, no `state` updates will be published.
+            :param cache: The path to the directory where cached data is stored.
+            :param shutdown: If `True`, the manager can be shut down remotely
+                via the ``Shutdown`` EBML command.
         """
         super().__init__(client, "manager", name="MQTT Device Manager",
                          make_crc=make_crc, ignore_crc=ignore_crc,
                          interval=interval)
+
+        type(self).__instances__.add(self)
+
+        self.cachePath = cache
+        self.allowShutdown = shutdown
 
         self.knownDevices: dict[int, MQTTDevice] = {}
 
@@ -585,24 +603,22 @@ class MQTTDeviceManager(MQTTClient):
 
 
     def cleanCache(self,
-                   root: Optional[str] = CACHE_PATH,
                    retention: int = 24) -> Tuple[List[str], List[Exception]]:
         """ Clean out cached header data.
 
-            :param root: The cache file directory, overriding the default.
             :param retention: The cached file retention period. Files not
                 modified in `retention` hours will be removed.
         """
         logger.debug(f'MQTTDeviceManager.cleanCache: Clearing cached headers '
-                     f'older than {retention} hours from "{root}"...')
+                     f'older than {retention} hours from "{self.cachePath}"...')
         limit = retention * 60 * 60
         errs = []
         cleared = []
-        if os.path.isdir(root):
-            for f in os.listdir(root):
+        if os.path.isdir(self.cachePath):
+            for f in os.listdir(self.cachePath):
                 if f.lower().endswith('_header.ide'):
                     try:
-                        filename = os.path.join(root, f)
+                        filename = os.path.join(self.cachePath, f)
                         if time() - os.path.getmtime(filename) > limit:
                             os.remove(filename)
                             cleared.append(filename)
@@ -685,7 +701,8 @@ class MQTTDeviceManager(MQTTClient):
             item = dev.getStateInfo()
 
             if timeout and time() - item['LastContact'] > timeout:
-                logger.debug(f'GetDeviceList: skipping {dev.sn} due to timeout ({time() - item["LastContact"]})')
+                logger.debug(f'GetDeviceList: skipping {dev.sn} due to timeout '
+                             f'({time() - item["LastContact"]})')
                 continue
 
             devices.append(item)
@@ -726,20 +743,38 @@ class MQTTDeviceManager(MQTTClient):
         return response, None, None
 
 
+    # noinspection PyUnusedLocal
+    def command_Shutdown(
+                self,
+                payload: Any,
+                lockId: Optional[ByteString] = None
+            ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+        """ Handle a ``Shutdown`` command (EBML ID 0x5CFF). May be refused.
+            This may not return anything to the sender, as the shutdown is
+            immediate.
+        """
+        if not self.allowShutdown:
+            return {}, DeviceStatusCode.ERR_INVALID_COMMAND, 'Remote shutdown prohibited'
+
+        # FUTURE: Check for a key or something in the payload?
+        self.stop()
+        return {}, None, None
+
+
 # ===========================================================================
 #
 # ===========================================================================
 
-def run(host: Optional[str] = MQTT_BROKER,
-        port: int = MQTT_PORT,
-        advertise: bool = True,
-        name: Optional[str] = DEFAULT_NAME,
-        background: bool = True,
-        clientArgs: Dict[str, Any] = None,
-        connectArgs: Dict[str, Any] = None,
-        advertArgs: Dict[str, Any] = None,
-        managerArgs: Dict[str, Any] = None,
-        clean: Optional[int] = None):
+def start(host: Optional[str] = MQTT_BROKER,
+          port: int = MQTT_PORT,
+          advertise: bool = True,
+          name: Optional[str] = DEFAULT_NAME,
+          background: bool = True,
+          clientArgs: Dict[str, Any] = None,
+          connectArgs: Dict[str, Any] = None,
+          advertArgs: Dict[str, Any] = None,
+          managerArgs: Dict[str, Any] = None,
+          clean: Optional[int] = None):
     """
     Start the Device Manager and (optionally) the mDNS advertiser.
     This is a temporary implementation and will be refactored.
@@ -817,6 +852,21 @@ def run(host: Optional[str] = MQTT_BROKER,
     return manager
 
 
+def stop():
+    """ Shut down all running `MQTTDeviceManager` instances. A convenience
+        function intended for use if a reference to the `MQTTDeviceManager`
+        wasn't kept (e.g., started with ``start()``, not ``m = start()``)
+        or was otherwise lost.
+    """
+    for m in MQTTDeviceManager.__instances__:
+        if not m:
+            continue
+        try:
+            m.stop()
+        except (TypeError, ValueError):
+            pass
+
+
 # ===========================================================================
 #
 # ===========================================================================
@@ -853,4 +903,4 @@ if __name__ == "__main__":
             config = json.load(f)
             kwargs.update(config)
 
-    run(**kwargs)
+    start(**kwargs)

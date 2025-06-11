@@ -123,7 +123,7 @@ class MQTTClient(CommandClient):
         if not self.updateThread:
             return True
 
-        while time() > deadline:
+        while time() < deadline:
             if not self.updateThread.is_alive():
                 return True
             sleep(0.1)
