@@ -2128,8 +2128,9 @@ class SerialCommandInterface(CommandInterface):
             :return: The received data, which should be identical to the
                 data sent.
         """
-        if len(data) > 30:
-            raise ValueError("Payload larger than 30 bytes.")
+        if data is not None:
+            if len(data) > 30:
+                raise ValueError("Payload larger than 30 bytes.")
 
         cmd = {'EBMLCommand': {'SendPing': b'' if data is None else data}}
         response = self._sendCommand(cmd, timeout=timeout, interval=interval,
