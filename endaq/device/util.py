@@ -2,11 +2,13 @@
 Some basic utility functions, for internal use.
 """
 
+import calendar
+from datetime import datetime
 import errno
 import os.path
 import pathlib
 import shutil
-from typing import Any,ByteString, Dict, Union
+from typing import Any, ByteString, Dict, Union
 
 import logging
 logger = logging.getLogger(__name__)
@@ -78,3 +80,16 @@ def dump(data: ByteString, length: int = 8) -> str:
     if not length:
         length = len(data)
     return ' '.join(f'{x:02x}' for x in data[:length])
+
+
+def time2epoch(t: Union[int, float, datetime, tuple]) -> int:
+    """ Convenient function to convert any of several representations
+        of time (`datetime`, timestamps, time struct, etc.) into
+        integer UNIX epoch timestamps.
+    """
+    if isinstance(t, datetime):
+        return calendar.timegm(t.timetuple())
+    elif isinstance(t, tuple):
+        return calendar.timegm(t)
+    else:
+        return int(t)
