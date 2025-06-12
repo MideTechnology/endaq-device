@@ -683,8 +683,8 @@ class CommandInterface:
         """ Verify the recorder is present and responding. Not supported on
             all devices.
 
-            :param data: An optional binary payload, returned by the recorder
-                verbatim.
+            :param data: An optional binary payload, not larger than 30 bytes, 
+                returned by the recorder verbatim.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately; `None` or -1 will wait
                 indefinitely.
@@ -2160,7 +2160,8 @@ class SerialCommandInterface(CommandInterface):
         """ Verify the recorder is present and responding. Not supported on
             all devices.
 
-            :param data: Optional data, which will be returned verbatim.
+            :param data: An optional binary payload, not larger than 30 bytes, 
+                returned by the recorder verbatim.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
             :param interval: Time (in seconds) between checks for a
@@ -2172,6 +2173,10 @@ class SerialCommandInterface(CommandInterface):
             :return: The received data, which should be identical to the
                 data sent.
         """
+        if data is not None:
+            if len(data) > 30:
+                raise ValueError("Payload larger than 30 bytes.")
+            
         cmd = {'EBMLCommand': {'SendPing': b'' if data is None else data}}
         response = self._sendCommand(cmd, timeout=timeout, interval=interval,
                                      callback=callback)
