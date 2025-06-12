@@ -1,6 +1,6 @@
-=========================
-``endaq.device`` and MQTT
-=========================
+======================
+enDAQ Devices and MQTT
+======================
 .. default-domain:: py
 .. currentmodule:: endaq.device
 
@@ -60,7 +60,7 @@ Configure the enDAQ device
 --------------------------
 
 .. Important::
-  These instructions will change once the firmware with MQTT functionality is finalized.
+  Some of these instructions will change once the firmware with MQTT functionality is finalized.
 
 .. image:: ../_static/mqtt_config.png
 
@@ -72,10 +72,10 @@ Configure the enDAQ device
 6. In the 'Wi-Fi' tab, select your Wi-Fi access point and enter its password (if not already selected).
 7. In the 'General' tab, set the Wi-Fi options to match the image above:
 
-  - **'While Asleep'/'While Triggering'/'While Recording' lists:** All *On*
-  - **'Endaq Cloud Settings' group:** All *unchecked*
-  - **'Streaming and Wireless Control Settings' group:** All *checked*
-  - **'mDNS Instance Name' field:** `enDAQ Remote Interface`
+    * **'While Asleep'/'While Triggering'/'While Recording' lists:** All *On*
+    * **'Endaq Cloud Settings' group:** All *unchecked*
+    * **'Streaming and Wireless Control Settings' group:** All *checked*
+    * **'mDNS Instance Name' field:** `enDAQ Remote Interface`
 
 8. Click 'OK' to exit the dialog. If prompted to reset the device, click 'Yes'. If not prompted to reset, unplug the device and plug it in again.
 
