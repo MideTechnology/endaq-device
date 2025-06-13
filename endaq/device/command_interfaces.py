@@ -537,7 +537,7 @@ class CommandInterface:
                 require no arguments.
             :returns: `True` if the command was successful.
         """
-        if not isinstance(statusCode, (list, tuple)) or statusCode is None:
+        if not isinstance(statusCode, (list, tuple)) and statusCode is not None:
             statusCode = [statusCode]
 
         if self.device.isRemote:
