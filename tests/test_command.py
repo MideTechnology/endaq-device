@@ -119,6 +119,7 @@ def test_command_getStatus(dev):
     mock_io = applyMockCommandIO(dev)
     mock_io.setResponse(TEST_RESPONSE, resultcode=0)
 
+    dev.command.status = 0, None, None
     oldstatus = dev.command.status
     newstatus = dev.command.getStatus()
     assert oldstatus != newstatus

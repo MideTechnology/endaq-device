@@ -12,6 +12,7 @@ import shutil
 import string
 import struct
 import sys
+from threading import Event
 from time import sleep, time, struct_time
 from typing import Any, AnyStr, Dict, Generator, List, Optional, Tuple, Union, Callable
 from uuid import uuid4
@@ -100,6 +101,7 @@ class CommandInterface:
         # message. Not available on all interfaces.
         self.response: Tuple[float, Optional[int], Optional[str]] = (0, None, None)
         self.status: Tuple[float, Optional[int], Optional[str]] = (0, None, None)
+        self._statusChanged = Event()
 
         # The time and value of the device's last reported LockID.
         self.lockId: Tuple[Optional[float], Optional[bytes]] = (0, None)
@@ -475,6 +477,7 @@ class CommandInterface:
             except ValueError:
                 logger.debug('Received unknown DeviceStatusCode: {}'.format(statusCode))
             self.status = now, statusCode, statusMsg
+            self._statusChanged.set()
 
         lockId = lockId or '\x00' * 16
         if lockId != self.lockId[1]:
@@ -2379,11 +2382,11 @@ class SerialCommandInterface(CommandInterface):
                 corresponding status message (if any).
         """
         with self.device._busy:
-            lastStatus = self.status[0]
             self.ping(timeout=timeout, callback=callback)
-            if self.status[0] == lastStatus:
-                raise CommandError('Device responded but did not report its status')
-            return self.status
+            if self._statusChanged.is_set():
+                self._statusChanged.clear()
+                return self.status
+            raise CommandError('Device responded but did not report its status')
 
 
     def _updateAll(self,
