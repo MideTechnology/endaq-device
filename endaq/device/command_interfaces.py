@@ -3,7 +3,6 @@ Command interfaces: the mechanisms that communicate with
 and control the recording device.
 """
 
-import calendar
 from copy import deepcopy
 from datetime import datetime
 import errno
@@ -31,6 +30,7 @@ from .exceptions import CRCError
 from .types import Epoch, Filename
 from . import response_codes
 from .response_codes import *
+from . import util
 
 if sys.platform == 'darwin':
     from . import macos as os_specific
@@ -407,12 +407,7 @@ class CommandInterface:
         """
         if t is not None:
             pause = False
-            if isinstance(t, datetime):
-                t = calendar.timegm(t.timetuple())
-            elif isinstance(t, (struct_time, tuple)):
-                t = calendar.timegm(t)
-            else:
-                t = int(t)
+            t = util.time2epoch(t)
 
         with self.device._busy:
             try:
@@ -516,7 +511,7 @@ class CommandInterface:
 
     def _runSimpleCommand(self,
                           cmd: dict,
-                          statusCode: int = DeviceStatusCode.RESET_PENDING,
+                          statusCode: Union[None, int, List[int]] = DeviceStatusCode.RESET_PENDING,
                           timeoutMsg: Optional[str] = None,
                           wait: bool = True,
                           timeout: Union[int, float] = 5,
@@ -527,8 +522,10 @@ class CommandInterface:
             expected/required.
 
             :param cmd: The command to execute.
-            :param statusCode: The ``<CommandResponseCode>`` expected in the
-                acknowledgement (if the interface supports one).
+            :param statusCode: A ``<CommandResponseCode>`` values expected in
+                the acknowledgement (if the interface supports one). May also
+                be a list if success could generate different responses (e.g.,
+                in different firmware versions).
             :param wait: If `True`, wait for the recorer to respond and/or
                 dismount.
             :param timeout: Time (in seconds) to wait for a response before
@@ -540,15 +537,21 @@ class CommandInterface:
                 require no arguments.
             :returns: `True` if the command was successful.
         """
+        if not isinstance(statusCode, (list, tuple)) and statusCode is not None:
+            statusCode = [statusCode]
+
         if self.device.isRemote:
             wait = False
 
+        lastStatus = self.status[0]
         self._sendCommand(cmd, response=False, timeout=0.1, callback=callback)
 
         # Since no response is expected, a failure to read a response caused
         # by the device resetting will just set self.status to (None, None).
         # Success is self.status[1] == None or the expected status code.
-        if self.response[1] is not None and self.response[1] != statusCode:
+        if (statusCode is not None
+                and self.response[0] != lastStatus
+                and self.response[1] not in statusCode):
             return False
 
         if wait:
