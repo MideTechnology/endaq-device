@@ -3,7 +3,7 @@ Some basic utility functions, for internal use.
 """
 
 import calendar
-from datetime import datetime
+import datetime
 import errno
 import os.path
 import pathlib
@@ -82,14 +82,25 @@ def dump(data: ByteString, length: int = 8) -> str:
     return ' '.join(f'{x:02x}' for x in data[:length])
 
 
-def time2epoch(t: Union[int, float, datetime, tuple]) -> int:
+def time2epoch(t: Union[int, float, datetime.datetime, tuple]) -> int:
     """ Convenient function to convert any of several representations
         of time (`datetime`, timestamps, time struct, etc.) into
-        integer UNIX epoch timestamps.
+        integer UNIX epoch timestamps (UTC).
     """
-    if isinstance(t, datetime):
+    if isinstance(t, datetime.datetime):
         return calendar.timegm(t.timetuple())
     elif isinstance(t, tuple):
         return calendar.timegm(t)
     else:
         return int(t)
+
+
+def utcfromtimestamp(timestamp: int) -> datetime.datetime:
+    """ Convert an Epoch timestamp to a UTC datetime, getting around
+        deprecated `datetime.datetime.utcfromtimestamp` needed for
+        Python 3.9. To be removed once Python 3.9 is sunsetted.
+    """
+    try:
+        return datetime.datetime.fromtimestamp(timestamp, datetime.UTC)
+    except AttributeError:
+        return datetime.datetime.utcfromtimestamp(timestamp)

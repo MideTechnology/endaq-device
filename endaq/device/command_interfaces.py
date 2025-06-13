@@ -48,7 +48,6 @@ if TYPE_CHECKING:
 #
 # ===========================================================================
 
-
 class CommandInterface:
     """
     Base class for command interfaces, the mechanism that communicates with
@@ -258,12 +257,12 @@ class CommandInterface:
                 in place, but as a convenience, it is also returned).
         """
         if not response:
-            return
+            return None
 
         for name, code in [(k, v) for k, v in response.items()
-                           if k in response_codes.__dict__]:
+                           if k in vars(response_codes)]:
             try:
-                response[name] = response_codes.__dict__[name](code)
+                response[name] = vars(response_codes)[name](code)
             except (AttributeError, TypeError, ValueError):
                 logger.debug('Received unknown {}: {}'.format(name, code))
                 pass
@@ -376,8 +375,8 @@ class CommandInterface:
         if epoch:
             return sysTime, devTime
 
-        return (datetime.utcfromtimestamp(sysTime),
-                datetime.utcfromtimestamp(devTime))
+        return (util.utcfromtimestamp(sysTime),
+                util.utcfromtimestamp(devTime))
 
 
     def setTime(self,
@@ -1062,7 +1061,7 @@ class CommandInterface:
         with self.device._busy:
             self.setWifi(cmd, timeout=timeout, callback=callback)
             if not wait or timeout == 0:
-                return
+                return None
 
             while timeout < 0 or time() < deadline:
                 if callback is not None and callback():
@@ -1072,7 +1071,7 @@ class CommandInterface:
                 if response:
                     status = response.get('WiFiConnectionStatus')
                     if status == WiFiConnectionStatus.CONNECTED:
-                        return
+                        return None
                 else:
                     logger.debug('setAP(): got bad queryWifi() response: {!r}'
                                  .format(response))
@@ -1224,7 +1223,7 @@ class CommandInterface:
 
                 aps.append(defaults)
 
-            return aps
+        return aps
 
 
     def updateESP32(self,
@@ -1659,6 +1658,8 @@ class SerialCommandInterface(CommandInterface):
             if sn == devSerial:
                 return port
 
+        return None
+
 
     def getSerialPort(self,
                       reset: bool = False,
@@ -1915,7 +1916,7 @@ class SerialCommandInterface(CommandInterface):
 
         while timeout < 0 or time() < deadline:
             if callback is not None and callback():
-                return
+                return None
             try:
                 waiting = self.port.in_waiting
                 if waiting:
@@ -2376,8 +2377,12 @@ class SerialCommandInterface(CommandInterface):
                 timestamp of the status update, the status code, and the
                 corresponding status message (if any).
         """
-        self.ping(timeout=timeout, callback=callback)
-        return super().getStatus()
+        with self.device._busy:
+            lastStatus = self.status[0]
+            self.ping(timeout=timeout, callback=callback)
+            if self.status[0] == lastStatus:
+                raise CommandError('Device responded but did not report its status')
+            return self.status
 
 
     def _updateAll(self,
@@ -2889,13 +2894,13 @@ class FileCommandInterface(CommandInterface):
                     if not response:
                         logger.debug('Ignoring timeout waiting for CMDQueue '
                                      'to empty because no response required')
-                        return
+                        return None
 
                     raise DeviceTimeout("Timed out waiting for device to complete "
                                         "queued commands (%s remaining)" % queueDepth)
 
                 if callback is not None and callback():
-                    return
+                    return None
 
             self._writeCommand(ebml)
 
@@ -2906,14 +2911,14 @@ class FileCommandInterface(CommandInterface):
                     return data
 
                 if callback is not None and callback():
-                    return
+                    return None
 
                 sleep(interval)
 
             if not response:
                 logger.debug('Ignoring timeout waiting for response '
                              'because no response required')
-                return
+                return None
 
             raise DeviceTimeout("Timed out waiting for command response (%s seconds)" % timeout)
 
