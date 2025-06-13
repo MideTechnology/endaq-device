@@ -2,7 +2,6 @@
 Tests of the command interfaces.
 """
 
-from copy import deepcopy
 import os.path
 import pytest
 
@@ -11,7 +10,7 @@ from endaq.device import getRecorder, UnsupportedFeature
 from endaq.device.command_interfaces import CommandInterface, FileCommandInterface, SerialCommandInterface
 
 from .fake_recorders import RECORDER_PATHS
-from .mock_hardware import applyMockCommandIO, MockCommandSerialIO
+from .mock_hardware import applyMockCommandIO
 
 # Clear any cached devices, just to be safe
 endaq.device.RECORDERS.clear()
@@ -33,6 +32,7 @@ TEST_COMMAND = {
         'CommandIdx': 2}}
 
 # Simple example response to simple example command
+# Note: the mock IO method `setResponse()` will increment `DeviceStatusCode`
 TEST_RESPONSE = {
     'EBMLResponse': {
         'ResponseIdx': 2,
@@ -109,14 +109,19 @@ def test_command_ping(dev):
     """ Test the `ping()` command on devices that support it.
     """
     mock_io = applyMockCommandIO(dev)
-    mock_io.response = mock_io.encodeResponse({'EBMLResponse':
-                                               {'ResponseIdx': dev.command.index + 1,
-                                                'CMDQueueDepth': 1,
-                                                'DeviceStatusCode': 0,
-                                                'PingReply': bytearray(b'hello')}},
-                                              resultcode=0)
-    
-    assert dev.command.ping() == bytearray(b'hello')
+    mock_io.setResponse(TEST_RESPONSE, resultcode=0)
+
+    assert dev.command.ping() == TEST_RESPONSE['EBMLResponse']['PingReply']
+
+
+@pytest.mark.parametrize("dev", SERIAL_DEVICES)
+def test_command_getStatus(dev):
+    mock_io = applyMockCommandIO(dev)
+    mock_io.setResponse(TEST_RESPONSE, resultcode=0)
+
+    oldstatus = dev.command.status
+    newstatus = dev.command.getStatus()
+    assert oldstatus != newstatus
 
 
 @pytest.mark.parametrize("dev", WIFI_DEVICES)
@@ -124,7 +129,5 @@ def test_command_scanWifi(dev):
     """ Test the `scanWifi()` command on devices that support it.
     """
     mock_io = applyMockCommandIO(dev)
-    response = deepcopy(WIFI_SCAN)
-    response['EBMLResponse']['ResponseIdx'] = dev.command.index + 1
-    mock_io.response = mock_io.encodeResponse(response, resultcode=0)
-    assert dev.command.scanWifi() == response['EBMLResponse']['WiFiScanResult']['AP']
+    mock_io.setResponse(WIFI_SCAN, resultcode=0)
+    assert dev.command.scanWifi() == WIFI_SCAN['EBMLResponse']['WiFiScanResult']['AP']
