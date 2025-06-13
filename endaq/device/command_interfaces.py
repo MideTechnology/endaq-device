@@ -259,10 +259,11 @@ class CommandInterface:
         if not response:
             return None
 
-        for name, code in [(k, v) for k, v in response.items()
-                           if k in vars(response_codes)]:
+        codes = vars(response_codes)
+        for name, code in ((k, v) for k, v in response.items()
+                           if k in codes):
             try:
-                response[name] = vars(response_codes)[name](code)
+                response[name] = codes[name](code)
             except (AttributeError, TypeError, ValueError):
                 logger.debug('Received unknown {}: {}'.format(name, code))
                 pass
@@ -2183,7 +2184,7 @@ class SerialCommandInterface(CommandInterface):
         """ Verify the recorder is present and responding. Not supported on
             all devices.
 
-            :param data: An optional binary payload, not larger than 30 bytes, 
+            :param data: An optional binary payload, not larger than 30 bytes,
                 returned by the recorder verbatim.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
@@ -2199,7 +2200,7 @@ class SerialCommandInterface(CommandInterface):
         if data is not None:
             if len(data) > 30:
                 raise ValueError("Payload larger than 30 bytes.")
-            
+
         cmd = {'EBMLCommand': {'SendPing': b'' if data is None else data}}
         response = self._sendCommand(cmd, timeout=timeout, interval=interval,
                                      callback=callback)
@@ -2501,7 +2502,7 @@ class SerialCommandInterface(CommandInterface):
                 return None
 
             lockId = response.get('LockID', None)
-            
+
             if isinstance(lockId, (bytearray, bytes)) and not any(lockId):
                 # All zeros; lock not set.
                 return None
