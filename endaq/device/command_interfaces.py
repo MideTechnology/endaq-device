@@ -642,6 +642,25 @@ class CommandInterface:
         raise NotImplementedError
 
 
+    def getStatus(self,
+                  timeout: Union[int, float] = 10,
+                  callback: Optional[Callable] = None
+                  ) -> Tuple[float, Optional[int], Optional[str]]:
+        """ Get the device's status.
+
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a response
+                will be cancelled. The callback function should require no
+                arguments.
+            :return: The device's current status, as a tuple containing the
+                timestamp of the status update, the status code, and the
+                corresponding status message (if any).
+        """
+        return self.status
+
+
     def getBatteryStatus(self,
                          timeout: Union[int, float] = 1,
                          callback: Optional[Callable] = None) -> bool:
@@ -2336,6 +2355,26 @@ class SerialCommandInterface(CommandInterface):
                                       wait=wait,
                                       timeout=timeout,
                                       callback=callback)
+
+
+    def getStatus(self,
+                  timeout: Union[int, float] = 10,
+                  callback: Optional[Callable] = None
+                  ) -> Tuple[float, Optional[int], Optional[str]]:
+        """ Get the device's status.
+
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a response
+                will be cancelled. The callback function should require no
+                arguments.
+            :return: The device's current status, as a tuple containing the
+                timestamp of the status update, the status code, and the
+                corresponding status message (if any).
+        """
+        self.ping(timeout=timeout, callback=callback)
+        return super().getStatus()
 
 
     def _updateAll(self,
