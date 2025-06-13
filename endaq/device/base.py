@@ -43,6 +43,7 @@ from . import command_interfaces
 from .command_interfaces import CommandInterface
 from .exceptions import *
 from .types import Drive, Filename, Epoch
+from . import util
 
 logger = logging.getLogger(__name__)
 
@@ -791,7 +792,8 @@ class Recorder:
         """ The recorder's date of manufacture. """
         bd = self.getInfo('DateOfManufacture')
         if bd is not None:
-            return datetime.utcfromtimestamp(bd)
+            return util.utcfromtimestamp(bd)
+        return None
 
     
     @property
@@ -1069,7 +1071,7 @@ class Recorder:
         return ci.getClockDrift(pause=pause, retries=retries, timeout=timeout)
 
 
-    def _parsePolynomials(self, cal: MasterElement) -> Dict[int, Transform]:
+    def _parsePolynomials(self, cal: MasterElement) -> Optional[Dict[int, Transform]]:
         """ Helper method to parse CalibrationList EBML into `Transform`
             objects.
         """
@@ -1081,7 +1083,7 @@ class Recorder:
             return calPolys
         except (KeyError, IndexError, ValueError) as err:
             logger.debug("_parsePolynomials() raised a possibly-allowed exception: %r" % err)
-            pass
+            return None
 
 
     def getManifest(self) -> Union[Dict[str, Any], None]:
@@ -1237,7 +1239,7 @@ class Recorder:
         if data:
             cd = data.get('CalibrationDate', None)
             if cd is not None and not epoch:
-                return datetime.utcfromtimestamp(cd)
+                return util.utcfromtimestamp(cd)
             return cd
         return None
 
@@ -1274,7 +1276,7 @@ class Recorder:
         """
         ce = self._getCalExpiration(self.getCalibration(user=user))
         if ce is not None and not epoch:
-            return datetime.utcfromtimestamp(ce)
+            return util.utcfromtimestamp(ce)
         return ce
 
 

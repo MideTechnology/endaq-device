@@ -6,6 +6,7 @@ TODO: BUG: There is an issue reading responses when using MockCommandFileIO,
     but it only seems to happen when running tests on GitHub. The test
     `test_command_scanWifi()` has been modified to exclude the serial W8.
 """
+from copy import deepcopy
 
 import endaq.device
 from endaq.device.command_interfaces import CommandInterface, FileCommandInterface
@@ -88,7 +89,7 @@ class MockCommandFileIO:
         a `FileCommandInterface`):
 
             mock_io = MockCommandFileIO(dev)
-            mock_io.response = mock_io.encodeResponse(<EBMLResponse dict>)
+            mock_io.setResponse(<EBMLResponse dict>)
     """
 
     def __init__(self, device: endaq.device.Recorder):
@@ -120,14 +121,19 @@ class MockCommandFileIO:
         return self.response
 
 
-    def encodeResponse(self, response: dict) -> bytearray:
-        """ Utility method to encode a dictionary containing a device
-            response into the raw format expected of the device.
+    def setResponse(self, response: dict, increment: bool = True):
+        """ Encode a dictionary containing a device response into the raw
+            format expected of the device and set it as the simulated response
+            to the next command (`MockCommandFileIO.response`.
 
             :param response: The response dictionary.
-            :return: The response as raw binary.
+            :param increment: If `True`, set the `ResponseIdx` in the response
+                to the device's. If `False`, the response is encoded verbatim.
         """
-        return CommandInterface._encode(self.device.command, response, checkSize=False)
+        if increment:
+            response = deepcopy(response)
+            response['EBMLResponse']['ResponseIdx'] = self.device.command.index + 1
+        self.response = CommandInterface._encode(self.device.command, response, checkSize=False)
 
 
 
@@ -146,13 +152,13 @@ class MockCommandSerialIO:
         a `SerialCommandInterface`):
 
             mock_io = MockCommandSerialIO(dev)
-            mock_io.response = mock_io.encodeResponse({'EBMLResponse':
-                                                       {'ResponseIdx': dev.command.index + 1,
-                                                        'CMDQueueDepth': 1,
-                                                        'CommandResponseCode': 0,
-                                                        'DeviceStatusCode': 0,
-                                                        'PingReply': bytearray(b'hello')}},
-                                                      resultcode=0)
+            mock_io.setResponse({'EBMLResponse':
+                                   {'ResponseIdx': 2,
+                                    'CMDQueueDepth': 1,
+                                    'CommandResponseCode': 0,
+                                    'DeviceStatusCode': 0,
+                                    'PingReply': bytearray(b'hello')}},
+                                  resultcode=0)
             assert dev.command.ping() == bytearray(b'hello')
 
     """
@@ -178,17 +184,26 @@ class MockCommandSerialIO:
         self.port.response = data
 
 
-    def encodeResponse(self, response: dict, resultcode: int = 0) -> bytearray:
-        """ Utility method to encode a dictionary containing a device
-            response into the raw format expected from the device.
+    def setResponse(self,
+                    response: dict,
+                    resultcode: int = 0,
+                    increment: bool = True) -> bytearray:
+        """ Encode a dictionary containing a device response into the raw
+            format expected of the device and set it as the simulated response
+            to the next command (`MockCommandSerialIO.response`.
 
             :param response: The response dictionary.
             :param resultcode: The Corbus response code. Not applicable to
                 `FileCommandInterface`. Non-zero is an error.
+            :param increment: If `True`, set the `ResponseIdx` in the response
+                to the device's. If `False`, the response is encoded verbatim.
             :return: The response as raw binary.
         """
+        if increment:
+            response = deepcopy(response)
+            response['EBMLResponse']['ResponseIdx'] = self.device.command.index + 1
         response = CommandInterface._encode(self.device.command, response, checkSize=False)
-        return hdlc_encode(bytearray([0x81, 0x00, resultcode]) + response)
+        self.response = hdlc_encode(bytearray([0x81, 0x00, resultcode]) + response)
 
 
     def getSerialPort(self, *args, **kwargs):

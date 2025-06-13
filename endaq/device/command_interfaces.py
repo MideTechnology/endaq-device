@@ -12,6 +12,7 @@ import shutil
 import string
 import struct
 import sys
+from threading import Event
 from time import sleep, time, struct_time
 from typing import Any, AnyStr, Dict, Generator, List, Optional, Tuple, Union, Callable
 from uuid import uuid4
@@ -47,7 +48,6 @@ if TYPE_CHECKING:
 # ===========================================================================
 #
 # ===========================================================================
-
 
 class CommandInterface:
     """
@@ -101,6 +101,7 @@ class CommandInterface:
         # message. Not available on all interfaces.
         self.response: Tuple[float, Optional[int], Optional[str]] = (0, None, None)
         self.status: Tuple[float, Optional[int], Optional[str]] = (0, None, None)
+        self._statusChanged = Event()
 
         # The time and value of the device's last reported LockID.
         self.lockId: Tuple[Optional[float], Optional[bytes]] = (0, None)
@@ -258,12 +259,13 @@ class CommandInterface:
                 in place, but as a convenience, it is also returned).
         """
         if not response:
-            return
+            return None
 
-        for name, code in [(k, v) for k, v in response.items()
-                           if k in response_codes.__dict__]:
+        codes = vars(response_codes)
+        for name, code in ((k, v) for k, v in response.items()
+                           if k in codes):
             try:
-                response[name] = response_codes.__dict__[name](code)
+                response[name] = codes[name](code)
             except (AttributeError, TypeError, ValueError):
                 logger.debug('Received unknown {}: {}'.format(name, code))
                 pass
@@ -376,8 +378,8 @@ class CommandInterface:
         if epoch:
             return sysTime, devTime
 
-        return (datetime.utcfromtimestamp(sysTime),
-                datetime.utcfromtimestamp(devTime))
+        return (util.utcfromtimestamp(sysTime),
+                util.utcfromtimestamp(devTime))
 
 
     def setTime(self,
@@ -475,6 +477,7 @@ class CommandInterface:
             except ValueError:
                 logger.debug('Received unknown DeviceStatusCode: {}'.format(statusCode))
             self.status = now, statusCode, statusMsg
+            self._statusChanged.set()
 
         lockId = lockId or '\x00' * 16
         if lockId != self.lockId[1]:
@@ -643,6 +646,25 @@ class CommandInterface:
             :returns: `True` if the command was successful.
         """
         raise NotImplementedError
+
+
+    def getStatus(self,
+                  timeout: Union[int, float] = 10,
+                  callback: Optional[Callable] = None
+                  ) -> Tuple[float, Optional[int], Optional[str]]:
+        """ Get the device's status.
+
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a response
+                will be cancelled. The callback function should require no
+                arguments.
+            :return: The device's current status, as a tuple containing the
+                timestamp of the status update, the status code, and the
+                corresponding status message (if any).
+        """
+        return self.status
 
 
     def getBatteryStatus(self,
@@ -1043,7 +1065,7 @@ class CommandInterface:
         with self.device._busy:
             self.setWifi(cmd, timeout=timeout, callback=callback)
             if not wait or timeout == 0:
-                return
+                return None
 
             while timeout < 0 or time() < deadline:
                 if callback is not None and callback():
@@ -1053,7 +1075,7 @@ class CommandInterface:
                 if response:
                     status = response.get('WiFiConnectionStatus')
                     if status == WiFiConnectionStatus.CONNECTED:
-                        return
+                        return None
                 else:
                     logger.debug('setAP(): got bad queryWifi() response: {!r}'
                                  .format(response))
@@ -1205,7 +1227,7 @@ class CommandInterface:
 
                 aps.append(defaults)
 
-            return aps
+        return aps
 
 
     def updateESP32(self,
@@ -1640,6 +1662,8 @@ class SerialCommandInterface(CommandInterface):
             if sn == devSerial:
                 return port
 
+        return None
+
 
     def getSerialPort(self,
                       reset: bool = False,
@@ -1896,7 +1920,7 @@ class SerialCommandInterface(CommandInterface):
 
         while timeout < 0 or time() < deadline:
             if callback is not None and callback():
-                return
+                return None
             try:
                 waiting = self.port.in_waiting
                 if waiting:
@@ -2163,7 +2187,7 @@ class SerialCommandInterface(CommandInterface):
         """ Verify the recorder is present and responding. Not supported on
             all devices.
 
-            :param data: An optional binary payload, not larger than 30 bytes, 
+            :param data: An optional binary payload, not larger than 30 bytes,
                 returned by the recorder verbatim.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
@@ -2179,7 +2203,7 @@ class SerialCommandInterface(CommandInterface):
         if data is not None:
             if len(data) > 30:
                 raise ValueError("Payload larger than 30 bytes.")
-            
+
         cmd = {'EBMLCommand': {'SendPing': b'' if data is None else data}}
         response = self._sendCommand(cmd, timeout=timeout, interval=interval,
                                      callback=callback)
@@ -2341,6 +2365,30 @@ class SerialCommandInterface(CommandInterface):
                                       callback=callback)
 
 
+    def getStatus(self,
+                  timeout: Union[int, float] = 10,
+                  callback: Optional[Callable] = None
+                  ) -> Tuple[float, Optional[int], Optional[str]]:
+        """ Get the device's status.
+
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a response
+                will be cancelled. The callback function should require no
+                arguments.
+            :return: The device's current status, as a tuple containing the
+                timestamp of the status update, the status code, and the
+                corresponding status message (if any).
+        """
+        with self.device._busy:
+            self.ping(timeout=timeout, callback=callback)
+            if self._statusChanged.is_set():
+                self._statusChanged.clear()
+                return self.status
+            raise CommandError('Device responded but did not report its status')
+
+
     def _updateAll(self,
                    secure: bool = True,
                    wait: bool = True,
@@ -2457,7 +2505,7 @@ class SerialCommandInterface(CommandInterface):
                 return None
 
             lockId = response.get('LockID', None)
-            
+
             if isinstance(lockId, (bytearray, bytes)) and not any(lockId):
                 # All zeros; lock not set.
                 return None
@@ -2850,13 +2898,13 @@ class FileCommandInterface(CommandInterface):
                     if not response:
                         logger.debug('Ignoring timeout waiting for CMDQueue '
                                      'to empty because no response required')
-                        return
+                        return None
 
                     raise DeviceTimeout("Timed out waiting for device to complete "
                                         "queued commands (%s remaining)" % queueDepth)
 
                 if callback is not None and callback():
-                    return
+                    return None
 
             self._writeCommand(ebml)
 
@@ -2867,14 +2915,14 @@ class FileCommandInterface(CommandInterface):
                     return data
 
                 if callback is not None and callback():
-                    return
+                    return None
 
                 sleep(interval)
 
             if not response:
                 logger.debug('Ignoring timeout waiting for response '
                              'because no response required')
-                return
+                return None
 
             raise DeviceTimeout("Timed out waiting for command response (%s seconds)" % timeout)
 
