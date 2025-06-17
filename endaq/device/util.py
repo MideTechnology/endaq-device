@@ -9,13 +9,10 @@ import os.path
 import pathlib
 import shutil
 from time import sleep, time
-from typing import Any, ByteString, Callable, Dict, Optional, Union, TYPE_CHECKING
+from typing import Any, ByteString, Callable, Dict, Optional, Union
 
 import logging
 logger = logging.getLogger(__name__)
-
-if TYPE_CHECKING:
-    from base import Recorder
 
 
 def makeBackup(filename: Union[str, pathlib.Path]) -> bool:
