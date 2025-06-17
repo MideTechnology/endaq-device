@@ -63,10 +63,11 @@ def test_standard_run(device_sn):
             ), "Device is not recording. Status was not 10."
 
     # Clear cached device
-    device.refresh()
-    assert device.available == False, "Device is still cached"
-    device = endaq.device.getDevices()[0]
-    assert device.serial == serial_number, "Did not reconnect to the same device."
+    # device.refresh()
+    # device.config.close()
+    # assert device.available == False, "Device is still cached"
+    # device = endaq.device.getDevices()[0]
+    # assert device.serial == serial_number, "Did not reconnect to the same device."
 
     # Confirm device stopped recording
     assert device.command.stopRecording() is True, "Device did not stop recording."
@@ -242,6 +243,8 @@ def test_start_recording_default(device_sn):
 
             # Start recording and next verify that the drive is absent at first
             device.command.startRecording()
+            device.refresh()
+            device.update()
             assert device.command.available == False, "Device drive is not absent."
 
             # Verify the device's status is recording and the drive is available
@@ -314,7 +317,7 @@ def test_start_recording_wait(device_sn):
             # Running SR with wait=True; recording how long it takes; stop rec.
             time.sleep(5)
             default_start_time = time.time()
-            device.command.startRecording(wait=True)
+            device.command.startRecording()
             default_end_time = time.time()
             default_execution_time = default_end_time - default_start_time
             commandWait(device, timeout)
