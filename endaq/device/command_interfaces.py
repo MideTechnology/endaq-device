@@ -795,7 +795,7 @@ class CommandInterface:
             :return: `True` if the device unmounted. `False` if it is a
                 virtual device, or the wait was cancelled by the callback.
         """
-        # FUTURE: Remove Recorder.startRecording()
+        # FUTURE: Remove Recorder.awaitReboot()
         warnings.warn("awaitReboot is deprecated and will be removed in "
                       "the future; use awaitDismount or awaitDisconnect",
                       DeprecationWarning)
