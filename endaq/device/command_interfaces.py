@@ -565,7 +565,6 @@ class CommandInterface:
                 #  until it returns a response. Also allow multiple status codes
                 #  (e.g., RECORDING and START_PENDING, or IDLE and RESET_PENDING)
                 return self.awaitDisconnect(timeout=timeout if wait else 0,
-                                            timeoutMsg=timeoutMsg,
                                             callback=callback)
             except TimeoutError:
                 raise DeviceTimeout(timeoutMsg)
@@ -640,7 +639,7 @@ class CommandInterface:
             Must be implemented in every subclass.
 
             :param wait: If `True`, wait for the recorer to respond and/or
-                dismount, indicating the reset has started.
+                disconnect, indicating the reset has started.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately; `None` or -1 will wait
                 indefinitely.
@@ -776,10 +775,12 @@ class CommandInterface:
 
     def awaitReboot(self,
                     timeout: Optional[Union[int, float]] = None,
-                    timeoutMsg: Optional[str] = None,
                     callback: Optional[Callable] = None) -> bool:
         """ Wait for the device to dismount as a drive, indicating it has
             rebooted, started recording, started firmware application, etc.
+
+            Note: this is *not* related to the ``await`` keyword, coroutines,
+            or the ``asyncio`` library.
 
             .. deprecated:: 4.0
                Use either :meth:`awaitDismount` or :meth:`awaitDisconnect` instead.
@@ -787,8 +788,6 @@ class CommandInterface:
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately; `None` or -1 will wait
                 indefinitely.
-            :param timeoutMsg: A command-specific message to use when raising
-                a `DeviceTimeout` exception.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -800,21 +799,21 @@ class CommandInterface:
         warnings.warn("awaitReboot is deprecated and will be removed in "
                       "the future; use awaitDismount or awaitDisconnect",
                       DeprecationWarning)
-        return self.awaitDismount(timeout, timeoutMsg, callback)
+        return self.awaitDismount(timeout, callback)
 
 
     def awaitDismount(self,
                       timeout: Optional[Union[int, float]] = None,
-                      timeoutMsg: Optional[str] = None,
                       callback: Optional[Callable] = None) -> bool:
         """ Wait for the device to dismount as a drive, indicating it has
             rebooted, started recording, started firmware application, etc.
 
+            Note: this is *not* related to the ``await`` keyword, coroutines,
+            or the ``asyncio`` library.
+
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately; `None` or -1 will wait
                 indefinitely.
-            :param timeoutMsg: A command-specific message to use when raising
-                a `DeviceTimeout` exception.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -846,6 +845,9 @@ class CommandInterface:
         """ Wait for the device to reappear as a drive, indicating it has
             been reconnected, completed a recording, finished firmware
             application, etc.
+
+            Note: this is *not* related to the ``await`` keyword, coroutines,
+            or the ``asyncio`` library.
 
             :param update: If `True`, attempt to update the device's
                 information. This may be required if the device has had its
@@ -887,7 +889,11 @@ class CommandInterface:
                         timeout: Optional[Union[int, float]] = None,
                         callback: Optional[Callable] = None) -> bool:
         """ Wait for the command interface to disconnect, indicating the
-            device has it has rebooted, started recording, started firmware application, etc.
+            device has rebooted, started recording, started a firmware
+            update, etc.
+
+            Note: this is *not* related to the ``await`` keyword, coroutines,
+            or the ``asyncio`` library.
 
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately; `None` or -1 will wait
@@ -908,7 +914,7 @@ class CommandInterface:
 
         try:
             return util.waitfor(disconnected,
-                                 timeout=timeout, interval=0.25,
+                                 timeout=timeout, interval=0.125,
                                  callback=callback)
         except TimeoutError:
             raise DeviceTimeout("Timed out waiting for device to go offline")
@@ -918,6 +924,9 @@ class CommandInterface:
                         timeout: Optional[Union[int, float]] = None,
                         callback: Optional[Callable] = None) -> bool:
         """ Wait for the command interface to reconnect.
+
+            Note: this is *not* related to the ``await`` keyword, coroutines,
+            or the ``asyncio`` library.
 
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately; `None` or -1 will wait
@@ -2261,6 +2270,82 @@ class SerialCommandInterface(CommandInterface):
         return t0, t
 
 
+    def awaitDisconnect(self,
+                        timeout: Optional[Union[int, float]] = None,
+                        callback: Optional[Callable] = None) -> bool:
+        """ Wait for the command interface to disconnect, indicating the
+            device has rebooted, started recording, started a firmware
+            update, etc.
+
+            Note: this is *not* related to the ``await`` keyword, coroutines,
+            or the ``asyncio`` library.
+
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately; `None` or -1 will wait
+                indefinitely.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a
+                response will be cancelled. The callback function should
+                require no arguments.
+            :return: `True` if the device unmounted. `False` if it is a
+                virtual device, or the wait was cancelled by the callback.
+        """
+        if self.device.isVirtual:
+            return False
+
+        try:
+            port = self.getSerialPort()
+        except CommandError:
+            return True
+
+        def disconnected():
+            try:
+                _ = port.in_waiting
+                return False
+            except (IOError, OSError, serial.SerialException):
+                return True
+
+        try:
+            return util.waitfor(disconnected, timeout, 0.25, callback)
+        except TimeoutError:
+            raise DeviceTimeout("Timed out waiting for device to go offline")
+
+
+    def awaitReconnect(self,
+                        timeout: Optional[Union[int, float]] = None,
+                        callback: Optional[Callable] = None) -> bool:
+        """ Wait for the command interface to reconnect.
+
+            Note: this is *not* related to the ``await`` keyword, coroutines,
+            or the ``asyncio`` library.
+
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately; `None` or -1 will wait
+                indefinitely.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a
+                response will be cancelled. The callback function should
+                require no arguments.
+            :return: `True` if the device unmounted. `False` if it is a
+                virtual device, or the wait was cancelled by the callback.
+        """
+        if self.device.isVirtual:
+            return False
+
+        def available() -> bool:
+            try:
+                _ = self.getSerialPort()
+                return True
+            except CommandError:
+                return False
+
+        try:
+            return util.waitfor(available, timeout, 0.25, callback)
+        except TimeoutError:
+            raise DeviceTimeout("Timed out waiting for device to come back online")
+
+
+
     def ping(self,
              data: Union[bytearray, bytes, None] = None,
              timeout: Union[int, float] = 10,
@@ -2430,7 +2515,7 @@ class SerialCommandInterface(CommandInterface):
         """ Reset (reboot) the recorder.
 
             :param wait: If `True`, wait for the recorer to respond and/or
-                dismount, indicating the reset has started.
+                disconnect, indicating the reset has started.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
@@ -3045,9 +3130,11 @@ class FileCommandInterface(CommandInterface):
         msg = self._encode(cmd)[:2]
         self._writeCommand(msg)
 
-        return self.awaitDismount(timeout=timeout if wait else 0,
-                                  timeoutMsg=timeoutMsg,
-                                  callback=callback)
+        try:
+            return self.awaitDismount(timeout=timeout if wait else 0,
+                                      callback=callback)
+        except TimeoutError:
+            raise DeviceTimeout(timeoutMsg)
 
 
     def _updateAll(self,
