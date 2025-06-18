@@ -1,6 +1,7 @@
 """
 Utility functions for validating enDAQ update packages: firmware
-``update.pkg`` and manifest/calibration ``userpage.bin`` files.
+``update.pkg`` and ``firmware.bin`` files, and manifest/calibration
+``userpage.bin`` files.
 """
 
 import io
@@ -110,6 +111,7 @@ def validatePackage(device: "Recorder",
     if device.hasWifi and 'NcpUpdate' in info:
         _, _sep, ncp = device.hasWifi.partition('_')
         if ncp not in info.get('NcpUpdate').get('NcpType', ''):
+            # HACK: This test may be brittle
             raise ValidationError("The update package does not support the device's Wi-Fi hardware")
 
     pkgEncrypted = info.get('KeySlot', -1) > 0
