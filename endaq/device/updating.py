@@ -193,6 +193,8 @@ def validateFirmware(device: "Recorder",
 
     if device.mcuType == 'EFM32GG330':
         # Old EFM32 series 0 device FW slightly different
+        if b'M\x00I\x00D\x00E\x00 \x00T\x00e\x00c\x00h\x00n\x00o\x00l\x00o\x00g\x00y' not in data:
+            raise ValueError('The file does not appear to be an enDAQ firmware update')
         if b'EFM32' not in data:
             raise ValidationError('The firmware does not appear support this device')
 
