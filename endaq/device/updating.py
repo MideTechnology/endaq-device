@@ -41,27 +41,57 @@ def parseUserpage(data: Union[str, pathlib.Path, ByteString]
         with open(data, 'rb') as f:
             data = f.read()
 
-    (manOffset, manSize,
-     calOffset, calSize,
-     propOffset, propSize) = struct.unpack_from("<HHHHHH", data)
+    try:
+        (manOffset, manSize,
+         calOffset, calSize,
+         propOffset, propSize) = struct.unpack_from("<HHHHHH", data)
 
-    manData = data[manOffset:manOffset + manSize]
-    calData = data[calOffset:calOffset + calSize]
+        manData = data[manOffset:manOffset + manSize]
+        calData = data[calOffset:calOffset + calSize]
 
-    if propOffset > 0 and propSize > 1:
-        propData = data[propOffset:propOffset + propSize]
-    else:
-        propData = None
+        if propOffset > 0 and propSize > 1:
+            propData = data[propOffset:propOffset + propSize]
+        else:
+            propData = None
 
-    manSchema = loadSchema('mide_manifest.xml')
-    ideSchema = loadSchema('mide_ide.xml')
+        manSchema = loadSchema('mide_manifest.xml')
+        ideSchema = loadSchema('mide_ide.xml')
 
-    manData = manSchema.loads(manData)[0]
-    calData = ideSchema.loads(calData)[0]
-    if propData is not None:
-        propData = ideSchema.loads(propData)[0]
+        manData = manSchema.loads(manData)[0]
+        calData = ideSchema.loads(calData)[0]
+        if propData is not None:
+            propData = ideSchema.loads(propData)[0]
 
-    return manData, calData, propData
+        if (len(manData) == 0 or len(calData) == 0
+                or manData.name != 'DeviceManifest'
+                or calData.name != 'CalibrationList'):
+            raise ValueError('Userpage update file could not be parsed')
+
+        return manData, calData, propData
+
+    except (IndexError, OSError, TypeError, ValueError, struct.error) as err:
+        logging.debug(f'parseUserpage failed: {err!r}')
+        if (isinstance(err, OSError)
+                and not (err.errno is None and 'Invalid length' in str(err))):
+            # ebmlite currently raises IOError/OSError when something won't
+            # parse; this may/should be changing in the future.
+            raise
+        raise ValueError('Userpage update file could not be parsed')
+
+
+def isUserpage(data: Union[str, pathlib.Path, ByteString]) -> bool:
+    """
+    Check that a ``.bin`` file is actually a 'userpage' update and not
+    something else (i.e., an unencrypted firmware update).
+
+    :param data: The name of a userpage file, or a byte string containing the
+        contents of a userpage file.
+    """
+    try:
+        _ = parseUserpage(data)
+        return True
+    except ValueError:
+        return False
 
 
 # ==============================================================================
@@ -143,8 +173,6 @@ def validateUserpage(device: "Recorder",
         raise UnsupportedFeature('The device cannot be updated via software')
 
     man, cal, _ = parseUserpage(userpage)
-    if man.value[0].name != 'SystemInfo':
-        raise ValueError('Could not read information from the update data')
 
     sn = man.value[0].dump().get('SerialNumber')
     if not sn:
