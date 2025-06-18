@@ -32,6 +32,7 @@ from .types import Epoch, Filename
 from . import response_codes
 from .response_codes import *
 from . import util
+from . import updating
 
 if sys.platform == 'darwin':
     from . import macos as os_specific
@@ -922,6 +923,7 @@ class CommandInterface:
     def updateDevice(self,
                      firmware: Optional[str] = None,
                      userpage: Optional[str] = None,
+                     validate: bool = True,
                      clean: bool = False,
                      timeout: Union[int, float] = 10.0,
                      callback: Optional[Callable] = None) -> bool:
@@ -941,6 +943,8 @@ class CommandInterface:
                 overwritten. Warning: userpage data is specific to an
                 individual recorder. Do not install a userpage file created
                 for a different device!
+            :param validate: If `True`, verify the update is compatible with
+                the device.
             :param clean: If `True`, any existing firmware or userpage
                 update files will be removed from the device. Used if either
                 `firmware` or `userpage` is supplied (but not both).
@@ -965,14 +969,12 @@ class CommandInterface:
         keyRev = self.device.getInfo('KeyRev', 0)
 
         if firmware:
-            if fw_ext not in ('.pkg', '.bin'):
-                raise TypeError("Firmware update file must be type .pkg or .bin")
+            if fw_ext == '.pkg':
+                updating.validatePackage(self, fw)
 
-            if fw_ext == '.bin':
-                if keyRev:
-                    raise ValueError(
-                            'Cannot apply unencrypted firmware (*.bin) to device '
-                            'with encryption; use *.pkg version if available.')
+            elif fw_ext == '.bin':
+                if validate:
+                    updating.validateFirmware(self, firmware)
 
                 # HACK: Unencrypted STM32-based firmware has `STM_` prefix
                 # FUTURE: Handle in Recorder subclass instead?
@@ -981,8 +983,14 @@ class CommandInterface:
                 else:
                     fw = os.path.join(os.path.dirname(fw), 'firmware.bin')
 
-        if userpage and up_ext != '.bin':
-            raise ValueError("Userpage update file must be type .bin")
+            else:
+                raise TypeError("Firmware update file must be type .pkg or .bin")
+
+        if userpage:
+            if up_ext != '.bin':
+                raise ValueError("Userpage update file must be type .bin")
+            if validate:
+                updating.validateUserpage(self, userpage)
 
         with self.device._busy:
             hasFw = self._copyUpdateFile(firmware, fw, clean)

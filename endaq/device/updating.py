@@ -68,11 +68,12 @@ def parseUserpage(data: Union[str, pathlib.Path, ByteString]
 #
 # ==============================================================================
 
-def validateUpdate(device: "Recorder",
-                   package: Union[str, pathlib.Path, io.IOBase]) -> bool:
+def validatePackage(device: "Recorder",
+                    package: Union[str, pathlib.Path, io.IOBase]) -> bool:
     """
     Check that a firmware update package is valid and compatible with a
-    given device. Failure will raise an exception.
+    given device. Failure will raise an exception (likely, but not
+    exclusively, one listed here).
 
     :raises UnsupportedFeature: if the device cannot be updated.
     :raises ValueError: if the update package is invalid (unreadable or
@@ -106,8 +107,8 @@ def validateUpdate(device: "Recorder",
         if ncp not in info.get('NcpUpdate').get('NcpType', ''):
             raise ValidationError("The update package does not support the device's Wi-Fi hardware")
 
-    pkgEncrypted = info.get('KeySlot', -1) >= 0
-    devEncrypted = device.getInfo('KeyRev', -1) >= 0
+    pkgEncrypted = info.get('KeySlot', -1) > 0
+    devEncrypted = device.getInfo('KeyRev', 0) > 0
     if not devEncrypted and pkgEncrypted:
         raise ValidationError("The device requires an unencrypted update package")
 
@@ -120,7 +121,7 @@ def validateUserpage(device: "Recorder",
     """
     Check that a 'userpage' update (device manifest and calibration) is
     valid and compatible with a given device. Failure will raise an
-    exception.
+    exception (likely, but not exclusively, one listed here).
 
     :raises UnsupportedFeature: if the device cannot be updated.
     :raises ValueError: if the userpage update is invalid (unreadable or
@@ -153,3 +154,39 @@ def validateUserpage(device: "Recorder",
     if sn != device.serialInt:
         raise ValidationError(f'Serial number in manifest update {sn!r} '
                               f'did not match device {device.serialInt}')
+
+
+def validateFirmware(device: "Recorder",
+                     data: Union[str, pathlib.Path, io.IOBase]) -> bool:
+    """
+    Perform basic validation of an unencrypted firmware ``.bin`` file to
+    confirm it is compatible with the given device. Only devices without
+    encryption can use ``.bin`` firmware updates.
+
+    :raises UnsupportedFeature: if the device cannot be updated.
+    :raises ValueError: if the userpage update is invalid (unreadable or
+        missing critical information).
+    :raises ValidationError: if the userpage update is not intended for
+        the specific device.
+
+    :param device: The :class:`Recorder` to update.
+    :param data: The name of a userpage file, or a byte string containing the
+        contents of a userpage file.
+    """
+    if device.isVirtual:
+        raise UnsupportedFeature('Virtual devices cannot be updated')
+    elif not device.canCopyFirmware:
+        raise UnsupportedFeature('The device cannot be updated via software')
+    elif device.getInfo('KeyRev', -1) > 0:
+        UnsupportedFeature('Devices with encryption require encrypted firmware')
+
+    if isinstance(data, (str, pathlib.Path)):
+        with open(data, 'rb') as f:
+            data = f.read()
+
+    if b'Mide Technology' not in data:
+        raise ValueError('The file does not appear to be a firmware update')
+    if device.mcuType and bytes(device.mcuType, 'ascii') not in data:
+        raise ValidationError('The firmware does not appear support this device')
+
+    return True
