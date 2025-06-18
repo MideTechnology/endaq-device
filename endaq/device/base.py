@@ -737,24 +737,7 @@ class Recorder:
             (optionally) a `BOM version` letter. Older versions will be
             a single number.
         """
-        rev = self.hardwareVersionInt
-        try:
-            if rev > 99:
-                # New structure of HwRev, which includes version, revision,
-                # and BOM version.
-                major = int(rev/10000)
-                minor = int((rev % 10000) / 100)
-                bom = rev % 100
-                if bom == 0:
-                    bom = ""
-                elif bom < 26:
-                    bom = chr(bom+65)
-                else:
-                    bom = chr((bom % 25) + 64) * int((bom // 25 + 1))
-                rev = f"v{major}r{minor}{bom}"
-        except TypeError:
-            pass
-        return str(rev)
+        return util.formatHwRev(self.hardwareVersionInt)
 
 
     @property
@@ -777,7 +760,7 @@ class Recorder:
         fw = self.getInfo('FwRevStr', None)
         if not fw:
             # Older FW did not write FwRevStr
-            fw = "1.%s" % self.firmwareVersion
+            fw = util.formatFwRev(self.firmwareVersion)
         return fw
 
 
