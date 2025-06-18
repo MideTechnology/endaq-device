@@ -89,6 +89,8 @@ def validatePackage(device: "Recorder",
         raise UnsupportedFeature('Virtual devices cannot be updated')
     elif not device.canCopyFirmware:
         raise UnsupportedFeature('The device cannot be updated via software')
+    elif not device.mcuType:
+        ValueError("Could not determine device's MCU type")
 
     with loadSchema('flash_package.xml').load(package) as doc:
         if doc[0].name != 'UpdatePkg':
@@ -179,14 +181,24 @@ def validateFirmware(device: "Recorder",
         raise UnsupportedFeature('The device cannot be updated via software')
     elif device.getInfo('KeyRev', -1) > 0:
         UnsupportedFeature('Devices with encryption require encrypted firmware')
+    elif not device.mcuType:
+        ValueError("Could not determine device's MCU type")
 
     if isinstance(data, (str, pathlib.Path)):
         with open(data, 'rb') as f:
             data = f.read()
 
-    if b'Mide Technology' not in data:
-        raise ValueError('The file does not appear to be a firmware update')
-    if device.mcuType and bytes(device.mcuType, 'ascii') not in data:
+    # This is a fairly primitive set of checks: they just look for certain
+    # cleartext strings in the binary.
+
+    if device.mcuType == 'EFM32GG330':
+        # Old EFM32 series 0 device FW slightly different
+        if b'EFM32' not in data:
+            raise ValidationError('The firmware does not appear support this device')
+
+    elif b'Mide Technology' not in data:
+        raise ValueError('The file does not appear to be an enDAQ firmware update')
+    elif device.mcuType and bytes(device.mcuType, 'ascii') not in data:
         raise ValidationError('The firmware does not appear support this device')
 
     return True
