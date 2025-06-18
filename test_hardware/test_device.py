@@ -1,19 +1,24 @@
 """
 Automated tests for endaq.device.
 """
-import endaq.device
-import pytest
 import time
+import pytest
+import PowerTests
+import PowerTests.Instruments
+import PowerTests.Instruments.Bridge
+import PowerTests.Instruments.Endaq
+import PowerTests.Instruments.Otii
+import PowerTests.select_otii_device
 from fake_recorders import RECORDER_PATHS
+import endaq.device
+
 
 # Helper class:
-
-
 class Payload:
     payload = ''
 
 
-# Helper function:
+# Helper functions:
 def commandWait(device, timeout):
     """ Wait for the device to reconnect after a command is sent.
 
@@ -39,9 +44,33 @@ def commandWait(device, timeout):
         time.sleep(1)
 
 
+@pytest.fixture # with a default scope of "function"
+def setupTeardown():
+    """ Properly reset the enDAQ before and afer every test with the help of otii.
+    """
+    # Setup
+    # start up and connect
+    print("Setting up...")
+    PowerTests.select_otii_device.otii_main("S4-E25D40", 30, True)
+    device = endaq.device.getDevices()[0]
+    device.command.ping()
+    if device.command.status[1] == endaq.device.response_codes.DeviceStatusCode.RECORDING:
+        device.command.stopRecording()
+
+    yield # runs test
+
+    # Teardown
+    print("Tearing down...")
+    commandWait(device, 5)
+    if device.command.status[1] == endaq.device.response_codes.DeviceStatusCode.RECORDING:
+        device.command.stopRecording()
+    # disconnect and shut down
+    PowerTests.Instruments.Otii.Arc.disconnect()
+
+    print("Test complete")
+
+
 # Tests:
-
-
 def test_standard_run(device_sn):
     """ Test a standard run of an enDAQ device.
 
@@ -63,11 +92,10 @@ def test_standard_run(device_sn):
             ), "Device is not recording. Status was not 10."
 
     # Clear cached device
-    # device.refresh()
-    # device.config.close()
-    # assert device.available == False, "Device is still cached"
-    # device = endaq.device.getDevices()[0]
-    # assert device.serial == serial_number, "Did not reconnect to the same device."
+    device.refresh()
+    assert device.available == False, "Device is still cached"
+    device = endaq.device.getDevices()[0]
+    assert device.serial == serial_number, "Did not reconnect to the same device."
 
     # Confirm device stopped recording
     assert device.command.stopRecording() is True, "Device did not stop recording."
@@ -132,7 +160,7 @@ def test_ping_status(command, status_code, device_sn):
 @pytest.mark.random_order(disabled=True)
 # May change 39 to 30 in the future since the length of encoding in the header
 # is variable.
-@pytest.mark.parametrize("index", range(1, 39))
+@pytest.mark.parametrize("index", range(1, 31))
 def test_ping_payload(index, device_sn):
     """ Tests that 'ping()' returns the input payload for a range of bytearray 
         sizes.
@@ -244,7 +272,6 @@ def test_start_recording_default(device_sn):
             # Start recording and next verify that the drive is absent at first
             device.command.startRecording()
             device.refresh()
-            device.update()
             assert device.command.available == False, "Device drive is not absent."
 
             # Verify the device's status is recording and the drive is available

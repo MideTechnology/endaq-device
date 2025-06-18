@@ -17,7 +17,7 @@ Workflow:
 from otii_tcp_client import otii_client
 from otii_tcp_client import arc
 from otii_tcp_client import otii_connection
-import Instruments.Bridge
+from PowerTests import *
 import time, os, json
 from pathlib import Path
 import endaq.device as ed
@@ -31,7 +31,7 @@ WIN_PORT = r'COM17'
 
 
 # runs immediately after argparse
-def main(endaq_type: str, timeout: int, verbose: bool):
+def otii_main(endaq_type: str, timeout: int, verbose: bool):
     # OPEN OTII SERVER
     if os.name == "nt":
         os.startfile(WIN_PATH_OTII_SERVER)
@@ -131,4 +131,4 @@ if __name__ == '__main__':
     if args.verbose:
         print(f"{args=}")
 
-    main(endaq_type=args.EndaqType, timeout=args.timeout, verbose=args.verbose)
+    otii_main(endaq_type=args.EndaqType, timeout=args.timeout, verbose=args.verbose)
