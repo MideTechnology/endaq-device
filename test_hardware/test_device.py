@@ -3,13 +3,13 @@ Automated tests for endaq.device.
 """
 import time
 import pytest
-import PowerTests
+import PowerTests.Orchestration
 import PowerTests.Instruments
 import PowerTests.Instruments.Bridge
 import PowerTests.Instruments.Endaq
 import PowerTests.Instruments.Otii
 import PowerTests.select_otii_device
-from fake_recorders import RECORDER_PATHS
+from tests.fake_recorders import RECORDER_PATHS
 import endaq.device
 
 
@@ -51,6 +51,8 @@ def setupTeardown():
     # Setup
     # start up and connect
     print("Setting up...")
+    PowerTests.Instruments.Otii.Arc.disconnect()
+    time.sleep(10)
     PowerTests.select_otii_device.otii_main("S4-E25D40", 30, True)
     device = endaq.device.getDevices()[0]
     device.command.ping()
@@ -71,7 +73,7 @@ def setupTeardown():
 
 
 # Tests:
-def test_standard_run(device_sn):
+def test_standard_run(device_sn, setupTeardown):
     """ Test a standard run of an enDAQ device.
 
         :param device_sn: the tested device's serial number collected from the 
@@ -110,7 +112,7 @@ def test_standard_run(device_sn):
                           ("stopRecording", endaq.device.DeviceStatusCode.IDLE),
                           # ("triggering", endaq.device.DeviceStatusCode.TRIGGERING),
                           ])
-def test_ping_status(command, status_code, device_sn):
+def test_ping_status(command, status_code, device_sn, setupTeardown):
     """ Tests that `ping()` accurately updates the device's status.
 
         :param command: The device command that impacts the status code.
@@ -161,7 +163,7 @@ def test_ping_status(command, status_code, device_sn):
 # May change 39 to 30 in the future since the length of encoding in the header
 # is variable.
 @pytest.mark.parametrize("index", range(1, 31))
-def test_ping_payload(index, device_sn):
+def test_ping_payload(index, device_sn, setupTeardown):
     """ Tests that 'ping()' returns the input payload for a range of bytearray 
         sizes.
 
@@ -189,7 +191,7 @@ def test_ping_payload(index, device_sn):
 
 @pytest.mark.parametrize("params", ["default", "correct_path", "incorrect_path",
                                     "unmounted_default", "unmounted_recording"])
-def test_get_devices(params, device_sn):
+def test_get_devices(params, device_sn, setupTeardown):
     """ Tests that 'getDevices()' works as intended.
 
         :param params: keywords representing a scenario to run in each of the 
@@ -237,7 +239,7 @@ def test_get_devices(params, device_sn):
             commandWait(device, timeout)
 
 
-def test_start_recording_default(device_sn):
+def test_start_recording_default(device_sn, setupTeardown):
     """ Tests that `startRecording()` works as expected in a default scenario.
 
         :param device_sn: the tested device's serial number collected from the 
@@ -290,7 +292,7 @@ def test_start_recording_default(device_sn):
             assert False, "Firmware version not supported."
 
 
-def test_start_recording_wait(device_sn):
+def test_start_recording_wait(device_sn, setupTeardown):
     """ Tests that `startRecording()` returns faster than the default case when 
         'wait=False'. 
 
@@ -362,7 +364,7 @@ def test_start_recording_wait(device_sn):
                     default_execution_time), "Default returned quicker than when wait=False."
 
 
-def test_start_recording_timeout(device_sn):
+def test_start_recording_timeout(device_sn, setupTeardown):
     """ Tests that 'startRecording()' raises an Exception when 'timeout' is too low.
 
         :param device_sn: the tested device's serial number collected from the 
