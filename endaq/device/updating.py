@@ -229,9 +229,12 @@ def validateUserpage(device: "Recorder",
 
     man, cal, _ = parseUserpage(userpage)
 
-    sn = man.get('SerialNumber')
-    if not sn:
-        raise ValueError('Manifest update did not contain a valid serial number')
+    try:
+        sn = man['SystemInfo']['SerialNumber']
+        if not sn:
+            raise ValueError('Manifest update did not contain a valid serial number')
+    except KeyError:
+        raise ValueError('Manifest update did not contain a serial number')
 
     if not strict:
         return
@@ -244,6 +247,65 @@ def validateUserpage(device: "Recorder",
 # ==============================================================================
 #
 # ==============================================================================
+
+def parseFirmware(data: Union[str, pathlib.Path, ByteString]) -> bytes:
+    """
+    Parse the contents of a ``.bin`` unencrypted firmware update file.
+    Basic validation that the input is a firmware update is performed.
+
+    :raises ValueError: if the file cannot be parsed (e.g., damaged or not a
+        firmware update).
+
+    :param data: The name of a firmware file, or a byte string containing the
+        contents of a firmware file.
+    :return: The contents of the firmware file. If the function was called
+        with the contents of a file, it is returned verbatim if it passes
+        basic validation.
+    """
+    if isinstance(data, (str, pathlib.Path)):
+        with open(data, 'rb') as f:
+            data = f.read()
+
+    # Most basic test: check it isn't another kind of update. Those tests
+    # are more stringent and are unlikely to give a false positive that
+    # would pass this function's tests.
+    if isUserpage(data):
+        raise ValueError('File is a userpage update, not firmware')
+    if isPackage(data):
+        raise ValueError('File is a firmware package, not an unencrypted firmware binary')
+
+    # This is a fairly primitive set of checks: they just look for certain
+    # cleartext strings in the binary.
+
+    # Copyright string text. EFM32GG330 updates have string of characters
+    # padded to 16b; others have a different one.
+    company = (b'M\x00I\x00D\x00E\x00 \x00T\x00e\x00c\x00h\x00n\x00o\x00l\x00o\x00g\x00y',
+               b'Mide Technology')
+
+    # MCU type. These strings should appear somewhere in a valid update.
+    mcus = (b'EFM32', b'STM32')
+
+    if (not any(c in data for c in company)
+            or not any(m in data for m in mcus)):
+        raise ValueError('The file does not appear to be an enDAQ firmware update')
+
+    return data
+
+
+def isFirmware(data: Union[str, pathlib.Path, ByteString]) -> bool:
+    """
+    Check that a ``.bin`` file is actually a readable unencrypted firmware
+    update and not something else (i.e., a 'userpage' update).
+
+    :param data: The name of a firmware file, or a byte string containing the
+        contents of a firmware file.
+    """
+    try:
+        _ = parseFirmware(data)
+        return True
+    except ValueError:
+        return False
+
 
 def validateFirmware(device: "Recorder",
                      data: Union[str, pathlib.Path, io.IOBase]) -> bool:
@@ -268,26 +330,20 @@ def validateFirmware(device: "Recorder",
     elif not device.canCopyFirmware:
         raise UnsupportedFeature('The device cannot be updated via software')
     elif device.getInfo('KeyRev', -1) > 0:
-        raise UnsupportedFeature('Devices with encryption require encrypted firmware')
+        raise ValidationError('Devices with encryption require encrypted firmware')
     elif not device.mcuType:
         raise DeviceError("Could not determine device's MCU type")
 
-    if isinstance(data, (str, pathlib.Path)):
-        with open(data, 'rb') as f:
-            data = f.read()
+    data = parseFirmware(data)
 
     # This is a fairly primitive set of checks: they just look for certain
     # cleartext strings in the binary.
-
     if device.mcuType == 'EFM32GG330':
         # Old EFM32 series 0 device FW slightly different
-        if b'M\x00I\x00D\x00E\x00 \x00T\x00e\x00c\x00h\x00n\x00o\x00l\x00o\x00g\x00y' not in data:
-            raise ValueError('The file does not appear to be an enDAQ firmware update')
+        if b'Mide Technology' in data:
+            raise ValueError('The file does not appear to support this device type')
         if b'EFM32' not in data:
             raise ValidationError("The firmware does not appear support this device type")
-
-    elif b'Mide Technology' not in data:
-        raise ValueError('The file does not appear to be an enDAQ firmware update')
     elif device.mcuType and bytes(device.mcuType, 'ascii') not in data:
         raise ValidationError('The firmware does not appear support this device type')
 
