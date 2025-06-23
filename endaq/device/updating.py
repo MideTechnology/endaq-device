@@ -92,18 +92,18 @@ def validatePackage(device: "Recorder",
 
     info = parsePackage(package)
 
-    mcu = info.get('TargetProcessor')
+    mcu = info.get('TargetProcessor', 'EFM32GG11B820')
     hw = info.get('MinHWRev', 0)
     fw = info.get('MinFWRev', 0)
 
     if mcu != device.mcuType:
         raise ValidationError("The update package does not support the device's processor "
                               f"(device is {device.mcuType}, update requires {mcu})")
-    if info.get('MinHWRev', 0) > device.hardwareVersionInt:
+    if hw > device.hardwareVersionInt:
         raise ValidationError("The update package does not support the device's hardware version "
                               f"(device is {device.hardwareVersion}, "
                               f"update requires at least {util.formatHwRev(hw)})")
-    if info.get('MinFWRev', 0) > device.firmwareVersion:
+    if fw > device.firmwareVersion:
         raise ValidationError("The update package does not support the device's firmware version "
                               f"(device has {util.formatFwRev(device.firmware)},"
                               f" update requires at least {util.formatFwRev(fw)})")
