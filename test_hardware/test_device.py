@@ -3,12 +3,6 @@ Automated tests for endaq.device.
 """
 import time
 import pytest
-import PowerTests.Orchestration
-import PowerTests.Instruments
-import PowerTests.Instruments.Bridge
-import PowerTests.Instruments.Endaq
-import PowerTests.Instruments.Otii
-import PowerTests.select_otii_device
 from tests.fake_recorders import RECORDER_PATHS
 import endaq.device
 
@@ -51,9 +45,6 @@ def setupTeardown():
     # Setup
     # start up and connect
     print("Setting up...")
-    PowerTests.Instruments.Otii.Arc.disconnect()
-    time.sleep(10)
-    PowerTests.select_otii_device.otii_main("S4-E25D40", 30, True)
     device = endaq.device.getDevices()[0]
     device.command.ping()
     if device.command.status[1] == endaq.device.response_codes.DeviceStatusCode.RECORDING:
@@ -67,7 +58,6 @@ def setupTeardown():
     if device.command.status[1] == endaq.device.response_codes.DeviceStatusCode.RECORDING:
         device.command.stopRecording()
     # disconnect and shut down
-    PowerTests.Instruments.Otii.Arc.disconnect()
 
     print("Test complete")
 
