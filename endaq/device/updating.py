@@ -330,7 +330,7 @@ def validateFirmware(device: "Recorder",
     elif not device.canCopyFirmware:
         raise UnsupportedFeature('The device cannot be updated via software')
     elif device.getInfo('KeyRev', -1) > 0:
-        raise ValidationError('Devices with encryption require encrypted firmware')
+        raise ValidationError('Devices with encryption require a firmware .pkg file')
     elif not device.mcuType:
         raise DeviceError("Could not determine device's MCU type")
 
