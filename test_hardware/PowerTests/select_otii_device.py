@@ -17,28 +17,24 @@ Workflow:
 from otii_tcp_client import otii_client
 from otii_tcp_client import arc
 from otii_tcp_client import otii_connection
-from PowerTests import *
 import time, os, json
 from pathlib import Path
 import endaq.device as ed
+import Instruments.Bridge
 
 # TODO: include tests for linux packages? usbmount is required.
 # TODO: may want to include arguments for serial port and path to otii server
 
 # Configure as necessary when using on windows.
-WIN_PATH_OTII_SERVER = r'C:\Users\nconstanti\AppData\Local\otii3\app-3.5.2\resources\otii_server.exe'
+WIN_PATH_OTII_SERVER = r'C:/Users/nconstanti/AppData/Local/otii3/app-3.5.2/resources/otii_server.exe'
 WIN_PORT = r'COM17'
 
 
 # runs immediately after argparse
 def otii_main(endaq_type: str, timeout: int, verbose: bool):
     # OPEN OTII SERVER
-    if os.name == "nt":
-        os.startfile(WIN_PATH_OTII_SERVER)
-    else:
-        os.system('otii_server &')  # run server for linux. the "&" means run in a new process.
-    if verbose:
-        print('Verbose: Otii server started. Attempting to connect...')
+    os.system('otii_server &')  # run server for linux. the "&" means run in a new process.
+    print('Verbose: Otii server started. Attempting to connect...')
 
     # CONNECT OTII SERVER WITH CREDENTIALS
     client = otii_client.OtiiClient()
@@ -53,6 +49,7 @@ def otii_main(endaq_type: str, timeout: int, verbose: bool):
     assert otii.get_licenses()[0]['available'], 'License not available'
     otii.reserve_license(4748)
     devices = otii.get_devices()
+    time.sleep(10)
     assert len(devices) == 1, f'Expected to find exactly 1 Otii device connected, found {len(devices)} devices'
     device: arc.Arc = devices[0]
     otii.get_active_project()
