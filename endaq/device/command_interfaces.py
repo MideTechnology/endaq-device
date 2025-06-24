@@ -1102,7 +1102,8 @@ class CommandInterface:
                 keys: Union[bytearray, bytes],
                 timeout: Union[int, float] = 5,
                 callback: Optional[Callable] = None):
-        """ Update the device's key bundle
+        """ Update the device's key bundle. This is rarely (if ever) done by
+            users in typical operation of the device.
 
             :param keys: The key data.
             :param timeout: Time (in seconds) to wait for the recorder to
