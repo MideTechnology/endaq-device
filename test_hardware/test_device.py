@@ -40,7 +40,7 @@ def commandWait(device, timeout):
 
 @pytest.fixture # with a default scope of "function"
 def setupTeardown():
-    """ Properly reset the enDAQ before and afer every test with the help of otii.
+    """ Properly reset the enDAQ before and after every test.
     """
     # Setup
     # start up and connect
@@ -50,7 +50,7 @@ def setupTeardown():
     if device.command.status[1] == endaq.device.response_codes.DeviceStatusCode.RECORDING:
         device.command.stopRecording()
 
-    yield # runs test
+    yield # Runs test
 
     # Teardown
     print("Tearing down...")
@@ -68,6 +68,8 @@ def test_standard_run(device_sn, setupTeardown):
 
         :param device_sn: the tested device's serial number collected from the 
             command line.
+        :param setupTeardown: a pytest fixture function that properly resets the
+            enDAQ before and after every test.
     """
     # Set up; Confirm device is idle
     timeout = 10
@@ -100,16 +102,17 @@ def test_standard_run(device_sn, setupTeardown):
                          [("battery", endaq.device.DeviceStatusCode.IDLE),
                           ("startRecording", endaq.device.DeviceStatusCode.RECORDING),
                           ("stopRecording", endaq.device.DeviceStatusCode.IDLE),
-                          # ("triggering", endaq.device.DeviceStatusCode.TRIGGERING),
                           ])
 def test_ping_status(command, status_code, device_sn, setupTeardown):
-    """ Tests that `ping()` accurately updates the device's status.
+    """ Tests that 'ping()' accurately updates the device's status.
 
         :param command: The device command that impacts the status code.
         :param status_code: The device status returned in the response to a 
             command.
         :param device_sn: the tested device's serial number collected from the 
             command line.
+        :param setupTeardown: a pytest fixture function that properly resets the
+            enDAQ before and after every test.
     """
     # Set up
     timeout = 5
@@ -128,18 +131,11 @@ def test_ping_status(command, status_code, device_sn, setupTeardown):
             commandWait(device, timeout)
             device.command.stopRecording()
             commandWait(device, timeout)
-        # case "triggering":
-        #     # device.command.reset()
-        #     commandWait(device, timeout)
-        #     device.config.setTrigger(device.channels[80], high=20)
-        #     device.config.applyConfig()
-        #     device.command.startRecording()
-        #     commandWait(device, timeout)
 
     # Verify the device has the correct status depending on what command was run
     device.command.ping()
-    assert device.command.status[
-        1] == status_code, f"Status was {device.command.status[1]} instead of {status_code}."
+    assert (device.command.status[1] == status_code
+            ), f"Status was {device.command.status[1]} instead of {status_code}."
 
     # If the device is recording, stop it
     if device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING:
@@ -150,8 +146,6 @@ def test_ping_status(command, status_code, device_sn, setupTeardown):
 # This test only works if looped in sequential order. Random order is disabled
 # for this reason.
 @pytest.mark.random_order(disabled=True)
-# May change 39 to 30 in the future since the length of encoding in the header
-# is variable.
 @pytest.mark.parametrize("index", range(1, 31))
 def test_ping_payload(index, device_sn, setupTeardown):
     """ Tests that 'ping()' returns the input payload for a range of bytearray 
@@ -160,6 +154,8 @@ def test_ping_payload(index, device_sn, setupTeardown):
         :param index: parameterized index of payload bitarray length.
         :param device_sn: the tested device's serial number collected from the 
             command line.
+        :param setupTeardown: a pytest fixture function that properly resets the
+            enDAQ before and after every test.
     """
     # Connect to device
     device = endaq.device.getDevices()[0]
@@ -188,8 +184,9 @@ def test_get_devices(params, device_sn, setupTeardown):
             parameterized tests.
         :param device_sn: the tested device's serial number collected from the 
             command line.
+        :param setupTeardown: a pytest fixture function that properly resets the
+            enDAQ before and after every test.
     """
-
     # Set up
     timeout = 5
 
@@ -220,8 +217,8 @@ def test_get_devices(params, device_sn, setupTeardown):
             device = endaq.device.getDevices()[0]
             device.command.startRecording()
             commandWait(device, timeout)
-            assert (device.command.status[1] ==
-                    endaq.device.DeviceStatusCode.RECORDING), "Device is not recording."
+            assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
+                    ), "Device is not recording."
             new_device = endaq.device.getDevices(unmounted=False)
             assert new_device == [], "Device was returned while recording."
             commandWait(device, timeout)
@@ -230,10 +227,12 @@ def test_get_devices(params, device_sn, setupTeardown):
 
 
 def test_start_recording_default(device_sn, setupTeardown):
-    """ Tests that `startRecording()` works as expected in a default scenario.
+    """ Tests that 'startRecording()' works as expected in a default scenario.
 
         :param device_sn: the tested device's serial number collected from the 
             command line.
+        :param setupTeardown: a pytest fixture function that properly resets the
+            enDAQ before and after every test.
     """
     # Set up
     timeout = 10
@@ -269,25 +268,27 @@ def test_start_recording_default(device_sn, setupTeardown):
             # Verify the device's status is recording and the drive is available
             # again now that we have waited
             commandWait(device, timeout)
-            assert (device.command.status[1] ==
-                    endaq.device.DeviceStatusCode.RECORDING), "Device is not recording."
+            assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
+                    ), "Device is not recording."
             assert device.command.available == True, "Device drive is not available."
 
             # Stop recording and verify the device's status is now idle
             device.command.stopRecording()
             commandWait(device, timeout)
-            assert (device.command.status[1] ==
-                    endaq.device.DeviceStatusCode.IDLE), f"Device is not idle. It is {device.command.status[1]}"
+            assert (device.command.status[1] == endaq.device.DeviceStatusCode.IDLE
+                    ), f"Device is not idle. It is {device.command.status[1]}"
         case _:
             assert False, "Firmware version not supported."
 
 
 def test_start_recording_wait(device_sn, setupTeardown):
-    """ Tests that `startRecording()` returns faster than the default case when 
+    """ Tests that 'startRecording()' returns faster than the default case when 
         'wait=False'. 
 
         :param device_sn: the tested device's serial number collected from the 
             command line.
+        :param setupTeardown: a pytest fixture function that properly resets the
+            enDAQ before and after every test.
     """
     # Set up
     timeout = 10
@@ -350,8 +351,8 @@ def test_start_recording_wait(device_sn, setupTeardown):
             # Verify the wait=False case ran quicker than the wait=True case.
             print("false:", false_execution_time,
                   "true:", default_execution_time)
-            assert (false_execution_time <
-                    default_execution_time), "Default returned quicker than when wait=False."
+            assert (false_execution_time < default_execution_time
+                    ), "Default returned quicker than when wait=False."
 
 
 def test_start_recording_timeout(device_sn, setupTeardown):
@@ -359,6 +360,8 @@ def test_start_recording_timeout(device_sn, setupTeardown):
 
         :param device_sn: the tested device's serial number collected from the 
             command line.
+        :param setupTeardown: a pytest fixture function that properly resets the
+            enDAQ before and after every test.
     """
     # Set up
     device = endaq.device.getDevices()[0]
@@ -385,10 +388,10 @@ def test_start_recording_timeout(device_sn, setupTeardown):
             # exception will be raised
             with pytest.raises(endaq.device.exceptions.DeviceTimeout) as exc_info:
                 device.command.startRecording(wait=True, timeout=0.1)
-            assert (exc_info.type ==
-                    endaq.device.exceptions.DeviceTimeout), "Didn't time out during startRecording."
-            assert (str(exc_info.value) ==
-                    "Timed out waiting for recording to start"), "Wrong error message during timeout"
+            assert (exc_info.type == endaq.device.exceptions.DeviceTimeout
+                    ), "Didn't time out during startRecording."
+            assert (str(exc_info.value) == "Timed out waiting for recording to start"
+                    ), "Wrong error message during timeout"
             commandWait(device, timeout=10)
 
             # Stop recording and verify the device is idle
