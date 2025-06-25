@@ -13,9 +13,9 @@ from typing import Any, Callable, Dict, Optional
 from zeroconf import IPVersion, ServiceInfo, Zeroconf
 from zeroconf import NonUniqueNameException
 
-from .mqtt_interface import MQTT_BROKER, MQTT_PORT, getMyIP
+from .mqtt_interface import MQTT_BROKER, MQTT_PORT
 from .discovery import DEFAULT_NAME, splitServiceName
-
+from ..util import getMyIP
 
 logger = logging.getLogger(__name__)
 

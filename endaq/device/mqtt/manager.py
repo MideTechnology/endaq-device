@@ -1,5 +1,13 @@
 """
 MQTT Device Manager
+===================
+
+A client that monitors several MQTT topics, keeping track of sensors and
+other devices, and providing additional features for device discovery and
+data streaming.
+
+Starting an :class:`MQTTDeviceManager` is typically done via the
+:func:`start()` function.
 """
 
 from collections import defaultdict
@@ -24,14 +32,16 @@ logger.setLevel(logging.DEBUG)
 
 from ..client import dump, synchronized
 from ..response_codes import DeviceStatusCode, CommandResponseCode
-from ..command_interfaces import CommandInterface, CommandError, CRCError, DeviceError
-from .mqtt_interface import MQTT_BROKER, MQTT_PORT, getMyIP, makeClientID
+from ..command_interfaces import CommandInterface
+from ..exceptions import CommandError, CRCError, DeviceError, ValidationError
+from ..util import getMyIP, makeClientID
+from .mqtt_interface import MQTT_BROKER, MQTT_PORT
 from .advertising import Advertiser
 from .discovery import DEFAULT_NAME
 from .mqtt_client import MQTTClient
 from .mqtt_interface import STATE_TOPIC, HEADER_TOPIC, MEASUREMENT_TOPIC, COMMAND_TOPIC
 
-__all__ = ('MQTTDeviceManager', 'start', 'stop', 'ValidationError')
+__all__ = ('MQTTDeviceManager', 'start', 'stop')
 
 # ===========================================================================
 # 'Constants'
@@ -61,10 +71,6 @@ else:
 # ===========================================================================
 #
 # ===========================================================================
-
-class ValidationError(ValueError):
-    """ Exception raised if IDE header data fails validation. """
-
 
 class MQTTDevice:
     """

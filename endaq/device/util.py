@@ -8,6 +8,8 @@ import errno
 import os.path
 import pathlib
 import shutil
+import socket
+from threading import get_native_id
 from typing import Any, ByteString, Dict, Tuple, Union
 
 import logging
@@ -135,6 +137,7 @@ def formatFwRev(rev: int) -> str:
         return str(rev)
 
 
+# noinspection PyDeprecation
 def utcfromtimestamp(timestamp: int) -> datetime.datetime:
     """ Convert an Epoch timestamp to a UTC datetime, getting around
         deprecated `datetime.datetime.utcfromtimestamp` needed for
@@ -166,3 +169,24 @@ def levenshtein(a: str, b: str) -> int:
             current[j] = min(add, delete, change)
 
     return current[n]
+
+
+# ===========================================================================
+#
+# ===========================================================================
+
+def getMyIP() -> str:
+    """ Retrieve the computer's IP address (v4).
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+
+
+def makeClientID(base: str) -> str:
+    """ Generate a unique but readable ID for the MQTT Client. The ID
+        combines the name of a parent object, the machine's IP, and the
+        thread ID from which the function was called.
+    """
+    # This is *probably* unique enough.
+    return f'{base}_{getMyIP()}_{get_native_id()}'

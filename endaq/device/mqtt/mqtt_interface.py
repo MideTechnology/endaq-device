@@ -1,15 +1,28 @@
 """
-This module handles creating a connection to an MQTT broker, and
-communicating with an MQTT Device Manager.
+MQTT Interface
+==============
 
-The main component in this module is `MQTTConnector`, through which
-MQTT-enabled `Recorder` instances are created.
+This module handles creating a connection to an MQTT broker, and
+communicating with an MQTT Device Manager. The main component in this module
+is :class:`MQTTConnector`, through which MQTT-enabled `Recorder` instances are
+created.
+
+The simplest way to instantiate an `MQTTConnector` is with
+:meth:`MQTTConnector.find()`, which will try to automatically connect to
+an MQTT broker advertised by the :class:`MQTTDeviceManager`.
+Once an instance of an `MQTTConnector` has been created, MQTT devices can
+be found using the :meth:`getDevices()` method.
+
+.. code-block:: python
+
+    >>> from endaq.device.mqtt.mqtt_interface import MQTTConnector
+    >>> con = MQTTConnector.find()
+
 """
 
 import logging
-import socket
 import string
-from threading import Event, Thread, get_native_id
+from threading import Event, Thread
 from time import sleep, time
 from typing import Any, Callable, Dict, List, Optional, Union
 from weakref import WeakValueDictionary
@@ -27,6 +40,7 @@ from ..command_interfaces import SerialCommandInterface
 from ..devinfo import MQTTDeviceInfo
 from ..exceptions import CommandError, CommunicationError, DeviceError
 from ..simserial import SimSerialPort
+from ..util import getMyIP, makeClientID
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -50,27 +64,6 @@ RESPONSE_TOPIC = "endaq/{sn}/control/response"
 STATE_TOPIC = "endaq/{sn}/control/state"
 HEADER_TOPIC = "endaq/{sn}/header"
 MEASUREMENT_TOPIC = "endaq/{sn}/measurement"
-
-
-# ===========================================================================
-#
-# ===========================================================================
-
-def getMyIP() -> str:
-    """ Retrieve the computer's IP address (v4).
-    """
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        s.connect(("8.8.8.8", 80))
-        return s.getsockname()[0]
-
-
-def makeClientID(base: str) -> str:
-    """ Generate a unique but readable ID for the MQTT Client. The ID
-        combines the name of a parent object, the machine's IP, and the
-        thread ID from which the function was called.
-    """
-    # This is *probably* unique enough.
-    return f'{base}_{getMyIP()}_{get_native_id()}'
 
 
 # ===========================================================================

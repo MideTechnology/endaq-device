@@ -686,6 +686,9 @@ class CommandInterface:
             external power, the dict will contain `"externalPower"`
             (bool).
 
+            :raise UnsupportedFeature: Raised if the device does not
+                support the command.
+
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately; `None` or -1 will wait
                 indefinitely.
@@ -694,9 +697,6 @@ class CommandInterface:
                 response will be cancelled. The callback function should
                 require no arguments.
             :return: A dictionary with the parsed battery status.
-
-            :raise UnsupportedFeature: Raised if the device does not
-            support the command.
         """
         # Only interfaces that support this method will implement it.
         raise UnsupportedFeature(self, self.getBatteryStatus)
@@ -722,7 +722,7 @@ class CommandInterface:
                 data sent.
 
             :raise UnsupportedFeature: Raised if the device does not
-            support the command.
+                support the command.
         """
         # Only interfaces that support this method will implement it.
         raise UnsupportedFeature(self, self.ping)
@@ -2235,6 +2235,7 @@ class SerialCommandInterface(CommandInterface):
             seconds, continuing for the specified duration. `a` and `b`
             are unsigned 8 bit integers, in which each bit represents one
             of the recorder's LEDs:
+
                 * Bit 0 (LSB): Green
                 * Bit 1: Red
                 * Bit 2: Blue
@@ -2432,6 +2433,9 @@ class SerialCommandInterface(CommandInterface):
         """ Initiate a scan for Wi-Fi access points (APs). Applicable only
             to devices with Wi-Fi hardware.
 
+            :raise DeviceTimeout: Raised if 'timeout' seconds have gone by
+                without getting a response
+
             :param timeout: Time (in seconds) to wait for a response before
                 raising a `DeviceTimeout` exception. `None` or -1 will wait
                 indefinitely.
@@ -2442,6 +2446,7 @@ class SerialCommandInterface(CommandInterface):
                 arguments.
             :return: A list of dictionaries, one for each access point,
                 with keys:
+
                 - ``SSID`` (str): The access point name.
                 - ``RSSI`` (int): The AP's signal strength.
                 - ``AuthType`` (int): The authentication (security) type.
@@ -2450,9 +2455,6 @@ class SerialCommandInterface(CommandInterface):
                 - ``Known`` (bool): Is this access point known (i.e. has
                     a stored password on the device)?
                 - ``Selected`` (bool): Is this the currently selected AP?
-
-            :raise DeviceTimeout: Raised if 'timeout' seconds have gone by
-                without getting a response
         """
         # TODO: Remove this workaround. It exists because too many Wi-Fi AP
         #  produce too much data for current FW to transmit via serial.
