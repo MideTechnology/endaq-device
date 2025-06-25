@@ -9,10 +9,12 @@ device's realtime clock is also done through the command interface, as it
 also takes effect immediately.
 """
 
+from datetime import datetime
 import errno
 import logging
 import os.path
 from pathlib import Path
+from time import struct_time
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import warnings
 
@@ -21,6 +23,7 @@ from ebmlite.core import Document, MasterElement, UnknownElement
 from idelib.dataset import Channel, SubChannel
 
 from .exceptions import ConfigError, DeviceError, UnsupportedFeature
+from .types import Epoch
 from . import legacy
 from . import ui_defaults
 from . import util
@@ -46,6 +49,7 @@ _POST_CONFIG_MSG = ("When ready...\n"
                     "    1. Disconnect the recorder\n"
                     "    2. Mount to surface\n"
                     "    3. Press the recorder's primary button ")
+
 
 # ===========================================================================
 #
@@ -275,7 +279,7 @@ class ConfigItem:
         if not isinstance(exp, str):
             # Probably won't occur, but just in case...
             logger.debug("Ignoring bad value for {}: {!r} ({})".format(idstr, exp, type(exp)))
-            return
+            return None
 
         try:
             return compile(exp, "<{}>".format(msg), "eval")
@@ -372,6 +376,7 @@ class ConfigItem:
         """ The configuration item's default value. """
         if self._default:
             return eval(self._valueFormat, {'x': self._default})
+        return None
 
 
     @property
@@ -927,7 +932,8 @@ class ConfigInterface:
 
     @property
     def recordingDir(self) -> Union[str, None]:
-        """ The name of the directory (on the device) where recordings are saved. """
+        """ The name of the directory (on the device) where recordings are saved.
+        """
         return self._getitem(0x14ff7f).value
 
     @recordingDir.setter
@@ -944,6 +950,27 @@ class ConfigInterface:
         self._setitem(0x15ff7f, prefix)
 
     @property
+    def recordingStartTime(self) -> Union[datetime, None]:
+        """ Date/time at which the recording will start. If trigger
+            conditions have been set, this determines when they will start
+            being checked.
+        """
+        t = self._getitem(0x0fff7f).value
+        if t is None:
+            return None
+        return datetime.utcfromtimestamp(t)
+
+    @recordingStartTime.setter
+    def recordingStartTime(self, t: Union[Epoch, datetime, struct_time, tuple, None]):
+        """ Delay before starting a recording, including between recordings
+            if 'Retrigger' is checked.
+        """
+        if t is not None:
+            t = util.time2epoch(t)
+
+        self._setitem(0x0fff7f, t)
+
+    @property
     def recordingTimeLimit(self) -> Union[int, None]:
         return self._getitem(0x0dff7f).value
 
@@ -953,6 +980,7 @@ class ConfigInterface:
 
     @property
     def recordingSizeLimit(self) -> Union[int, None]:
+        """ The maximum size of a single recording file (in bytes). """
         return self._getitem(0x11ff7f).value
 
     @recordingSizeLimit.setter

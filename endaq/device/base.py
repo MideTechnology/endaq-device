@@ -43,6 +43,7 @@ from . import command_interfaces
 from .command_interfaces import CommandInterface
 from .exceptions import *
 from .types import Drive, Filename, Epoch
+from . import util
 
 logger = logging.getLogger(__name__)
 
@@ -657,13 +658,10 @@ class Recorder:
     @property
     def name(self) -> str:
         """ The recording device's (user-assigned) name. """
-        if self._name is not None:
+        if self._name:
             return self._name
         try:
-            name = self.getInfo('UserDeviceName', None)
-            if name is None:
-                return self.config.name
-            return name
+            return self.getInfo('UserDeviceName', '') or self.config.name
         except (AttributeError, KeyError, UnsupportedFeature):
             return ''
 
@@ -799,7 +797,7 @@ class Recorder:
         """ The recorder's date of manufacture. """
         bd = self.getInfo('DateOfManufacture')
         if bd is not None:
-            return datetime.utcfromtimestamp(bd)
+            return util.utcfromtimestamp(bd)
         return None
 
     
@@ -1246,7 +1244,7 @@ class Recorder:
         if data:
             cd = data.get('CalibrationDate', None)
             if cd is not None and not epoch:
-                return datetime.utcfromtimestamp(cd)
+                return util.utcfromtimestamp(cd)
             return cd
         return None
 
@@ -1283,7 +1281,7 @@ class Recorder:
         """
         ce = self._getCalExpiration(self.getCalibration(user=user))
         if ce is not None and not epoch:
-            return datetime.utcfromtimestamp(ce)
+            return util.utcfromtimestamp(ce)
         return ce
 
 
