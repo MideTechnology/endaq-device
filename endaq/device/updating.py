@@ -1,13 +1,13 @@
 """
-Utility functions for validating enDAQ update packages: firmware
-``update.pkg`` and ``firmware.bin`` files, and manifest/calibration
-``userpage.bin`` files.
+Utility functions for reading and validating enDAQ update packages:
+firmware ``update.pkg`` and ``firmware.bin`` files, and
+manifest/calibration ``userpage.bin`` files.
 """
 
 import io
 import pathlib
 import struct
-from typing import ByteString, Dict, Optional, Tuple, Union
+from typing import Any, ByteString, Dict, Optional, Tuple, Union
 from ebmlite import loadSchema
 
 from .exceptions import DeviceError, UnsupportedFeature, ValidationError
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 #
 # ==============================================================================
 
-def parsePackage(package: Union[str, pathlib.Path, ByteString]) -> Dict:
+def parsePackage(package: Union[str, pathlib.Path, ByteString]) -> Dict[str, Any]:
     """
     Parse the package info from a ``.pkg`` firmware update file.
 
@@ -72,11 +72,12 @@ def validatePackage(device: "Recorder",
     given device. Failure will raise an exception (likely, but not
     exclusively, one listed here).
 
-    :raises UnsupportedFeature: if the device cannot be updated.
+    :raises UnsupportedFeature: if the device cannot be updated. If catching
+        this, do it before catching `DeviceError`.
+    :raises ValidationError: if the update package is not intended for
+        the specific device. If catching this, do it before `ValueError`.
     :raises ValueError: if the update package is invalid (unreadable or
         missing critical information).
-    :raises ValidationError: if the userpage update is not compatible with
-        the specific device.
     :raises DeviceError: if the device has a problem that prohibits updating.
 
     :param device: The :class:`Recorder` to update.
@@ -127,7 +128,7 @@ def validatePackage(device: "Recorder",
 # ==============================================================================
 
 def parseUserpage(data: Union[str, pathlib.Path, ByteString]
-                  ) -> Tuple[Dict, Dict, Optional[Dict]]:
+                  ) -> Tuple[Dict[str, Any], Dict[str, Any], Optional[Dict]]:
     """
     Parse the contents of a ``userpage.bin`` update file into dictionaries:
     manifest, factory calibration, and (optional) recording properties.
@@ -201,17 +202,18 @@ def isUserpage(data: Union[str, pathlib.Path, ByteString]) -> bool:
 
 def validateUserpage(device: "Recorder",
                      userpage: Union[str, pathlib.Path, io.IOBase],
-                     strict: bool = True):
+                     strict: bool = True) -> bool:
     """
     Check that a 'userpage' update (device manifest and calibration) is
     valid and compatible with a given device. Failure will raise an
     exception (likely, but not exclusively, one listed here).
 
-    :raises UnsupportedFeature: if the device cannot be updated.
+    :raises UnsupportedFeature: if the device cannot be updated. If catching
+        this, do it before catching `DeviceError`.
+    :raises ValidationError: if the userpage update is not intended for
+        the specific device. If catching this, do it before `ValueError`.
     :raises ValueError: if the userpage update is invalid (unreadable or
         missing critical information).
-    :raises ValidationError: if the userpage update is not intended for
-        the specific device.
     :raises DeviceError: if the device has a problem that prohibits updating.
 
     :param device: The :class:`Recorder` to update.
@@ -236,12 +238,11 @@ def validateUserpage(device: "Recorder",
     except KeyError:
         raise ValueError('Manifest update did not contain a serial number')
 
-    if not strict:
-        return
-
-    if sn != device.serialInt:
+    if strict and sn != device.serialInt:
         raise ValidationError(f'Serial number in manifest update did not '
                               f'match device ({sn!r} != {device.serialInt})')
+
+    return True
 
 
 # ==============================================================================
@@ -314,11 +315,12 @@ def validateFirmware(device: "Recorder",
     confirm it is compatible with the given device. Only devices without
     encryption can use ``.bin`` firmware updates.
 
-    :raises UnsupportedFeature: if the device cannot be updated.
-    :raises ValueError: if the userpage update is invalid (unreadable or
+    :raises UnsupportedFeature: if the device cannot be updated. If catching
+        this, do it before catching `DeviceError`.
+    :raises ValidationError: if the firmware update is not intended for
+        the specific device. If catching this, do it before `ValueError`.
+    :raises ValueError: if the firmware update is invalid (unreadable or
         missing critical information).
-    :raises ValidationError: if the userpage update is not intended for
-        the specific device.
     :raises DeviceError: if the device has a problem that prohibits updating.
 
     :param device: The :class:`Recorder` to update.
