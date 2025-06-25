@@ -24,7 +24,7 @@ import logging
 import string
 from threading import Event, Thread
 from time import sleep, time
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from weakref import WeakValueDictionary
 
 import paho.mqtt.client as mqtt
@@ -884,3 +884,29 @@ class MQTTCommandInterface(SerialCommandInterface):
                           callback=callback)
 
         return True
+
+
+    def getStatus(self,
+                  timeout: Union[int, float] = 10,
+                  callback: Optional[Callable] = None
+                  ) -> Tuple[float, Optional[int], Optional[str]]:
+        """ Get the device's status.
+
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a response
+                will be cancelled. The callback function should require no
+                arguments.
+            :return: The device's current status, as a tuple containing the
+                timestamp of the status update, the status code, and the
+                corresponding status message (if any).
+        """
+        # autoupdate means manager state updates update device.
+        # If not autoupdate, update only in response to GetDeviceList.
+        if not self.manager.autoupdate:
+            self.manager.getDevices(timeout=timeout, managerTimeout=0,
+                                    offline=True, callback=callback)
+
+        self._statusChanged.clear()
+        return self.status
