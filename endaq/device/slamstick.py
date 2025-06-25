@@ -3,7 +3,7 @@ Classes representing older Mide SlamStick data recorders.
 """
 
 __author__ = "dstokes"
-__copyright__ = "Copyright 2023 Mide Technology Corporation"
+__copyright__ = "Copyright 2025 Mide Technology Corporation"
 
 import os.path
 import re
@@ -30,6 +30,13 @@ class SlamStickX(Recorder):
 
     manufacturer = "Midé Technology Corporation"
     homepage = "https://endaq.com/collections/endaq-shock-recorders-vibration-data-logger-sensors"
+
+
+    @property
+    def mcuType(self) -> Union[str, None]:
+        """ The recorder's CPU/MCU type. """
+        # Old devices didn't report MCU, but it is known
+        return self.getInfo('McuType', "EFM32GG330")
 
 
 #===============================================================================
