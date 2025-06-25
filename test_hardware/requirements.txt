@@ -1,0 +1,3 @@
+otii_tcp_client~=1.0.10
+pyserial~=3.5
+endaq.ide>=1.1.0
