@@ -4,7 +4,8 @@ Exceptions raised when interacting with a recording device.
 
 __all__ = ('CommandError', 'CommunicationError', 'ConfigError',
            'ConfigVersionError', 'CRCError', 'DeviceError',
-           'DeviceTimeout', 'UnsupportedFeature')
+           'DeviceTimeout', 'UnsupportedFeature',
+           'ValidationError')
 
 
 class DeviceError(Exception):
@@ -79,3 +80,9 @@ class UnsupportedFeature(DeviceError):
 
 class CRCError(ValueError):
     """ Exception raised if a packet's CRC16 check fails. """
+
+
+class ValidationError(ValueError):
+    """ Exception raised if a device update, IDE header, or other data fails
+        validation.
+    """

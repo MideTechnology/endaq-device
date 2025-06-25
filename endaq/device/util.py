@@ -8,7 +8,7 @@ import errno
 import os.path
 import pathlib
 import shutil
-from typing import Any, ByteString, Dict, Union
+from typing import Any, ByteString, Dict, Tuple, Union
 
 import logging
 logger = logging.getLogger(__name__)
@@ -93,6 +93,46 @@ def time2epoch(t: Union[int, float, datetime.datetime, tuple]) -> int:
         return calendar.timegm(t)
     else:
         return int(t)
+
+
+def splitVersion(rev: int) -> Tuple[int, int, int]:
+    """ Split up a version number (HwRev/FwRev) into a three-part tuple.
+        New 5+ digit xXYYZZ version numbers are split into (x, y, z).
+        3-4 digit xXYY numbers are converted to (x, y, 0).
+        Old style 1-2 digit numbers are converted to (1, x, 0).
+    """
+    if rev > 99:
+        split = int(rev / 10000), int((rev % 10000) / 100), int(rev % 100)
+        if rev < 10000:
+            return split[1], split[2], 0
+        return split
+    return 1, int(rev), 0
+
+
+def formatHwRev(rev: int) -> str:
+    """ Render an integer HwRev in v<version>r<revision>[BOM] format.
+    """
+    try:
+        major, minor, bom = splitVersion(rev)
+        if bom == 0:
+            bom = ""
+        elif bom < 26:
+            bom = chr(bom + 65)
+        else:
+            bom = chr((bom % 25) + 64) * int((bom // 25 + 1))
+        return f"v{int(major)}r{int(minor)}{bom}"
+    except TypeError:
+        pass
+    return str(rev)
+
+
+def formatFwRev(rev: int) -> str:
+    """ Render an integer FwRev in major.minor.micro format.
+    """
+    try:
+        return "{}.{}.{}".format(*splitVersion(rev))
+    except TypeError:
+        return str(rev)
 
 
 def utcfromtimestamp(timestamp: int) -> datetime.datetime:
