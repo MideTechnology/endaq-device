@@ -141,6 +141,9 @@
 		<MasterElement name="DigitalSensorBMI270" id="0x4D97" mandatory="0" multiple="0" minver="1">Indicates the presence of a BMI270 Gyroscope, with an interrupt line
             <UIntegerElement name="SensorConfig" id="0x4E00" mandatory="0" multiple="0" minver="1">Configuration data for digital sensors. Value varies by hardware.</UIntegerElement>
         </MasterElement>
+        <MasterElement name="DigitalSensorBHI360" id="0x4D98" mandatory="0" multiple="0" minver="1">Indicates the presence of a Bosch BHI360 IMU.
+            <UIntegerElement name="SensorConfig" id="0x4E00" mandatory="0" multiple="0" minver="1">Configuration data for digital sensors. Value varies by hardware.</UIntegerElement>
+        </MasterElement>
 		
         <!-- Digital pressure/other sensors -->
         <MasterElement name="DigitalSensorMPL3115A2" id="0x4DA0" mandatory="0" multiple="0" minver="1">Indicates the presence of an MPL3115A2 P/T sensor on the I2C0 bus.</MasterElement>
@@ -179,6 +182,7 @@
         <MasterElement name="DigitalSensorSI1133" id="0x4DD3" mandatory="0" multiple="0" minver="1">Indicates the presence of a SI1133 light sensor on the I2C1 bus.</MasterElement>
         <MasterElement name="UseLegacyUserInterface" id="0x4DD7" mandatory="0" multiple="0" minver="1">Indicates that the device should be displaing the legacy UI.</MasterElement>
         <MasterElement name="DeepSleepWakeupPins" id="0x4DD8" mandatory="0" multiple="0" minver="1">Indicates that the device has proper wakeup pins for lowest possible sleep level.</MasterElement>
+        <MasertElement name="TimeSynchronizationIrigB" id="0x4DD9" mandatory="0" multiple="0" minver="1">Indicates that the device has IRIG-B Time Synchronization Capabilities.</MasterElement>
 
         <!-- Analog Out -->
         <MasterElement name="PeripheralHeater" id="0x4F00" mandatory="0" multiple="0" minver="1">Indicates the presence of an analog heater device.
