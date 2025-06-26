@@ -8,6 +8,7 @@ import idelib.importer
 import pytest
 
 import endaq.device
+import endaq.device.util
 
 from . import fake_recorders
 
@@ -135,6 +136,7 @@ def test_fromRecording(filename):
     doc = idelib.importer.importFile(filename, quiet=True)
     dev = endaq.device.fromRecording(doc)
 
+    assert dev.isVirtual
     assert dev.partNumber in filename
 
     # Sanity checks: Make sure channels/sensors/transforms were created
@@ -142,3 +144,32 @@ def test_fromRecording(filename):
     assert dev.channels
     assert dev.sensors
     assert dev.transforms
+
+
+@pytest.mark.parametrize("path", RECORDER_PATHS)
+def test_info(path):
+    """ Test the basic device properties. Properties that read config
+        data are tested elsewhere.
+    """
+    endaq.device.RECORDERS.clear()
+    dev = endaq.device.getRecorder(path, strict=False)
+
+    # Basic sanity check that properties have values
+    assert dev.serial
+    assert dev.serialInt is not None
+    assert dev.timestamp is not None
+    assert dev.birthday is not None
+    assert dev.partNumber
+    assert dev.productName
+    assert dev.mcuType
+    assert not dev.isVirtual
+    assert not dev.isRemote
+    assert dev.hardwareVersion
+    assert dev.firmwareVersion > 0
+
+    # Check that the formatted version numbers are good,
+    # using length to detect HwRev is "vXrY[BOM]" and
+    # FwRev is "X.Y.Z" - even when the device reports old
+    # style versions < 100.
+    assert len(dev.hardwareVersion) >= 4
+    assert len(endaq.device.util.formatFwRev(dev.firmwareVersion)) >= 5
