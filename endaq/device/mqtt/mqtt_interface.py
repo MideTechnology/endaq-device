@@ -39,8 +39,10 @@ from ..client import synchronized
 from ..command_interfaces import SerialCommandInterface
 from ..devinfo import MQTTDeviceInfo
 from ..exceptions import CommandError, CommunicationError, DeviceError
+from ..response_codes import DeviceStatusCode
 from ..simserial import SimSerialPort
-from ..util import getMyIP, makeClientID
+from ..types import Filename
+from .. import util
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -111,7 +113,7 @@ class MQTTConnector:
                 if `MQTTConnector.autoupdate` is `True`.
         """
         if not host or host in ('localhost', '127.0.0.1'):
-            host = getMyIP()
+            host = util.getMyIP()
         elif isinstance(host, (list, tuple)):
             host = host[0]
 
@@ -127,7 +129,7 @@ class MQTTConnector:
         self.updateCallback = updateCallback
 
         self.clientArgs.update(clientArgs or {})
-        self.clientArgs.setdefault('client_id', makeClientID(type(self).__name__))
+        self.clientArgs.setdefault('client_id', util.makeClientID(type(self).__name__))
         self.connectArgs.update(connectArgs or {})
 
         self.client: mqtt.Client = None
@@ -812,6 +814,23 @@ class MQTTCommandInterface(SerialCommandInterface):
         super().__init__(device, make_crc=make_crc, ignore_crc=ignore_crc, **kwargs)
 
 
+    @property
+    def available(self) -> bool:
+        """ Is the command interface available and able to accept commands? """
+        try:
+            _ts, status, _msg = self.getStatus(timeout=1)
+        except TimeoutError:
+            return False
+
+        return status not in (DeviceStatusCode.RESET_PENDING,
+                              DeviceStatusCode.START_PENDING,
+                              DeviceStatusCode.STOP_PENDING,
+                              DeviceStatusCode.UPLOADING,
+                              DeviceStatusCode.WAKING,
+                              DeviceStatusCode.SLEEPING,
+                              DeviceStatusCode.OFFLINE)
+
+
     def getSerialPort(self,
                       reset: bool = False,
                       timeout: Union[int, float] = 1,
@@ -902,11 +921,49 @@ class MQTTCommandInterface(SerialCommandInterface):
                 timestamp of the status update, the status code, and the
                 corresponding status message (if any).
         """
-        # autoupdate means manager state updates update device.
-        # If not autoupdate, update only in response to GetDeviceList.
+        # MQTT devices report state changes automatically, not just in
+        # response to a command.
+
         if not self.manager.autoupdate:
+            # autoupdate means manager state updates update device.
+            # If not autoupdate, update only in response to GetDeviceList.
             self.manager.getDevices(timeout=timeout, managerTimeout=0,
                                     offline=True, callback=callback)
 
         self._statusChanged.clear()
         return self.status
+
+
+    def awaitDismount(self,
+                      timeout: Optional[Union[int, float]] = None,
+                      callback: Optional[Callable] = None) -> bool:
+        """ Wait for the device to dismount as a drive, indicating it has
+            rebooted, started recording, started firmware application, etc.
+
+            *This method is not applicable to devices connected over MQTT.*
+
+            :return: `False` in all cases.
+        """
+        # FUTURE: Implement this if the device can report via command if it
+        #  is mounted as an MSD.
+        return False
+
+
+    def awaitRemount(self,
+                     update: bool = False,
+                     paths: Optional[List[Filename]] = None,
+                     strict: bool = True,
+                     timeout: Optional[Union[int, float]] = None,
+                     interval: float = 0.125,
+                     callback: Optional[Callable] = None) -> bool:
+        """ Wait for the device to reappear as a drive, indicating it has
+            been reconnected, completed a recording, finished firmware
+            application, etc.
+
+            *This method is not applicable to devices connected over MQTT.*
+
+            :return: `False` in all cases.
+        """
+        # FUTURE: Implement this if the device can report via command if it
+        #  is mounted as an MSD.
+        return False
