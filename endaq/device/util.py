@@ -8,7 +8,8 @@ import errno
 import os.path
 import pathlib
 import shutil
-from typing import Any, ByteString, Dict, Tuple, Union
+from time import sleep, time
+from typing import Any, ByteString, Callable, Dict, Optional, Tuple, Union
 
 import logging
 logger = logging.getLogger(__name__)
@@ -144,3 +145,37 @@ def utcfromtimestamp(timestamp: int) -> datetime.datetime:
         return datetime.datetime.fromtimestamp(timestamp, datetime.UTC)
     except AttributeError:
         return datetime.datetime.utcfromtimestamp(timestamp)
+
+
+def waitfor(func: Callable,
+            timeout: float,
+            interval: float = 0.125,
+            callback: Optional[Callable] = None) -> bool:
+    """ Helper to wait for a condition to be met.
+
+        :param func: A function to call that checks the condition. It
+            should require no arguments and return `True` if the
+            condition is met. It will be called at least once.
+        :param timeout: Time (in seconds) to wait for the condition
+            to be met. 0 will return immediately; `None` or -1 will wait
+            indefinitely.
+        :param interval: Time (in seconds) between checks.
+        :param callback: A function to call each response-checking
+            cycle. If the callback returns `True`, the wait for a
+            response will be cancelled. The callback function should
+            require no arguments.
+    """
+    if timeout == 0:
+        return func()
+
+    timeout = -1 if timeout is None else timeout
+    deadline = time() + timeout
+
+    while timeout < 0 or time() < deadline:
+        if callback is not None and callback():
+            return False
+        if func():
+            return True
+        sleep(interval)
+
+    raise TimeoutError
