@@ -14,7 +14,7 @@ from typing import Any, ByteString, Dict, Optional, Tuple, Union
 import logging
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 from .command_interfaces import SerialCommandInterface, CommandError, CRCError, CommandInterface
 from .response_codes import DeviceStatusCode

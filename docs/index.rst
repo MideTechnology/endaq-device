@@ -3,14 +3,14 @@
 ================
 
 .. note::
-  This documentation is in very early development.
+  This documentation is still in development.
 
 ``endaq.device`` provides a means of representing, accessing, configuring and controlling
 `enDAQ™ data recorders <https://endaq.com/collections/endaq-shock-recorders-vibration-data-logger-sensors>`_. It
 also supports legacy SlamStick™ devices (X, C, and S).
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
    :caption: Contents:
 
    endaq/quickstart

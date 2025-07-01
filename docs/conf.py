@@ -36,7 +36,7 @@ def get_version(rel_path):
 
 
 project = 'endaq.device'
-copyright = '2023, Mide Technology Corp.'
+copyright = '2025, Mide Technology Corp.'
 author = ''
 
 # The full version, including alpha/beta/rc tags
