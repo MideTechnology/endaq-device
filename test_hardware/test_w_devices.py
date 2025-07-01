@@ -4,6 +4,7 @@ Automated tests for W-specific commands in endaq.device
 import time
 import warnings
 import pytest
+import os
 import endaq.device
 from endaq.device.response_codes import WiFiConnectionStatus, WiFiConnectionError
 
@@ -60,6 +61,7 @@ def setupTeardown():
 
 
 # W Specific Tests
+@pytest.mark.device_w
 def test_get_network_address(device_sn, setupTeardown):
     """ Test that 'getNetworkAddress()' returns a valid MAC Address on W
         devices.
@@ -69,41 +71,35 @@ def test_get_network_address(device_sn, setupTeardown):
         :param setupTeardown: a pytest fixture function that properly resets the 
             enDAQ before and after every test.
     """
-    # Device type check
-    if device_sn[0] != "W":
-        raise endaq.device.UnsupportedFeature("Non-W devices are not supported.")
-
     # Set up
     device = endaq.device.getDevices()[0]
 
-    # Gather the MAC and IP adresses
+    # Gather the MAC and IP addresses
     mac, ip = device.command.getNetworkAddress()
 
     # Confirm that a valid MAC address was found
-    assert mac != None, "MAC Adress was None."
+    assert mac != None, "MAC Address was None."
     print("MAC Address:", mac)
 
     time.sleep(5)
 
 
+@pytest.mark.device_w
 def test_get_network_status(device_sn, setupTeardown):
     """ Tests that 'getNetworkStatus()' returns the correct MAC and IP address 
-        for cases where the device is conncted or disconnected from wifi.
+        for cases where the device is connected or disconnected from wifi.
 
         :param device_sn: the tested device's serial number collected from the 
             command line.
         :param setupTeardown: a pytest fixture function that properly resets the 
             enDAQ before and after every test.
     """
-    # Device type check
-    if device_sn[0] != "W":
-        raise endaq.device.UnsupportedFeature("Non-W devices are not supported.")
-
     # Set up
     device = endaq.device.getDevices()[0]
+    guest_wifi_pw = os.environ.get("GUEST_WIFI_PW")
 
     # Connected Case
-    device.command.setAP("MIDE-Guest", password="Guest23!")
+    device.command.setAP("MIDE-Guest", password=guest_wifi_pw )
     time.sleep(5)
     mac, ip = device.command.getNetworkAddress()
     network_status_connected = device.command.getNetworkStatus()
@@ -133,24 +129,22 @@ def test_get_network_status(device_sn, setupTeardown):
     time.sleep(5)
 
 
+@pytest.mark.device_w
 def test_query_wifi(device_sn, setupTeardown):
     """ Tests that 'queryWifi()' returns the correct SSID and connection status
-        for cases where the device is conncted or disconnected from wifi.
+        for cases where the device is connected or disconnected from wifi.
 
         :param device_sn: the tested device's serial number collected from the 
             command line.
         :param setupTeardown: a pytest fixture function that properly resets the 
             enDAQ before and after every test.
     """
-    # Device type check
-    if device_sn[0] != "W":
-        raise endaq.device.UnsupportedFeature("Non-W devices are not supported.")
-
     # Set up
     device = endaq.device.getDevices()[0]
+    guest_wifi_pw = os.environ.get("GUEST_WIFI_PW")
 
     # Connected Case
-    device.command.setAP("MIDE-Guest", password="Guest23!")
+    device.command.setAP("MIDE-Guest", password=guest_wifi_pw)
     time.sleep(10)
     connected_query = device.command.queryWifi()
     assert connected_query["SSID"] == "MIDE-Guest", "Connected to wrong wifi."
@@ -172,6 +166,7 @@ def test_query_wifi(device_sn, setupTeardown):
     time.sleep(5)
 
 
+@pytest.mark.device_w
 def test_scan_wifi(device_sn, setupTeardown):
     """ Tests that 'scanWifi()' can find three MIDE wifi networks. Warns if the
         connection strength for any of the three are weak.
@@ -181,10 +176,6 @@ def test_scan_wifi(device_sn, setupTeardown):
         :param setupTeardown: a pytest fixture function that properly resets the 
             enDAQ before and after every test.
     """
-    # Device type check
-    if device_sn[0] != "W":
-        raise endaq.device.UnsupportedFeature("Non-W devices are not supported.")
-
     # Set up
     LIST_OF_NETWORKS = ["MIDE-Corp", "Mide-LinuxNet", "MIDE-Guest"]
     STRENGTH_CUTOFF = -80
@@ -211,6 +202,7 @@ def test_scan_wifi(device_sn, setupTeardown):
     time.sleep(5)
 
 
+@pytest.mark.device_w
 @pytest.mark.parametrize("SSID", ["MIDE-Guest", "Invalid-Wifi"])
 def test_set_AP(SSID, device_sn, setupTeardown):
     """ Tests that 'setAP()' will establish a connection when given a valid SSID
@@ -222,18 +214,15 @@ def test_set_AP(SSID, device_sn, setupTeardown):
         :param setupTeardown: a pytest fixture function that properly resets the 
             enDAQ before and after every test.
     """
-    # Device type check
-    if device_sn[0] != "W":
-        raise endaq.device.UnsupportedFeature("Non-W devices are not supported.")
-
     # Set up
     device = endaq.device.getDevices()[0]
+    guest_wifi_pw = os.environ.get("GUEST_WIFI_PW")
 
     # Attempt to run setAP
     match SSID:
         case "MIDE-Guest":
             # Valid PW case
-            device.command.setAP(SSID, password="Guest23!")
+            device.command.setAP(SSID, password=guest_wifi_pw)
             query_wifi = device.command.queryWifi()
             time.sleep(10)
             assert (query_wifi["WiFiConnectionStatus"] ==

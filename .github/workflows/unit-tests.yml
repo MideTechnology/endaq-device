@@ -12,7 +12,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
-        python-version: [3.8, 3.9, '3.10', '3.11', '3.12']
+        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
 
     env:
       OS: ${{ matrix.os }}
@@ -21,8 +21,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install --upgrade pip
@@ -33,3 +32,36 @@ jobs:
       - run: python -m pip install pytest pytest-cov mock
 
       - run: python -m pytest ./tests/
+
+  automated-tests:
+    name: Run Automated Device Tests
+
+    env:
+      APPROVED_USERS: '["eoneill-mide", "pscheidler", "StokesMIDE"]'
+
+    runs-on: device-library-tester
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install --upgrade pip
+
+      - uses: actions/checkout@v4
+
+      - name: Set up venv
+        run: source testing_venv/bin/activate
+        shell: bash
+
+      - name: Set up libraries
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install pytest pytest-cov mock
+          python -m pip install pytest-random-order
+          python -m pip install endaq.device
+
+      - name: Run device tests if pusher is approved
+        if: ${{ contains(fromJSON(env.APPROVED_USERS), github.event.pusher.name) }}
+        run: python -m pytest --random-order --device "W0014435" ./test_hardware/
+        env:
+          GUEST_WIFI_PW: ${{ secrets.GUEST_WIFI_PW }}
