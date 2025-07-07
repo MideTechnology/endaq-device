@@ -22,9 +22,11 @@ INSTALL_REQUIRES = [
     'ebmlite>=3.3.0',
     'idelib>=3.2.9',
     'numpy>=1.19.4',
+    'paho-mqtt>=2.1.0',
     'psutil >=5.5.0, <6.0.0; sys_platform == "linux" or sys_platform=="darwin"',
     'pyserial>=3.5',
-    'pywin32>=228; sys_platform == "win32"'
+    'pywin32>=228; sys_platform == "win32"',
+    'zeroconf'
 ]
 
 TEST_REQUIRES = [
@@ -73,6 +75,7 @@ setuptools.setup(
             'endaq.device',
             'endaq.device.ui_defaults',
             'endaq.device.schemata',
+            'endaq.device.mqtt'
             ],
         package_dir={
             'endaq.device': './endaq/device',

@@ -18,6 +18,7 @@ also supports legacy SlamStick™ devices (X, C, and S).
    endaq/Recorder
    endaq/config_control
    endaq/special_topics
+   endaq/mqtt_basics
    api_ref
 
 

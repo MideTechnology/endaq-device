@@ -8,8 +8,10 @@ import errno
 import os.path
 import pathlib
 import shutil
+from threading import get_native_id
 from time import sleep, time
 from typing import Any, ByteString, Callable, Dict, Optional, Tuple, Union
+import socket
 
 import logging
 logger = logging.getLogger(__name__)
@@ -136,6 +138,7 @@ def formatFwRev(rev: int) -> str:
         return str(rev)
 
 
+# noinspection PyDeprecation
 def utcfromtimestamp(timestamp: int) -> datetime.datetime:
     """ Convert an Epoch timestamp to a UTC datetime, getting around
         deprecated `datetime.datetime.utcfromtimestamp` needed for
@@ -145,6 +148,49 @@ def utcfromtimestamp(timestamp: int) -> datetime.datetime:
         return datetime.datetime.fromtimestamp(timestamp, datetime.UTC)
     except AttributeError:
         return datetime.datetime.utcfromtimestamp(timestamp)
+
+
+def levenshtein(a: str, b: str) -> int:
+    """Calculates the Levenshtein distance between a and b.
+    """
+    n, m = len(a), len(b)
+    if n > m:
+        # Make sure n <= m, to use O(min(n,m)) space
+        a, b = b, a
+        n, m = m, n
+
+    current = range(n + 1)
+    for i in range(1, m + 1):
+        previous, current = current, [i] + [0] * n
+        for j in range(1, n + 1):
+            add, delete = previous[j] + 1, current[j - 1] + 1
+            change = previous[j - 1]
+            if a[j - 1] != b[i - 1]:
+                change = change + 1
+            current[j] = min(add, delete, change)
+
+    return current[n]
+
+
+# ===========================================================================
+#
+# ===========================================================================
+
+def getMyIP() -> str:
+    """ Retrieve the computer's IP address (v4).
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+
+
+def makeClientID(base: str) -> str:
+    """ Generate a unique but readable ID for the MQTT Client. The ID
+        combines the name of a parent object, the machine's IP, and the
+        thread ID from which the function was called.
+    """
+    # This is *probably* unique enough.
+    return f'{base}_{getMyIP()}_{get_native_id()}'
 
 
 def waitfor(func: Callable,

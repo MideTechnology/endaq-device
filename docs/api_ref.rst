@@ -8,3 +8,4 @@ enDAQ API Reference
    endaq/device
    endaq/device/command_interface
    endaq/device/config
+   endaq/device/mqtt
