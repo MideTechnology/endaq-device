@@ -988,12 +988,12 @@ class ConfigInterface:
         self._setitem(0x11ff7f, t)
 
     @property
-    def retrigger(self) -> bool:
+    def retrigger(self) -> Union[bool, None]:
         """ When set, enDAQ will re-arm after recording time or size limit is reached. """
         return self._getitem(0x0eff7f).value
 
     @retrigger.setter
-    def retrigger(self, retrigger: bool):
+    def retrigger(self, retrigger: Union[bool, None]):
         self._setitem(0x0eff7f, retrigger)
 
 
