@@ -987,6 +987,15 @@ class ConfigInterface:
     def recordingSizeLimit(self, t: Optional[int]):
         self._setitem(0x11ff7f, t)
 
+    @property
+    def retrigger(self) -> bool:
+        """ When set, enDAQ will re-arm after recording time or size limit is reached. """
+        return self._getitem(0x0eff7f).value
+
+    @retrigger.setter
+    def retrigger(self, retrigger: bool):
+        self._setitem(0x0eff7f, retrigger)
+
 
     # =======================================================================
     # More complex (but standard) configuration items
