@@ -3,6 +3,7 @@ Automated tests for endaq.device.
 """
 import time
 import pytest
+import RPi.GPIO as GPIO
 from tests.fake_recorders import RECORDER_PATHS
 import endaq.device
 
@@ -12,7 +13,7 @@ class Payload:
     payload = ''
 
 
-# Helper functions:
+# Helper functions and fixtures:
 def commandWait(device, timeout):
     """ Wait for the device to reconnect after a command is sent.
 
@@ -38,6 +39,20 @@ def commandWait(device, timeout):
         time.sleep(1)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def setupTeardownGPIO():
+    """ Set up and teardown GPIO RasPi controls at the beginning and end
+        of a session.
+    """
+    GPIO.setmode(GPIO.BOARD)
+    GPIO.setup(15, GPIO.OUT) # Pin 15 is GPIO22
+    GPIO.setup(13, GPIO.OUT) # Pin 13 is GPIO27
+
+    yield
+
+    GPIO.cleanup()
+
+
 @pytest.fixture # with a default scope of "function"
 def setupTeardown():
     """ Properly reset the enDAQ before and after every test.
@@ -45,6 +60,9 @@ def setupTeardown():
     # Setup
     # start up and connect
     print("Setting up...")
+    GPIO.output(15, GPIO.LOW) # GPIO22 set Low
+    GPIO.output(13, GPIO.LOW) # GPIO27 set Low
+    time.sleep(15)
     device = endaq.device.getDevices()[0]
     device.command.ping()
     if device.command.status[1] == endaq.device.response_codes.DeviceStatusCode.RECORDING:
@@ -58,7 +76,8 @@ def setupTeardown():
     if device.command.status[1] == endaq.device.response_codes.DeviceStatusCode.RECORDING:
         device.command.stopRecording()
     # disconnect and shut down
-
+    GPIO.output(13, GPIO.HIGH) # GPIO27 set High
+    time.sleep(10)
     print("Test complete")
 
 
