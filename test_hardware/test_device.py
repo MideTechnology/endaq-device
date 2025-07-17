@@ -5,6 +5,12 @@ import time
 import pytest
 from tests.fake_recorders import RECORDER_PATHS
 import endaq.device
+import sys
+
+try:
+    import RPi.GPIO as GPIO
+except ImportError:
+    print("Please install RPi.GPIO if planning to run on RasPi")
 
 
 # Helper class:
@@ -44,8 +50,7 @@ def setupTeardownGPIO(is_raspi):
         of a session.
     """
     if is_raspi is True:
-        import RPi.GPIO as GPIO
-
+        print("\nSetting up RasPi...")
         GPIO.setmode(GPIO.BOARD)
         GPIO.setup(15, GPIO.OUT) # Pin 15 is GPIO22
         GPIO.setup(13, GPIO.OUT) # Pin 13 is GPIO27
@@ -53,7 +58,9 @@ def setupTeardownGPIO(is_raspi):
     yield
 
     if is_raspi is True:
+        print("\nTearing down RasPi setup...")
         GPIO.cleanup()
+        print("\nDone with RasPi tear down.")
 
 
 @pytest.fixture # with a default scope of "function"
@@ -62,7 +69,7 @@ def setupTeardown(is_raspi):
     """
     # Setup
     # start up and connect
-    print("Setting up...")
+    print("\nSetting up...")
     if is_raspi is True:
         GPIO.output(15, GPIO.LOW) # GPIO22 set Low
         GPIO.output(13, GPIO.LOW) # GPIO27 set Low
@@ -75,7 +82,7 @@ def setupTeardown(is_raspi):
     yield # Runs test
 
     # Teardown
-    print("Tearing down...")
+    print("\nTearing down...")
     commandWait(device, 5)
     if device.command.status[1] == endaq.device.response_codes.DeviceStatusCode.RECORDING:
         device.command.stopRecording()
@@ -83,7 +90,7 @@ def setupTeardown(is_raspi):
     if is_raspi is True:
         GPIO.output(13, GPIO.HIGH) # GPIO27 set High
     time.sleep(10)
-    print("Test complete")
+    print("\nTest complete.")
 
 
 # Tests:
