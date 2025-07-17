@@ -14,6 +14,14 @@ def pytest_addoption(parser):
     parser.addoption(
         "-D", "--device", default=None, help="Specify the serial number of the device to test"
     )
+    parser.addoption(
+        "-R", "--raspi", action="store_true", default=False, help="Include if running on a RasPi"
+    )
+
+
+@pytest.fixture(scope="session")
+def is_raspi(request):
+    return request.config.getoption("--raspi")
 
 
 def pytest_configure(config):
@@ -42,15 +50,15 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             if "device_needed" in item.keywords:
                 item.add_marker(skip_test)
-    elif config.getoption("--device")[0] == "S":
+    elif config.getoption("--device")[0].upper() == "S":
         skip_test = pytest.mark.skip(
-            reason="Run using local option, skipping device required tests")
+            reason="Test not required for S device")
         for item in items:
             if "device_w" in item.keywords:
                 item.add_marker(skip_test)
-    elif config.getoption("--device")[0] == "W":
+    elif config.getoption("--device")[0].upper() == "W":
         skip_test = pytest.mark.skip(
-            reason="Run using local option, skipping device required tests")
+            reason="Test not required for W device")
         for item in items:
             if "device_s" in item.keywords:
                 item.add_marker(skip_test)
