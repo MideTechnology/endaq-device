@@ -44,10 +44,40 @@ def commandWait(device, timeout):
         time.sleep(1)
 
 
+def assertSN(device_sn):
+    """ Find the connected device that matches the inputted serial number and
+        set it to the "device" variable. If there is no device with a matching
+        SN, raise an exception.
+        
+        :param device_sn: the tested device's serial number collected from the 
+            command line.
+        :return: device matching the inputted SN.
+    """
+    num_dev = len(endaq.device.getDevices())
+
+    if num_dev == 0:
+        raise endaq.device.exceptions.DeviceError("No device found.")
+    elif num_dev == 1:
+        device = endaq.device.getDevices()[0]
+        assert (device.serial == device_sn), "Not connected to the correct device."
+    else:
+        for index in range(num_dev):
+            device = endaq.device.getDevices()[index]
+            if device.serial == device_sn:
+                break
+        if device.serial != device_sn:
+            raise endaq.device.exceptions.DeviceError("No device with that SN is connected.")
+
+    return device
+
+
 @pytest.fixture(scope="session", autouse=True)
 def setupTeardownGPIO(is_raspi):
     """ Set up and teardown GPIO RasPi controls at the beginning and end
         of a session.
+
+        :param is_raspi: True if the tests are meant to run on a RaspberryPi,
+            False otherwise. Set in command line.
     """
     if is_raspi is True:
         print("\nSetting up RasPi...")
@@ -64,8 +94,13 @@ def setupTeardownGPIO(is_raspi):
 
 
 @pytest.fixture # with a default scope of "function"
-def setupTeardown(is_raspi):
+def setupTeardown(is_raspi, device_sn):
     """ Properly reset the enDAQ before and after every test.
+
+        :param is_raspi: True if the tests are meant to run on a RaspberryPi,
+            False otherwise. Set in command line.
+        :param device_sn: the tested device's serial number collected from the 
+            command line.
     """
     # Setup
     # start up and connect
@@ -74,10 +109,11 @@ def setupTeardown(is_raspi):
         GPIO.output(15, GPIO.LOW) # GPIO22 set Low
         GPIO.output(13, GPIO.LOW) # GPIO27 set Low
         time.sleep(15)
-    device = endaq.device.getDevices()[0]
+    device = assertSN(device_sn)
     device.command.ping()
     if device.command.status[1] == endaq.device.response_codes.DeviceStatusCode.RECORDING:
         device.command.stopRecording()
+        commandWait(device, 10)
 
     yield # Runs test
 
@@ -86,6 +122,7 @@ def setupTeardown(is_raspi):
     commandWait(device, 5)
     if device.command.status[1] == endaq.device.response_codes.DeviceStatusCode.RECORDING:
         device.command.stopRecording()
+        commandWait(device, 10)
     # disconnect and shut down
     if is_raspi is True:
         GPIO.output(13, GPIO.HIGH) # GPIO27 set High
@@ -104,7 +141,7 @@ def test_standard_run(device_sn, setupTeardown):
     """
     # Set up; Confirm device is idle
     timeout = 10
-    device = endaq.device.getDevices()[0]
+    device = assertSN(device_sn)
     serial_number = device.serial
     assert (
         device.command.status[1] is endaq.device.DeviceStatusCode.IDLE or
@@ -119,7 +156,7 @@ def test_standard_run(device_sn, setupTeardown):
     # Clear cached device
     device.refresh()
     assert device.available == False, "Device is still cached"
-    device = endaq.device.getDevices()[0]
+    device = assertSN(device_sn)
     assert device.serial == serial_number, "Did not reconnect to the same device."
 
     # Confirm device stopped recording
@@ -147,7 +184,7 @@ def test_ping_status(command, status_code, device_sn, setupTeardown):
     """
     # Set up
     timeout = 5
-    device = endaq.device.getDevices()[0]
+    device = assertSN(device_sn)
 
     # Run different scenarios based on the command parameter
     match command:
@@ -189,7 +226,7 @@ def test_ping_payload(index, device_sn, setupTeardown):
             enDAQ before and after every test.
     """
     # Connect to device
-    device = endaq.device.getDevices()[0]
+    device = assertSN(device_sn)
 
     # Ensure the payload begins empty at start of loop
     if index == 1:
@@ -225,7 +262,7 @@ def test_get_devices(params, device_sn, setupTeardown):
     match params:
         case "default":
             # Default parameters: Verify that expected device is returned
-            device = endaq.device.getDevices()[0]
+            device = assertSN(device_sn)
             assert device.serial == device_sn, "Incorrect device connected."
         case "correct_path":
             # Correct path specified: Verify that expected device is returned
@@ -240,18 +277,27 @@ def test_get_devices(params, device_sn, setupTeardown):
         case "unmounted_default":
             # Unmounted = False: Verify that this normally returns the correct
             # device
-            device = endaq.device.getDevices(unmounted=False)[0]
-            assert device.serial == device_sn, "Incorrect device connected."
+            device = []
+            device_list = endaq.device.getDevices(unmounted=False)
+            for dev in device_list:
+                if dev.serial == device_sn:
+                    device.append(dev)
+            assert device, "Incorrect device or no device connected."
         case "unmounted_recording":
             # Unmounted = False: Verify that if the device is recording, it is
             # not returned
-            device = endaq.device.getDevices()[0]
+            device = assertSN(device_sn)
             device.command.startRecording()
             commandWait(device, timeout)
             assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
                     ), "Device is not recording."
             new_device = endaq.device.getDevices(unmounted=False)
-            assert new_device == [], "Device was returned while recording."
+            dev_list = []
+            for i in new_device:
+                curr_dev = i
+                if curr_dev.serial == device_sn:
+                    dev_list.append(curr_dev)
+            assert dev_list == [], "Device was returned while recording."
             commandWait(device, timeout)
             device.command.stopRecording()
             commandWait(device, timeout)
@@ -267,7 +313,7 @@ def test_start_recording_default(device_sn, setupTeardown):
     """
     # Set up
     timeout = 10
-    device = endaq.device.getDevices()[0]
+    device = assertSN(device_sn)
     fw_version = device.firmwareVersion
     commandWait(device, timeout)
 
@@ -323,7 +369,7 @@ def test_start_recording_wait(device_sn, setupTeardown):
     """
     # Set up
     timeout = 10
-    device = endaq.device.getDevices()[0]
+    device = assertSN(device_sn)
     device.refresh()  # remove this once endaq.device is fixed
     fw_version = device.firmwareVersion
     commandWait(device, timeout)
@@ -363,7 +409,7 @@ def test_start_recording_wait(device_sn, setupTeardown):
                     endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
 
             device.refresh()
-            device = endaq.device.getDevices()[0]
+            device = assertSN(device_sn)
 
             # Running SR with wait=True; recording how long it takes; stop rec.
             time.sleep(5)
@@ -395,7 +441,7 @@ def test_start_recording_timeout(device_sn, setupTeardown):
             enDAQ before and after every test.
     """
     # Set up
-    device = endaq.device.getDevices()[0]
+    device = assertSN(device_sn)
     device.refresh()
     fw_version = device.firmwareVersion
 
