@@ -6,3 +6,6 @@ enDAQ API Reference
    :caption: Contents:
 
    endaq/device
+   endaq/device/command_interface
+   endaq/device/config
+   endaq/device/mqtt

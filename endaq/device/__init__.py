@@ -4,7 +4,7 @@ data-logging devices.
 """
 
 __author__ = "David Stokes"
-__copyright__ = "Copyright 2024 Mide Technology Corporation"
+__copyright__ = "Copyright 2025 Mide Technology Corporation"
 
 import os
 from pathlib import Path
@@ -15,7 +15,8 @@ from weakref import WeakValueDictionary
 
 import logging
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
+if 'ENDAQ_LOGLEVEL' in os.environ:
+    logger.setLevel(int(os.environ.get('ENDAQ_LOGLEVEL', logging.ERROR)))
 
 import ebmlite.core
 from idelib.dataset import Dataset
@@ -33,7 +34,7 @@ from .types import Drive, Filename, Epoch
 #
 # ============================================================================
 
-__version__ = "1.4.0"
+__version__ = "1.4.1b4"
 
 __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'DeviceError', 'DeviceTimeout', 'UnsupportedFeature',

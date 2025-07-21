@@ -43,6 +43,7 @@ from . import command_interfaces
 from .command_interfaces import CommandInterface
 from .exceptions import *
 from .types import Drive, Filename, Epoch
+from . import util
 
 logger = logging.getLogger(__name__)
 
@@ -160,12 +161,17 @@ class Recorder:
         # For remote devices: timestamps of the device's last communication,
         # last block of streamed data, last header update, and last command
         # sent to the device (which may not have been processed if the device
-        # was asleep at the time). Initially set after instantiation, and not
-        # automatically updated.
+        # was asleep at the time). Initially set after instantiation, and
+        # automatically updated by the MQTTConnector with data from the
+        # Device Manager.
         self._lastContact: int = 0
         self._lastMeasurement: int = 0
         self._lastHeader: int = 0
         self._lastCommand: int = 0
+
+        # Also for remote devices: the EBML ID of the last command received,
+        # updated by the MQTTConnector using data from the Device Manager.
+        self._lastCommandID: int = None
 
 
     def _getDevinfo(self) -> DeviceInfo:
@@ -736,24 +742,7 @@ class Recorder:
             (optionally) a `BOM version` letter. Older versions will be
             a single number.
         """
-        rev = self.hardwareVersionInt
-        try:
-            if rev > 99:
-                # New structure of HwRev, which includes version, revision,
-                # and BOM version.
-                major = int(rev/10000)
-                minor = int((rev % 10000) / 100)
-                bom = rev % 100
-                if bom == 0:
-                    bom = ""
-                elif bom < 26:
-                    bom = chr(bom+65)
-                else:
-                    bom = chr((bom % 25) + 64) * int((bom // 25 + 1))
-                rev = f"v{major}r{minor}{bom}"
-        except TypeError:
-            pass
-        return str(rev)
+        return util.formatHwRev(self.hardwareVersionInt)
 
 
     @property
@@ -776,7 +765,7 @@ class Recorder:
         fw = self.getInfo('FwRevStr', None)
         if not fw:
             # Older FW did not write FwRevStr
-            fw = "1.%s" % self.firmwareVersion
+            fw = util.formatFwRev(self.firmwareVersion)
         return fw
 
 
@@ -791,7 +780,8 @@ class Recorder:
         """ The recorder's date of manufacture. """
         bd = self.getInfo('DateOfManufacture')
         if bd is not None:
-            return datetime.utcfromtimestamp(bd)
+            return util.utcfromtimestamp(bd)
+        return None
 
     
     @property
@@ -1081,7 +1071,7 @@ class Recorder:
             return calPolys
         except (KeyError, IndexError, ValueError) as err:
             logger.debug("_parsePolynomials() raised a possibly-allowed exception: %r" % err)
-            pass
+            return {}
 
 
     def getManifest(self) -> Union[Dict[str, Any], None]:
@@ -1237,7 +1227,7 @@ class Recorder:
         if data:
             cd = data.get('CalibrationDate', None)
             if cd is not None and not epoch:
-                return datetime.utcfromtimestamp(cd)
+                return util.utcfromtimestamp(cd)
             return cd
         return None
 
@@ -1274,7 +1264,7 @@ class Recorder:
         """
         ce = self._getCalExpiration(self.getCalibration(user=user))
         if ce is not None and not epoch:
-            return datetime.utcfromtimestamp(ce)
+            return util.utcfromtimestamp(ce)
         return ce
 
 

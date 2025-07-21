@@ -229,6 +229,7 @@
                 <UIntegerElement name="LastMeasurement" id="0x5C14" multiple="0" mandatory="1"> UNIX epoch timestamp of the device's last measurement </UIntegerElement>
                 <UIntegerElement name="LastHeader" id="0x5C15" multiple="0" mandatory="1"> UNIX epoch timestamp of the device's last published IDE header (device time) </UIntegerElement>
                 <UIntegerElement name="LastCommand" id="0x5C16" multiple="0" mandatory="1"> UNIX epoch timestamp of the last command sent to the device </UIntegerElement>
+                <UIntegerElement name="LastCommandID" id="0x5C18" multiple="0" mandatory="0"> EBML ID of the last command sent to the device </UIntegerElement>
                 <UIntegerElement name="LastLock" id="0x5C17" multiple="0" mandatory="1"> UNIX epoch timestamp of the last time the device's LockID was set </UIntegerElement>
                 <MasterElement name="GetInfoResponse"> The same contents as returned by `GetInfo` index 0 (previously defined) </MasterElement>
                 <IntegerElement name="CommandResponseCode"> The originating device's last CommandResponseCode (previously defined) </IntegerElement>
