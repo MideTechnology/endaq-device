@@ -56,12 +56,17 @@ jobs:
       - name: Set up libraries
         run: |
           python -m pip install -r requirements.txt
+          python -m pip install -r ./test_hardware/requirements.txt
           python -m pip install pytest pytest-cov mock
-          python -m pip install pytest-random-order
-          python -m pip install endaq.device
 
       - name: Run device tests if pusher is approved
         if: ${{ contains(fromJSON(env.APPROVED_USERS), github.event.pusher.name) }}
-        run: python -m pytest --random-order --device "W0014435" ./test_hardware/
+        run: python -m pytest --random-order --device "S0654302" --raspi ./test_hardware/
         env:
           GUEST_WIFI_PW: ${{ secrets.GUEST_WIFI_PW }}
+
+      - name: Print IP Address
+        if: ${{ contains(fromJSON(env.APPROVED_USERS), github.event.pusher.name) }}
+        run: |
+          echo "IP=$(hostname -I | awk '{print $1}')"
+        shell: bash
