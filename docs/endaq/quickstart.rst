@@ -120,13 +120,9 @@ first.
    dev.command.startRecording()
 
    # For older devices without a SerialCommandInterface
-   if "SerialCommandInterface" not in str(dev.command):
-      dev.command.awaitDisconnect() # Wait for the device to disconnect
-      time.sleep(10)
-      # Check that the device is recording
-      if dev.command.getStatus()[1] != endaq.device.response_codes.DeviceStatusCode.RECORDING:
-         print(dev.command.getStatus()[1])
-         raise CommandError("Start command failed, please push the button to start a recording.")
+   if not isinstance(dev.command, SerialCommandInterface):
+         print("Start command failed, please push the button to start a recording.")
+         dev.command.awaitDisconnect() # Wait for the device to disconnect
 
    # Stop Recording
    if dev.firmwareVersion >= 30106:
@@ -135,3 +131,12 @@ first.
    else:
       if dev.command.awaitReconnect(timeout=60) ==  False:
          raise DeviceTimeout("Device did not reconnect in 60 seconds after recording.")
+
+Use the bash code below in your terminal to copy the most recent recording on 
+the enDAQ to your local directory and then print the file's name. Replace the 
+placeholder file paths with your real file paths for your device and local 
+directory.
+.. code-block:: bash
+   $ MOST_RECENT_RECORDING=$(ls -t /device-path/DATA/RECORD/*.IDE | head -1)
+   $ cp "$MOST_RECENT_RECORDING" C:/Users/username/endaq-device/
+   $ echo "Copied File: $(basename "$MOST_RECENT_RECORDING")"
