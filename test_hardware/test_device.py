@@ -142,10 +142,27 @@ def test_standard_run(device_sn, setupTeardown):
     # Set up; Confirm device is idle
     timeout = 10
     device = assertSN(device_sn)
+    fw_version = device.firmwareVersion
     serial_number = device.serial
     assert (
         device.command.status[1] is endaq.device.DeviceStatusCode.IDLE or
         endaq.device.DeviceStatusCode.IDLE_UNMOUNTED), "Device is not idle."
+
+    match fw_version:
+        case a if 20000 <= a <= 20100:
+            # Recordings can only be started, no status response. Command may be
+            # unstable, fix is to unplug/replug USB
+            assert False, "Firmware version not yet supported."
+        case b if 20100 < b < 30000:
+            # Recordings can only be started, no status response
+            assert False, "Firmware version not yet supported."
+        case c if 30000 <= c <= 30100:
+            # Recordings can only be started, no status response
+            assert False, "Firmware version not yet supported."
+        case d if 30100 < d:
+            # Recordings can be started, stopped, and device will send status
+            # while recording
+            assert True
 
     # Confirm device is recording
     device.command.startRecording()
@@ -185,6 +202,23 @@ def test_ping_status(command, status_code, device_sn, setupTeardown):
     # Set up
     timeout = 5
     device = assertSN(device_sn)
+    fw_version = device.firmwareVersion
+
+    match fw_version:
+        case a if 20000 <= a <= 20100:
+            # Recordings can only be started, no status response. Command may be
+            # unstable, fix is to unplug/replug USB
+            assert False, "Firmware version not yet supported."
+        case b if 20100 < b < 30000:
+            # Recordings can only be started, no status response
+            assert False, "Firmware version not yet supported."
+        case c if 30000 <= c <= 30100:
+            # Recordings can only be started, no status response
+            assert False, "Firmware version not yet supported."
+        case d if 30100 < d:
+            # Recordings can be started, stopped, and device will send status
+            # while recording
+            assert True
 
     # Run different scenarios based on the command parameter
     match command:
@@ -287,6 +321,24 @@ def test_get_devices(params, device_sn, setupTeardown):
             # Unmounted = False: Verify that if the device is recording, it is
             # not returned
             device = assertSN(device_sn)
+            fw_version = device.firmwareVersion
+
+            match fw_version:
+                case a if 20000 <= a <= 20100:
+                    # Recordings can only be started, no status response. Command may be
+                    # unstable, fix is to unplug/replug USB
+                    assert False, "Firmware version not yet supported."
+                case b if 20100 < b < 30000:
+                    # Recordings can only be started, no status response
+                    assert False, "Firmware version not yet supported."
+                case c if 30000 <= c <= 30100:
+                    # Recordings can only be started, no status response
+                    assert False, "Firmware version not yet supported."
+                case d if 30100 < d:
+                    # Recordings can be started, stopped, and device will send status
+                    # while recording
+                    assert True
+
             device.command.startRecording()
             commandWait(device, timeout)
             assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
