@@ -115,8 +115,8 @@ first.
    # Update configuration
    dev.config.setSampleRate(dev.channels[80], 4000)  # Set Ch 80 SR to 4000 Hz
    dev.config.retrigger = False # Turn off retrigger
-   if dev.firmwareVersion < 30106:
-      dev.config.recordingTimeLimit = 30 # Set recording limit to 30s for old FW
+   if dev.firmwareVersion < 30106: # Since stopRecording doesn't work on old FW...
+      dev.config.recordingTimeLimit = 30 # Set recording limit to 30 secs
 
    # Start Recording
    dev.command.startRecording()
