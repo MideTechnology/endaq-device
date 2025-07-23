@@ -98,6 +98,8 @@ first.
    """
    # Import endaq.device and other useful libraries.
    import time
+   import os.path
+   import shutil
    import endaq.device
    from endaq.device.exceptions import CommandError, DeviceTimeout
 
@@ -120,7 +122,7 @@ first.
    dev.command.startRecording()
 
    # For older devices without a SerialCommandInterface
-   if not isinstance(dev.command, SerialCommandInterface):
+   if not isinstance(dev.command, endaq.device.SerialCommandInterface):
          print("Start command failed, please push the button to start a recording.")
          dev.command.awaitDisconnect() # Wait for the device to disconnect
 
@@ -132,11 +134,12 @@ first.
       if dev.command.awaitReconnect(timeout=60) ==  False:
          raise DeviceTimeout("Device did not reconnect in 60 seconds after recording.")
 
-Use the bash code below in your terminal to copy the most recent recording on 
-the enDAQ to your local directory and then print the file's name. Replace the 
-placeholder file paths with your real file paths for your device and local 
-directory.
-.. code-block:: bash
-   $ MOST_RECENT_RECORDING=$(ls -t /device-path/DATA/RECORD/*.IDE | head -1)
-   $ cp "$MOST_RECENT_RECORDING" C:/Users/username/endaq-device/
-   $ echo "Copied File: $(basename "$MOST_RECENT_RECORDING")"
+   # Copy the most recent recording on the enDAQ to your local directory
+   destination = "/destination/" # Replace with desired destination path
+
+   path = os.path.join(dev.path, 'DATA', 'RECORD')
+   newest = sorted(os.listdir(path))[-1]
+   shutil.copy2(os.path.join(path, newest), os.path.join(destination, newest))
+   # Print the copied file's name
+   print(f"Name of the most recent recording: {newest}")
+
