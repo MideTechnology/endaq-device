@@ -39,7 +39,7 @@ jobs:
     env:
       APPROVED_USERS: '["eoneill-mide", "pscheidler", "StokesMIDE"]'
 
-    runs-on: device-library-tester
+    runs-on: [self-hosted, device-library-tester]
     steps:
       - name: Set up Python
         uses: actions/setup-python@v5
