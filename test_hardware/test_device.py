@@ -71,6 +71,31 @@ def assertSN(device_sn):
     return device
 
 
+def stopRecOldFW(device, is_raspi):
+    """ On an ALREADY RECORDING device with FW <= 3.01.00, check that running
+        'stopRecording()' raises an exception and then use a simulated button
+        press (ONLY WORKS ON RASPI) to stop the recording.
+
+        :param device: Connected device.
+    """
+    if is_raspi is False:
+        assert False, "Can't run test on old firmware unless it's connected to a RasPi setup."
+
+    # Attempt to run stop recording and catch the thrown exception
+    commandWait(device, 5)
+    with pytest.raises(endaq.device.exceptions.CommandError) as exc_info:
+        device.command.stopRecording()
+
+    # Simulated button press to stop recording
+    GPIO.output(13, GPIO.LOW) # Button pressed
+    time.sleep(1)
+    GPIO.output(13, GPIO.HIGH) # Button unpressed
+
+    # Check the device with old FW raised an exception
+    assert (exc_info.type == endaq.device.exceptions.CommandError
+            ), "Old FW didn't error out on stopRecording."
+
+
 @pytest.fixture(scope="session", autouse=True)
 def setupTeardownGPIO(is_raspi):
     """ Set up and teardown GPIO RasPi controls at the beginning and end
@@ -84,6 +109,8 @@ def setupTeardownGPIO(is_raspi):
         GPIO.setmode(GPIO.BOARD)
         GPIO.setup(15, GPIO.OUT) # Pin 15 is GPIO22
         GPIO.setup(13, GPIO.OUT) # Pin 13 is GPIO27
+        GPIO.setup(36, GPIO.OUT) # Pin 36 is GPIO16 -button press
+        GPIO.output(13, GPIO.HIGH) # Button unpressed
 
     yield
 
@@ -144,43 +171,33 @@ def test_standard_run(device_sn, setupTeardown):
     device = assertSN(device_sn)
     fw_version = device.firmwareVersion
     serial_number = device.serial
-    assert (
-        device.command.status[1] is endaq.device.DeviceStatusCode.IDLE or
-        endaq.device.DeviceStatusCode.IDLE_UNMOUNTED), "Device is not idle."
 
-    match fw_version:
-        case a if 20000 <= a <= 20100:
-            # Recordings can only be started, no status response. Command may be
-            # unstable, fix is to unplug/replug USB
-            assert False, "Firmware version not yet supported."
-        case b if 20100 < b < 30000:
-            # Recordings can only be started, no status response
-            assert False, "Firmware version not yet supported."
-        case c if 30000 <= c <= 30100:
-            # Recordings can only be started, no status response
-            assert False, "Firmware version not yet supported."
-        case d if 30100 < d:
-            # Recordings can be started, stopped, and device will send status
-            # while recording
-            assert True
-
-    # Confirm device is recording
-    device.command.startRecording()
-    commandWait(device, timeout)
-    assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
-            ), "Device is not recording. Status was not 10."
-
-    # Clear cached device
-    device.refresh()
-    assert device.available == False, "Device is still cached"
-    device = assertSN(device_sn)
-    assert device.serial == serial_number, "Did not reconnect to the same device."
-
-    # Confirm device stopped recording
-    assert device.command.stopRecording() is True, "Device did not stop recording."
-    commandWait(device, timeout)
-    assert (device.command.status[1] is endaq.device.DeviceStatusCode.IDLE or
+    if 20000 <= fw_version <= 30100:
+        device.command.startRecording()
+        stopRecOldFW(device)
+    else:
+        # Confirm device starts as idle
+        assert (
+            device.command.status[1] is endaq.device.DeviceStatusCode.IDLE or
             endaq.device.DeviceStatusCode.IDLE_UNMOUNTED), "Device is not idle."
+
+        # Confirm device is recording
+        device.command.startRecording()
+        commandWait(device, timeout)
+        assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
+                ), "Device is not recording. Status was not 10."
+
+        # Clear cached device
+        device.refresh()
+        assert device.available == False, "Device is still cached"
+        device = assertSN(device_sn)
+        assert device.serial == serial_number, "Did not reconnect to the same device."
+
+        # Confirm device stopped recording
+        assert device.command.stopRecording() is True, "Device did not stop recording."
+        commandWait(device, timeout)
+        assert (device.command.status[1] is endaq.device.DeviceStatusCode.IDLE or
+                endaq.device.DeviceStatusCode.IDLE_UNMOUNTED), "Device is not idle."
 
 
 @pytest.mark.parametrize("command, status_code",
@@ -204,45 +221,34 @@ def test_ping_status(command, status_code, device_sn, setupTeardown):
     device = assertSN(device_sn)
     fw_version = device.firmwareVersion
 
-    match fw_version:
-        case a if 20000 <= a <= 20100:
-            # Recordings can only be started, no status response. Command may be
-            # unstable, fix is to unplug/replug USB
-            assert False, "Firmware version not yet supported."
-        case b if 20100 < b < 30000:
-            # Recordings can only be started, no status response
-            assert False, "Firmware version not yet supported."
-        case c if 30000 <= c <= 30100:
-            # Recordings can only be started, no status response
-            assert False, "Firmware version not yet supported."
-        case d if 30100 < d:
-            # Recordings can be started, stopped, and device will send status
-            # while recording
-            assert True
+    if 20000 <= fw_version <= 30100:
+        # Old FW does not support updating the device's status so this test
+        # does not apply
+        assert True
+    else:
+        # Run different scenarios based on the command parameter
+        match command:
+            case "battery":
+                device.command.getBatteryStatus()
+                commandWait(device, timeout)
+            case "startRecording":
+                device.command.startRecording()
+                commandWait(device, timeout)
+            case "stopRecording":
+                device.command.startRecording()
+                commandWait(device, timeout)
+                device.command.stopRecording()
+                commandWait(device, timeout)
 
-    # Run different scenarios based on the command parameter
-    match command:
-        case "battery":
-            device.command.getBatteryStatus()
-            commandWait(device, timeout)
-        case "startRecording":
-            device.command.startRecording()
-            commandWait(device, timeout)
-        case "stopRecording":
-            device.command.startRecording()
-            commandWait(device, timeout)
+        # Verify the device has the correct status depending on what command was run
+        device.command.ping()
+        assert (device.command.status[1] == status_code
+                ), f"Status was {device.command.status[1]} instead of {status_code}."
+
+        # If the device is recording, stop it
+        if device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING:
             device.command.stopRecording()
             commandWait(device, timeout)
-
-    # Verify the device has the correct status depending on what command was run
-    device.command.ping()
-    assert (device.command.status[1] == status_code
-            ), f"Status was {device.command.status[1]} instead of {status_code}."
-
-    # If the device is recording, stop it
-    if device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING:
-        device.command.stopRecording()
-        commandWait(device, timeout)
 
 
 # This test only works if looped in sequential order. Random order is disabled
@@ -323,36 +329,33 @@ def test_get_devices(params, device_sn, setupTeardown):
             device = assertSN(device_sn)
             fw_version = device.firmwareVersion
 
-            match fw_version:
-                case a if 20000 <= a <= 20100:
-                    # Recordings can only be started, no status response. Command may be
-                    # unstable, fix is to unplug/replug USB
-                    assert False, "Firmware version not yet supported."
-                case b if 20100 < b < 30000:
-                    # Recordings can only be started, no status response
-                    assert False, "Firmware version not yet supported."
-                case c if 30000 <= c <= 30100:
-                    # Recordings can only be started, no status response
-                    assert False, "Firmware version not yet supported."
-                case d if 30100 < d:
-                    # Recordings can be started, stopped, and device will send status
-                    # while recording
-                    assert True
-
-            device.command.startRecording()
-            commandWait(device, timeout)
-            assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
-                    ), "Device is not recording."
-            new_device = endaq.device.getDevices(unmounted=False)
-            dev_list = []
-            for i in new_device:
-                curr_dev = i
-                if curr_dev.serial == device_sn:
-                    dev_list.append(curr_dev)
-            assert dev_list == [], "Device was returned while recording."
-            commandWait(device, timeout)
-            device.command.stopRecording()
-            commandWait(device, timeout)
+            if 20000 <= fw_version <= 30100:
+                device.command.startRecording()
+                commandWait(device, timeout)
+                new_device = endaq.device.getDevices(unmounted=False)
+                dev_list = []
+                for i in new_device:
+                    curr_dev = i
+                    if curr_dev.serial == device_sn:
+                        dev_list.append(curr_dev)
+                assert dev_list == [], "Device was returned while recording."
+                stopRecOldFW(device)
+                commandWait(device, timeout)
+            else:
+                device.command.startRecording()
+                commandWait(device, timeout)
+                assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
+                        ), "Device is not recording."
+                new_device = endaq.device.getDevices(unmounted=False)
+                dev_list = []
+                for i in new_device:
+                    curr_dev = i
+                    if curr_dev.serial == device_sn:
+                        dev_list.append(curr_dev)
+                assert dev_list == [], "Device was returned while recording."
+                commandWait(device, timeout)
+                device.command.stopRecording()
+                commandWait(device, timeout)
 
 
 def test_start_recording_default(device_sn, setupTeardown):
@@ -370,44 +373,31 @@ def test_start_recording_default(device_sn, setupTeardown):
     commandWait(device, timeout)
 
     # Since startRecording's behavior is firmware specific, its tests are too!
-    match fw_version:
-        case a if 20000 <= a <= 20100:
-            # Recordings can only be started, no status response. Command may be
-            # unstable, fix is to unplug/replug USB
-            assert False, "Firmware version not yet supported."
-        case b if 20100 < b < 30000:
-            # Recordings can only be started, no status response
-            assert False, "Firmware version not yet supported."
-        case c if 30000 <= c <= 30100:
-            # Recordings can only be started, no status response
-            assert False, "Firmware version not yet supported."
-        case d if 30100 < d:
-            # Recordings can be started, stopped, and device will send status
-            # while recording
+    if 20000 <= fw_version <= 30100:
+        device.command.startRecording()
+        stopRecOldFW(device)
+    else:
+        # Verify the device starts with an idle status
+        assert (device.command.status[1] ==
+                endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
 
-            # Verify the device starts with an idle status
-            assert (device.command.status[1] ==
-                    endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
+        # Start recording and next verify that the drive is absent at first
+        device.command.startRecording()
+        device.refresh()
+        assert device.command.available == False, "Device drive is not absent."
 
-            # Start recording and next verify that the drive is absent at first
-            device.command.startRecording()
-            device.refresh()
-            assert device.command.available == False, "Device drive is not absent."
+        # Verify the device's status is recording and the drive is available
+        # again now that we have waited
+        commandWait(device, timeout)
+        assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
+                ), "Device is not recording."
+        assert device.command.available == True, "Device drive is not available."
 
-            # Verify the device's status is recording and the drive is available
-            # again now that we have waited
-            commandWait(device, timeout)
-            assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
-                    ), "Device is not recording."
-            assert device.command.available == True, "Device drive is not available."
-
-            # Stop recording and verify the device's status is now idle
-            device.command.stopRecording()
-            commandWait(device, timeout)
-            assert (device.command.status[1] == endaq.device.DeviceStatusCode.IDLE
-                    ), f"Device is not idle. It is {device.command.status[1]}"
-        case _:
-            assert False, "Firmware version not supported."
+        # Stop recording and verify the device's status is now idle
+        device.command.stopRecording()
+        commandWait(device, timeout)
+        assert (device.command.status[1] == endaq.device.DeviceStatusCode.IDLE
+                ), f"Device is not idle. It is {device.command.status[1]}"
 
 
 def test_start_recording_wait(device_sn, setupTeardown):
@@ -426,62 +416,57 @@ def test_start_recording_wait(device_sn, setupTeardown):
     fw_version = device.firmwareVersion
     commandWait(device, timeout)
 
-    # Since startRecording's behavior is firmware specific, its tests are too!
-    match fw_version:
-        case a if 20000 <= a <= 20100:
-            # Recordings can only be started, no status response. Command may be
-            # unstable, fix is to unplug/replug USB
-            assert False, "Firmware version not yet supported."
-        case b if 20100 < b < 30000:
-            # Recordings can only be started, no status response
-            assert False, "Firmware version not yet supported."
-        case c if 30000 <= c <= 30100:
-            # Recordings can only be started, no status response
-            assert False, "Firmware version not yet supported."
-        case d if 30100 < d:
-            # Recordings can be started, stopped, and device will send status
-            # while recording
+    # Verify that the device's status begins as idle
+    if fw_version > 30100:
+        assert (device.command.status[1] ==
+                endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
 
-            # Verify that the device's status begins as idle
-            assert (device.command.status[1] ==
-                    endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
+    # Running SR with wait=False; recording how long it takes; stop rec.
+    time.sleep(5)
+    false_start_time = time.time()
+    device.command.startRecording(wait=False)
+    false_end_time = time.time()
+    false_execution_time = false_end_time - false_start_time
+    commandWait(device, timeout)
+    if 20000 <= fw_version <= 30100:
+        stopRecOldFW(device)
+        commandWait(device, timeout)
+    else:
+        device.command.stopRecording()
+        commandWait(device, timeout)
+        # Verify that the device's status is back to idle
+        assert (device.command.status[1] ==
+                endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
 
-            # Running SR with wait=False; recording how long it takes; stop rec.
-            time.sleep(5)
-            false_start_time = time.time()
-            device.command.startRecording(wait=False)
-            false_end_time = time.time()
-            false_execution_time = false_end_time - false_start_time
-            commandWait(device, timeout)
-            device.command.stopRecording()
-            commandWait(device, timeout)
+    device.refresh()
+    device = assertSN(device_sn)
 
-            # Verify that the device's status is back to idle
-            assert (device.command.status[1] ==
-                    endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
+    # Running SR with wait=True; recording how long it takes; stop rec.
+    time.sleep(5)
+    default_start_time = time.time()
+    device.command.startRecording()
+    default_end_time = time.time()
+    default_execution_time = default_end_time - default_start_time
+    commandWait(device, timeout)
+    if 20000 <= fw_version <= 30100:
+        stopRecOldFW(device)
+        commandWait(device, timeout)
+    else:
+        device.command.stopRecording()
+        commandWait(device, timeout)
+        # Verify that the device's status is back to idle
+        assert (device.command.status[1] ==
+                endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
 
-            device.refresh()
-            device = assertSN(device_sn)
+    # Verify that the device's status is back to idle.
+    assert (device.command.status[1] ==
+            endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
 
-            # Running SR with wait=True; recording how long it takes; stop rec.
-            time.sleep(5)
-            default_start_time = time.time()
-            device.command.startRecording()
-            default_end_time = time.time()
-            default_execution_time = default_end_time - default_start_time
-            commandWait(device, timeout)
-            device.command.stopRecording()
-            commandWait(device, timeout)
-
-            # Verify that the device's status is back to idle.
-            assert (device.command.status[1] ==
-                    endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
-
-            # Verify the wait=False case ran quicker than the wait=True case.
-            print("false:", false_execution_time,
-                  "true:", default_execution_time)
-            assert (false_execution_time < default_execution_time
-                    ), "Default returned quicker than when wait=False."
+    # Verify the wait=False case ran quicker than the wait=True case.
+    print("false:", false_execution_time,
+            "true:", default_execution_time)
+    assert (false_execution_time < default_execution_time
+            ), "Default returned quicker than when wait=False."
 
 
 def test_start_recording_timeout(device_sn, setupTeardown):
@@ -498,35 +483,23 @@ def test_start_recording_timeout(device_sn, setupTeardown):
     fw_version = device.firmwareVersion
 
     # Since startRecording's behavior is firmware specific, its tests are too!
-    match fw_version:
-        case a if 20000 <= a <= 20100:
-            # Recordings can only be started, no status response. Command may be
-            # unstable, fix is to unplug/replug USB
-            assert False, "Firmware version not yet supported."
-        case b if 20100 < b < 30000:
-            # Recordings can only be started, no status response
-            assert False, "Firmware version not yet supported."
-        case c if 30000 <= c <= 30100:
-            # Recordings can only be started, no status response
-            assert False, "Firmware version not yet supported."
-        case d if 30100 < d:
-            # Recordings can be started, stopped, and device will send status
-            # while recording
+    if 20000 <= fw_version <= 30100:
+        # Old FW doesn't seem to support the timeout param
+        device.command.startRecording()
+        stopRecOldFW(device)
+    else:
+        # Verify that if the timeout value is low enough, a DeviceTimeout
+        # exception will be raised
+        with pytest.raises(endaq.device.exceptions.DeviceTimeout) as exc_info:
+            device.command.startRecording(wait=True, timeout=0.1)
+        assert (exc_info.type == endaq.device.exceptions.DeviceTimeout
+                ), "Didn't time out during startRecording."
+        assert (str(exc_info.value) == "Timed out waiting for recording to start"
+                ), "Wrong error message during timeout"
+        commandWait(device, timeout=10)
 
-            # Verify that if the timeout value is low enough, a DeviceTimeout
-            # exception will be raised
-            with pytest.raises(endaq.device.exceptions.DeviceTimeout) as exc_info:
-                device.command.startRecording(wait=True, timeout=0.1)
-            assert (exc_info.type == endaq.device.exceptions.DeviceTimeout
-                    ), "Didn't time out during startRecording."
-            assert (str(exc_info.value) == "Timed out waiting for recording to start"
-                    ), "Wrong error message during timeout"
-            commandWait(device, timeout=10)
-
-            # Stop recording and verify the device is idle
-            device.command.stopRecording()
-            commandWait(device, timeout=10)
-            assert (device.command.status[1] ==
-                    endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
-        case _:
-            assert False, "Firmware version not supported."
+        # Stop recording and verify the device is idle
+        device.command.stopRecording()
+        commandWait(device, timeout=10)
+        assert (device.command.status[1] ==
+                endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
