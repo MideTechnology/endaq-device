@@ -64,7 +64,7 @@ Configuration is done via the `configuration interface <config_control.html#conf
 Control
 -------
 
-Device control is done via the `command interface <config_control.html#control>`_. Virtual devices can not be commanded.
+Device control is done via the `command interface <config_control.html#control>`_.
 
 .. code-block:: python
 
@@ -74,7 +74,8 @@ Virtual devices
 ===============
 An enDAQ ``.IDE`` recording file can be used to create a 'virtual' version
 of the recorder that created it. This provides an easy way to retrieve
-information about the device and how it was configured.
+information about the device and how it was configured. Virtual devices can not
+be commanded.
 
 .. code-block:: python
 
@@ -95,6 +96,39 @@ first.
    
    """ 
    Quick Start example code for using the endaq.device library.
+
+   CONNECTING:
+   This code will find all connected devices and print their serial numbers. It
+   will then select the first connected device and assign it to the 'dev'
+   variable so we can interface with that device.
+   
+   CONFIGURING:
+   Next, the device is configured to have the sample rate of the 40g
+   accelerometer (Channel 80) set to 4kHz. Retrigger is then turned off. For the
+   final bit of configuration, if the device's firmware is older than version
+   3.01.06, the recording time limit is set to 30 seconds, since those firmware
+   versions do not support the 'stopRecording()' function.
+
+   STARTING THE RECORDING:
+   Now the `startRecording()` command is sent and the device's green light
+   should begin blinking to indicate that it is recording. If the device is old
+   enough that it does not have a serial command interface, a message will be
+   printed asking for the recording to be started manually, and then the code
+   will wait until the device disappears, indicating that the recording has
+   started.
+
+   STOPPING THE RECORDING:
+   If the device's FW is new enough, it will be told to stop recording after 30
+   seconds. If the FW is old enough that there was a recording time limit set
+   earlier, then the code will wait for the device to reappear after the
+   recording automatically stops. If the device fails to reappear within 60
+   seconds, an error will be raised.
+
+   COPYING THE RECORDING FILE:
+   When the device reconnects, the most recent recording on the enDAQ will be
+   copied to a local directory of your choosing. REPLACE THE 'destination'
+   VARIABLE WITH YOUR DESIRED FILE PATH. The name of this recording file
+   will then be printed.
    """
    # Import endaq.device and other useful libraries.
    import time
