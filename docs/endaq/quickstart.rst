@@ -25,7 +25,7 @@ Accessing basic recorder properties
 -----------------------------------
 
 Most common properties are read-only attributes of :py:class:`endaq.device.Recorder`. ``getDevices()`` returns a list of
-:py:class:`endaq.device.Recorder` objects, each of which represents a connected device (and not a virtual recorder). 
+:py:class:`endaq.device.Recorder` objects, each of which represents a connected device. 
 To access information about a single device, use indexing.
 
 .. code-block:: python
@@ -88,7 +88,7 @@ Quick Start Example Code
 Here is some starter code for introducing yourself to the endaq.device library. 
 Use it to familiarize yourself with with how to use endaq.device and learn 
 about some of its basic applications. Make sure to follow the 
-`installation <index.html#installation>` instructions found on the homepage 
+`installation <index.html#installation>`_ instructions found on the homepage 
 first. 
 
 .. code-block:: python
@@ -165,7 +165,7 @@ first.
       time.sleep(30)
       dev.command.stopRecording()
    else:
-      if dev.command.awaitReconnect(timeout=60) ==  False:
+      if dev.command.awaitReconnect(timeout=60) is False:
          raise DeviceTimeout("Device did not reconnect in 60 seconds after recording.")
 
    # Copy the most recent recording on the enDAQ to your local directory
