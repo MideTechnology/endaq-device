@@ -3,6 +3,8 @@ name: Unit test on push and PR
 
 on: [push, pull_request, workflow_dispatch]
 
+
+jobs:
   automated-tests:
     name: Test Automated tests
     
