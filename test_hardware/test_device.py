@@ -158,7 +158,7 @@ def setupTeardown(is_raspi, device_sn):
 
 
 # Tests:
-def test_standard_run(device_sn, setupTeardown):
+def test_standard_run(device_sn, setupTeardown, is_raspi):
     """ Test a standard run of an enDAQ device.
 
         :param device_sn: the tested device's serial number collected from the 
@@ -174,7 +174,7 @@ def test_standard_run(device_sn, setupTeardown):
 
     if 20000 <= fw_version <= 30100:
         device.command.startRecording()
-        stopRecOldFW(device)
+        stopRecOldFW(device, is_raspi)
     else:
         # Confirm device starts as idle
         assert (
@@ -285,7 +285,7 @@ def test_ping_payload(index, device_sn, setupTeardown):
 
 @pytest.mark.parametrize("params", ["default", "correct_path", "incorrect_path",
                                     "unmounted_default", "unmounted_recording"])
-def test_get_devices(params, device_sn, setupTeardown):
+def test_get_devices(params, device_sn, setupTeardown, is_raspi):
     """ Tests that 'getDevices()' works as intended.
 
         :param params: keywords representing a scenario to run in each of the 
@@ -339,7 +339,7 @@ def test_get_devices(params, device_sn, setupTeardown):
                     if curr_dev.serial == device_sn:
                         dev_list.append(curr_dev)
                 assert dev_list == [], "Device was returned while recording."
-                stopRecOldFW(device)
+                stopRecOldFW(device, is_raspi)
                 commandWait(device, timeout)
             else:
                 device.command.startRecording()
@@ -358,7 +358,7 @@ def test_get_devices(params, device_sn, setupTeardown):
                 commandWait(device, timeout)
 
 
-def test_start_recording_default(device_sn, setupTeardown):
+def test_start_recording_default(device_sn, setupTeardown, is_raspi):
     """ Tests that 'startRecording()' works as expected in a default scenario.
 
         :param device_sn: the tested device's serial number collected from the 
@@ -375,7 +375,7 @@ def test_start_recording_default(device_sn, setupTeardown):
     # Since startRecording's behavior is firmware specific, its tests are too!
     if 20000 <= fw_version <= 30100:
         device.command.startRecording()
-        stopRecOldFW(device)
+        stopRecOldFW(device, is_raspi)
     else:
         # Verify the device starts with an idle status
         assert (device.command.status[1] ==
@@ -400,7 +400,7 @@ def test_start_recording_default(device_sn, setupTeardown):
                 ), f"Device is not idle. It is {device.command.status[1]}"
 
 
-def test_start_recording_wait(device_sn, setupTeardown):
+def test_start_recording_wait(device_sn, setupTeardown, is_raspi):
     """ Tests that 'startRecording()' returns faster than the default case when 
         'wait=False'. 
 
@@ -429,7 +429,7 @@ def test_start_recording_wait(device_sn, setupTeardown):
     false_execution_time = false_end_time - false_start_time
     commandWait(device, timeout)
     if 20000 <= fw_version <= 30100:
-        stopRecOldFW(device)
+        stopRecOldFW(device, is_raspi)
         commandWait(device, timeout)
     else:
         device.command.stopRecording()
@@ -449,7 +449,7 @@ def test_start_recording_wait(device_sn, setupTeardown):
     default_execution_time = default_end_time - default_start_time
     commandWait(device, timeout)
     if 20000 <= fw_version <= 30100:
-        stopRecOldFW(device)
+        stopRecOldFW(device, is_raspi)
         commandWait(device, timeout)
     else:
         device.command.stopRecording()
@@ -469,7 +469,7 @@ def test_start_recording_wait(device_sn, setupTeardown):
             ), "Default returned quicker than when wait=False."
 
 
-def test_start_recording_timeout(device_sn, setupTeardown):
+def test_start_recording_timeout(device_sn, setupTeardown, is_raspi):
     """ Tests that 'startRecording()' raises an Exception when 'timeout' is too low.
 
         :param device_sn: the tested device's serial number collected from the 
@@ -486,7 +486,7 @@ def test_start_recording_timeout(device_sn, setupTeardown):
     if 20000 <= fw_version <= 30100:
         # Old FW doesn't seem to support the timeout param
         device.command.startRecording()
-        stopRecOldFW(device)
+        stopRecOldFW(device, is_raspi)
     else:
         # Verify that if the timeout value is low enough, a DeviceTimeout
         # exception will be raised
