@@ -362,8 +362,15 @@ def stopAllRecording(strict: bool = True):
         fake._snInt, fake._sn = sn, str(sn)
 
         with _module_busy:
-            logger.info(f'Getting info for SN {sn} via serial')
-            fake.command.stopRecording()
+            try:
+                logger.debug(f'Getting info for SN {sn} via serial')
+                fake.command.stopRecording()
+            except CommandError as err:
+                if err.errno != DeviceStatusCode.ERR_INVALID_COMMAND:
+                    logger.debug(f'Unexpected {type(err).__name__} getting info for {sn}: {err}')
+                continue
+            except:
+                continue
 
 
 # ============================================================================
