@@ -4,4 +4,4 @@ Configuration
 
 .. autoclass:: endaq.device.config
   :members:
-  :noindex:
+  :no-index-entry:

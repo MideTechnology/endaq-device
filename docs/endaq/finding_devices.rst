@@ -6,4 +6,4 @@ Finding Devices
 
 .. automodule:: endaq.device
   :members: getDevices, deviceChanged, findDevice, fromRecording, getDeviceList, getRecorder, isRecorder, onRecorder
-  :no-index:
+  :no-index-entry:

@@ -9,4 +9,4 @@
 
 .. autoclass:: endaq.device.base.Recorder
   :members:
-  :noindex:
+  :no-index-entry:
