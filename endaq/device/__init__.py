@@ -347,6 +347,25 @@ def fromRecording(doc: Dataset) -> Recorder:
     return recType.fromRecording(doc)
 
 
+def stopAllRecording(strict: bool = True):
+    """ Stop all recorders connected via serial.
+
+        :param strict: If `False`, only the directory structure is used
+            to identify a recorder. If `True`, non-FAT file systems will
+            be automatically rejected.
+    """
+    fake = NonRecorder()
+    fake.command = SerialCommandInterface(fake)
+
+    for port, sn in SerialCommandInterface._possibleRecorders(strict=strict):
+        fake.command.port = None
+        fake._snInt, fake._sn = sn, str(sn)
+
+        with _module_busy:
+            logger.info(f'Getting info for SN {sn} via serial')
+            fake.command.stopRecording()
+
+
 # ============================================================================
 # 
 # ============================================================================
