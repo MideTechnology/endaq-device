@@ -4,3 +4,4 @@ endaq.ide>=1.1.0
 pytest-cov>=6.2.1
 pytest-random-order>=1.2.0
 RPi.GPIO>=0.7.1; sys_platform=="linux"
+pytest-json-report
