@@ -2166,7 +2166,7 @@ class SerialCommandInterface(CommandInterface):
                             logger.debug('Command queue full, retrying.')
                         else:
                             respIdx = resp.get('ResponseIdx', self.index)
-                            if respIdx == self.index:
+                            if not index or respIdx == self.index:
                                 return resp if response else None
                             else:
                                 logger.debug('Bad ResponseIdx; expected {}, got {}. '
