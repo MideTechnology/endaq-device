@@ -88,29 +88,43 @@ class MQTTConnector:
                  connectArgs: Dict[str, Any] = None,
                  autoupdate: bool = True,
                  updateCallback: Callable = None,
+                 connectCallback: Callable = None,
+                 disconnectCallback: Callable = None,
                  **kwargs):
         """
-            Class that manages the connection to the MQTT Broker and
-            communication with the MQTT Device Manager.
+        Class that manages the connection to the MQTT Broker and
+        communication with the MQTT Device Manager.
 
-            :param host: The hostname/IP of the MQTT broker. Defaults to
-                the local machine. Note that ``localhost`` and ``127.0.0.1``
-                are explicitly converted to the local machine's IP.
-            :param port: The port to which to connect.
-            :param username: The username to use to connect to the broker,
-                if required.
-            :param password: The password to use to connect to the broker,
-                if required.
-            :param clientArgs: Additional arguments to be used in the
-                instantiation of the `paho.mqtt.client.Client`.
-            :param connectArgs: Additional arguments to be used with
-                `paho.mqtt.client.Client.connect()`.
-            :param autoupdate: If `True`, known devices will have their
-                status automatically updated when the `MQTTDeviceManager`
-                publishes updates to its 'state' topic.
-            :param updateCallback: A function to be called when a 'state'
-                update is received from the `MQTTDeviceManager`. Only used
-                if `MQTTConnector.autoupdate` is `True`.
+        :param host: The hostname/IP of the MQTT broker. Defaults to
+            the local machine. Note that ``localhost`` and ``127.0.0.1``
+            are explicitly converted to the local machine's IP.
+        :param port: The port to which to connect.
+        :param username: The username to use to connect to the broker,
+            if required.
+        :param password: The password to use to connect to the broker,
+            if required.
+        :param clientArgs: Additional arguments to be used in the
+            instantiation of the `paho.mqtt.client.Client`.
+        :param connectArgs: Additional arguments to be used with
+            `paho.mqtt.client.Client.connect()`.
+        :param autoupdate: If `True`, known devices will have their
+            status automatically updated when the `MQTTDeviceManager`
+            publishes updates to its 'state' topic.
+        :param updateCallback: A function to be called when a 'state'
+            update is received from the `MQTTDeviceManager`. The
+            function should acceptone argument, a dictionary of state
+            data. This can be set later via the
+            `MQTTConnector.updateCallback` attribute.
+        :param connectCallback: A function to be called when the
+            connection to the broker is established. The function
+            should accept the same arguments as the `on_connect` handler
+            of a `paho.mqtt.client.Client`. This can be set later via the
+            `MQTTConnector.connectCallback` attribute.
+        :param disconnectCallback: A function to be called when the
+            connection to the broker is lost.  The function should
+            accept the same arguments as the `on_disconnect` handler
+            of a `paho.mqtt.client.Client`. This can be set later via the
+            `MQTTConnector.disconnectCallback` attribute.
         """
         if not host or host in ('localhost', '127.0.0.1'):
             host = util.getMyIP()
@@ -127,6 +141,8 @@ class MQTTConnector:
         self.connectArgs = dict(CLIENT_CONNECT_ARGS)
         self.autoupdate = autoupdate  # Desired state of `autoupdate`
         self.updateCallback = updateCallback
+        self.connectCallback = connectCallback
+        self.disconnectCallback = disconnectCallback
 
         self.clientArgs.update(clientArgs or {})
         self.clientArgs.setdefault('client_id', util.makeClientID(type(self).__name__))
@@ -353,22 +369,21 @@ class MQTTConnector:
             logger.error(f'Device manager state message missing item: {err!r}')
             return
 
-        updatedDevices = []
-
         if self.autoupdate:
             try:
                 deviceList = response['DeviceList']['DeviceListItem']
                 for listItem in deviceList:
                     sn = listItem.get('SerialNumber')
-                    if sn in RECORDERS_BY_SN:
+                    if not sn:
+                        continue
+                    elif sn in RECORDERS_BY_SN:
                         self._updateDeviceInfo(RECORDERS_BY_SN[sn], listItem)
                         # TODO: Exclude unchanged devices?
-                        updatedDevices.append(RECORDERS_BY_SN[sn])
             except KeyError:
                 pass
 
         if self.updateCallback:
-            self.updateCallback(updatedDevices)
+            self.updateCallback(response)
 
 
     # noinspection PyUnusedLocal
@@ -379,6 +394,9 @@ class MQTTConnector:
                      f' ({reason_code.getName()})')
         self.resubscribe()
 
+        if self.connectCallback:
+            self.connectCallback(client, userdata, disconnect_flags, reason_code, properties)
+
 
     # noinspection PyUnusedLocal
     def _onDisconnect(self, client, userdata, disconnect_flags, reason_code, properties):
@@ -386,7 +404,9 @@ class MQTTConnector:
         """
         logger.debug(f'Disconnected from MQTT broker {client.host}:{client.port}'
                      f' ({reason_code.getName()})')
-        pass
+
+        if self.disconnectCallback:
+            self.disconnectCallback(client, userdata, disconnect_flags, reason_code, properties)
 
 
     def newPort(self,
@@ -492,9 +512,10 @@ class MQTTConnector:
             Apply metadata and status info from from the Device Manager to a
             `Recorder`.
 
-            :param device:
-            :param info:
-            :return:
+            :param device: The device to update.
+            :param info: A dictionary of device state info, as received in
+                a device's ``state`` topic or as part of a Manager's
+                ``state`` update.
         """
         lastContact = info.get('LastContact', 0)
         device._lastContact = lastContact
@@ -502,8 +523,8 @@ class MQTTConnector:
         device._lastHeader = info.get('LastHeader', 0)
         device._lastCommand = info.get('LastCommand', 0)
         device._lastCommandID = info.get('LastCommandID', None)
-        device.command._setStatus(info.get('CommandResponseCode'),
-                                  info.get('CommandResponseMessage'),
+        device.command._setStatus(None,  # CommandResponseCode (skip for state update)
+                                  None,  # CommandResponseMessage (skip for state update)
                                   info.get('DeviceStatusCode'),
                                   info.get('DeviceStatusMessage'),
                                   info.get('LockID'),
