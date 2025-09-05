@@ -146,6 +146,15 @@ class FileCache(BaseCache):
         return os.path.realpath(os.path.join(self._cachePath, sn, f'{base}.cache'))
 
 
+    @synchronized
+    def _getLock(self, filename: str) -> threading.RLock:
+        """ Get a lock object corresponding to a filename.
+        """
+        # defaultdict has a non-zero chance of race condition when
+        # instantiating the default object.
+        return self._locks[filename]
+        
+
     def get(self, sn: int, base: str) -> bytes:
         """
         Retrieve cached data.
@@ -156,7 +165,7 @@ class FileCache(BaseCache):
         """
         filename = self._makeFilename(sn, base)
 
-        with self._locks[filename]:
+        with self._getLock(filename):
             try:
                 with open(filename, 'rb') as f:
                     data = f.read()
@@ -180,7 +189,7 @@ class FileCache(BaseCache):
         """
         filename = self._makeFilename(sn, base)
 
-        with self._locks[filename]:
+        with self._getLock(filename):
             dirname = os.path.dirname(filename)
             try:
                 os.makedirs(dirname, exist_ok=True)
@@ -209,7 +218,7 @@ class FileCache(BaseCache):
         """
         filename = self._makeFilename(sn, base)
 
-        with self._locks[filename]:
+        with self._getLock(filename):
             try:
                 return os.path.getmtime(filename)
             except FileNotFoundError:
@@ -230,7 +239,7 @@ class FileCache(BaseCache):
         """
         filename = self._makeFilename(sn, base)
 
-        with self._locks[filename]:
+        with self._getLock(filename):
             try:
                 os.remove(filename)
                 return True
