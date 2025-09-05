@@ -10,9 +10,14 @@ of storage (e.g., a database).
 import threading
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from glob import glob
 import logging
 import os
 import sys
+from time import time
+from typing import List, Optional, Tuple
+
+from ..client import synchronized
 
 # Paths for cached data (IDE headers, etc.)
 if sys.platform == 'win32':
@@ -48,7 +53,7 @@ class BaseCache(ABC):
     @abstractmethod
     def set(self, sn: int, base: str, data: bytes) -> bool:
         """
-        Set the data cache in memory.
+        Store device data in the cache.
 
         :param sn: The enDAQ device's serial number.
         :param base: The name of the info, e.g. ``"header"`` or ``"info0"``
@@ -79,6 +84,26 @@ class BaseCache(ABC):
         :param base: The name of the info, e.g. ``"header"`` or ``"info0"``
         :return: The update's timestamp (UNIX epoch), or zero if there is no
             cached data.
+        """
+        raise NotImplementedError()
+
+
+    @abstractmethod
+    def cleanCache(self,
+                   sn: Optional[int] = None,
+                   base: Optional[str] = None,
+                   retention: float = 24) -> List[Tuple[int, str, Optional[Exception]]]:
+        """
+        Clear out old cached data.
+
+        :param sn: The enDAQ device's serial number, or `None` for all
+            devices.
+        :param base: The name of the info, e.g. ``"header"`` or ``"info0"``,
+            or `None` for all cached info.
+        :param retention: The cached file retention period. Files not
+            modified in `retention` hours will be removed.
+        :return: A list of tuples: serial number, base, and failure. Failure
+            will be `None` if successful, an exception if not.
         """
         raise NotImplementedError()
 
@@ -118,7 +143,7 @@ class FileCache(BaseCache):
             sn = f'{sn:08d}'
         except (TypeError, ValueError):
             sn = str(sn)
-        return os.path.realpath(os.path.join(self._cachePath, sn, str(base)))
+        return os.path.realpath(os.path.join(self._cachePath, sn, f'{base}.cache'))
 
 
     def get(self, sn: int, base: str) -> bytes:
@@ -214,3 +239,46 @@ class FileCache(BaseCache):
             except IOError as err:
                 logger.error(f'Error removing cached file {filename}: {err!r}')
                 return False
+
+
+    @synchronized
+    def cleanCache(self,
+                   sn: Optional[int] = None,
+                   base: Optional[str] = None,
+                   retention: float = 24) -> List[Tuple[int, str, Optional[Exception]]]:
+        """
+        Clear out old cached data.
+
+        :param sn: The enDAQ device's serial number, or `None` for all
+            devices.
+        :param base: The name of the info, e.g. ``"header"`` or ``"info0"``,
+            or `None` for all cached info.
+        :param retention: The cached file retention period. Files not
+            modified in `retention` hours will be removed.
+        :return: A list of tuples: serial number, base, and failure. Failure
+            will be `None` if successful, an exception if not.
+        """
+        limit = retention * 60 * 60
+        cleared = []
+
+        sn = sn or '*'
+        base = base or '*'
+
+        for filename in glob(self._makeFilename(sn, base)):
+            dirname, b = os.path.split(filename)
+            s = os.path.basename(dirname)
+            b = os.path.splitext(b)[0]
+
+            try:
+                s = int(s)
+            except (TypeError, ValueError):
+                pass
+
+            try:
+                if time() - os.path.getmtime(filename) > limit:
+                    os.remove(filename)
+                    cleared.append((s, b, None))
+            except (IOError, OSError) as err:
+                cleared.append((s, b, err))
+
+        return cleared
