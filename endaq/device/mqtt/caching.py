@@ -1,16 +1,18 @@
 """
-Mechanisms for saving device information (e.g., IDE headers or data
-retrieved from the device.
+Mechanisms for the Device Manager to load and save cached device information
+(e.g., IDE headers or data retrieved from the device).
+
+By default, the caching is done via files in a working directory. The
+mechanism is abstracted to make it easy to swap out for another type
+of storage (e.g., a database).
 """
 
+import threading
 from abc import ABC, abstractmethod
 from collections import defaultdict
 import logging
 import os
 import sys
-from typing import Optional
-
-from ..client import synchronized
 
 # Paths for cached data (IDE headers, etc.)
 if sys.platform == 'win32':
@@ -31,39 +33,19 @@ class BaseCache(ABC):
     (info, IDE header, etc.).
     """
 
-    def __init__(self):
-        """
-        Base class that abstracts the mechanism behind caching device data
-        (info, IDE header, etc.).
-        """
-        self._cache = defaultdict(dict)
-        self._modified = defaultdict(dict)
-
-
-    @synchronized
-    def _get(self, sn: int, base: str) -> Optional[bytes]:
-        return self._cache[sn].get(base)
-
-
-    @synchronized
-    def _set(self, sn: int, base: str, data: bytes):
-        self._cache[sn][base] = data
-
-
-    def get(self, sn: int, base: str) -> Optional[bytes]:
+    @abstractmethod
+    def get(self, sn: int, base: str) -> bytes:
         """
         Get the latest cached version device data.
 
         :param sn: The enDAQ device's serial number.
         :param base: The name of the info, e.g. ``"header"`` or ``"info0"``
-        :return: The cached data, or `None` if no cache exists.
+        :return: The cached data, or an empty bytestring if no cache exists.
         """
-        data = self._get(sn, base)
-        if data:
-            return data
-        return self.revert(sn, base)
+        raise NotImplementedError()
 
 
+    @abstractmethod
     def set(self, sn: int, base: str, data: bytes) -> bool:
         """
         Set the data cache in memory.
@@ -73,75 +55,30 @@ class BaseCache(ABC):
         :param data: The new header.
         :return: True if the cache was updated with new data.
         """
-        old = self._get(sn, base)
-        if old == data:
-            return False
-        self._set(sn, base, data)
-        self.setModified(sn, base, True)
-        return True
+        raise NotImplementedError()
 
-
-    @synchronized
-    def modified(self, sn: int, base: str) -> bool:
-        """
-        Check if the cached data was modified since last save.
-
-        :param sn: The enDAQ device's serial number.
-        :param base: The name of the info, e.g. ``"header"`` or ``"info0"``
-        """
-        return self._modified[sn].get(base, False)
-
-
-    @synchronized
-    def setModified(self, sn: int, base: str, modified=True):
-        """
-        Explicitly set (or clear) the flag indicating a change in a set of
-        cached data since last save.
-
-        :param sn: The enDAQ device's serial number.
-        :param base: The name of the info, e.g. ``"header"`` or ``"info0"``
-        :param modified: The new value.
-        """
-        self._modified[sn][base] = modified
-
-
-    # =======================================================================
-    #
-    # =======================================================================
 
     @abstractmethod
-    def save(self, sn: int, base: str, force=False) -> bool:
+    def clear(self, sn: int, base: str) -> bool:
         """
-        Write the currently cached data.
+        Remove data from the cache.
 
         :param sn: The enDAQ device's serial number.
         :param base: The name of the info, e.g. ``"header"`` or ``"info0"``
-        :param force: If `True`, overwrite the cached header even if it
-            has not been changed, updating its cache timestamp.
+        :return: `True` if the cached existed and its removal was successful.
         """
         raise NotImplementedError()
 
 
     @abstractmethod
-    def revert(self, sn: int, base: str) -> Optional[bytes]:
-        """
-        Reload the last saved version of the cached data.
-
-        :param sn: The enDAQ device's serial number.
-        :param base: The name of the info, e.g. ``"header"`` or ``"info0"``
-        :return: The cached data, or `None` if no cache exists.
-        """
-        raise NotImplementedError()
-
-
-    @abstractmethod
-    def getTimestamp(self, sn: int, base: str) -> Optional[float]:
+    def getTimestamp(self, sn: int, base: str) -> float:
         """
         Get the date/time the cached data was last saved.
 
         :param sn: The enDAQ device's serial number.
         :param base: The name of the info, e.g. ``"header"`` or ``"info0"``
-        :return: The update's timestamp (UNIX epoch).
+        :return: The update's timestamp (UNIX epoch), or zero if there is no
+            cached data.
         """
         raise NotImplementedError()
 
@@ -165,6 +102,7 @@ class FileCache(BaseCache):
             default varies by platforn.
         """
         self._cachePath = path
+        self._locks = defaultdict(threading.RLock)
         super().__init__()
 
 
@@ -176,64 +114,64 @@ class FileCache(BaseCache):
         :param base: The name of the info, e.g. ``"header"`` or ``"info0"``
         :return: The full file path and name
         """
-        return os.path.realpath(os.path.join(self._cachePath, f'{sn:08d}', base))
-
-
-    @synchronized
-    def save(self, sn: int, base: str, force=False):
-        """
-        Write the currently cached data.
-
-        :param sn: The enDAQ device's serial number.
-        :param base: The name of the info, e.g. ``"header"`` or ``"info0"``
-        :param force: If `True`, overwrite the cached header even if it
-            has not been changed, updating its cache timestamp.
-        """
-        if not (force or self.modified(sn, base)):
-            return
-
-        data = self._get(sn, base)
-        filename = self._makeFilename(sn, base)
-        dirname = os.path.dirname(filename)
-
         try:
-            os.makedirs(dirname, exist_ok=True)
-        except IOError as err:
-            logger.error(f'Error creating cache directory {dirname}: {err!r}')
-            return
-
-        try:
-            with open(filename, 'wb') as f:
-                f.write(data)
-            self.setModified(base, sn, False)
-
-        except IOError as err:
-            logger.error(f'Error saving cache data {sn:08d}/{base}: {err!r}')
+            sn = f'{sn:08d}'
+        except (TypeError, ValueError):
+            sn = str(sn)
+        return os.path.realpath(os.path.join(self._cachePath, sn, str(base)))
 
 
-    @synchronized
-    def revert(self, sn: int, base: str) -> Optional[bytes]:
+    def get(self, sn: int, base: str) -> bytes:
         """
-        Reload the last saved version of the cached data.
+        Retrieve cached data.
 
         :param sn: The enDAQ device's serial number.
         :param base: The name of the info, e.g. ``"header"`` or ``"info0"``
         :return: The cached data, or `None` if no cache exists.
         """
-        old = self._get(sn, base)
         filename = self._makeFilename(sn, base)
-        
-        try:
-            with open(filename, 'rb') as f:
-                data = f.read()
-            self._set(sn, base, data)
-            self.setModified(base, sn, old and old != data)
-            return data
-        except FileNotFoundError:
-            return None
-        except IOError as err:
-            logger.error(f'Error loading file {filename}', exc_info=err)
-        
+
+        with self._locks[filename]:
+            try:
+                with open(filename, 'rb') as f:
+                    data = f.read()
+                return data
+            except FileNotFoundError:
+                pass
+            except IOError as err:
+                logger.error(f'Error loading file {filename}', exc_info=err)
+
+            return b''
+
+
+    def set(self, sn: int, base: str, data: bytes) -> bool:
+        """
+        Write data to the cache.
+
+        :param sn: The enDAQ device's serial number.
+        :param base: The name of the info, e.g. ``"header"`` or ``"info0"``
+        :param data: The new header.
+        :return: `True` if the cache was updated with new data.
+        """
+        filename = self._makeFilename(sn, base)
+
+        with self._locks[filename]:
+            dirname = os.path.dirname(filename)
+            try:
+                os.makedirs(dirname, exist_ok=True)
+            except IOError as err:
+                logger.error(f'Error creating cache directory {dirname}: {err!r}')
+                return False
+
+            try:
+                with open(filename, 'wb') as f:
+                    f.write(data)
+                return True
+
+            except IOError as err:
+                logger.error(f'Error saving cache data {filename}: {err!r}')
+                return False
+
 
     def getTimestamp(self, sn: int, base: str) -> float:
         """
@@ -241,14 +179,38 @@ class FileCache(BaseCache):
 
         :param sn: The enDAQ device's serial number.
         :param base: The name of the info, e.g. ``"header"`` or ``"info0"``
-        :return: The update's timestamp (UNIX epoch).
+        :return: The update's timestamp (UNIX epoch), or zero if there is no
+            cached data.
         """
         filename = self._makeFilename(sn, base)
-        try:
-            return os.path.getmtime(filename)
-        except FileNotFoundError:
-            pass
-        except IOError as err:
-            logger.error(f'Error getting timestamp of {filename}: {err!r}')
-            
-        return 0
+
+        with self._locks[filename]:
+            try:
+                return os.path.getmtime(filename)
+            except FileNotFoundError:
+                pass
+            except IOError as err:
+                logger.error(f'Error getting timestamp of {filename}: {err!r}')
+
+            return 0
+
+
+    def clear(self, sn: int, base: str) -> bool:
+        """
+        Remove data from the cache.
+
+        :param sn: The enDAQ device's serial number.
+        :param base: The name of the info, e.g. ``"header"`` or ``"info0"``
+        :return: `True` if the cached existed and its removal was successful.
+        """
+        filename = self._makeFilename(sn, base)
+
+        with self._locks[filename]:
+            try:
+                os.remove(filename)
+                return True
+            except FileNotFoundError:
+                return False
+            except IOError as err:
+                logger.error(f'Error removing cached file {filename}: {err!r}')
+                return False
