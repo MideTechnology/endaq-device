@@ -321,7 +321,7 @@ class MQTTDevice:
                          exc_info=True)
 
 
-    def validateHeader(self, data: bytes) -> Union[bool, Dict[str, Any]]:
+    def validateHeader(self, data: bytes) -> Dict[str, Any]:
         """ Verify that header data is complete and valid. Raises a
             `ValidationError` if validation fails.
 
