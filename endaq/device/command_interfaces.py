@@ -31,8 +31,9 @@ from .exceptions import CRCError
 from .types import Epoch, Filename
 from . import response_codes
 from .response_codes import *
-from . import util
 from . import updating
+from . import util
+from .util import device_synchronized
 
 if sys.platform == 'darwin':
     from . import macos as os_specific
@@ -359,6 +360,7 @@ class CommandInterface:
         raise NotImplementedError
 
 
+    @device_synchronized
     def getTime(self,
                 epoch: bool = True,
                 timeout: Union[int, float] = 3
@@ -373,8 +375,7 @@ class CommandInterface:
                 raising a `TimeoutError`. Not used by all interface types.
             :return: The system time and the device time. Both are UTC.
         """
-        with self.device._busy:
-            sysTime, devTime = self._getTime(pause=False, timeout=timeout)
+        sysTime, devTime = self._getTime(pause=False, timeout=timeout)
 
         if epoch:
             return sysTime, devTime
@@ -383,6 +384,7 @@ class CommandInterface:
                 util.utcfromtimestamp(devTime))
 
 
+    @device_synchronized
     def setTime(self,
                 t: Union[Epoch, datetime, struct_time, tuple, None] = None,
                 pause: bool = True,
@@ -412,18 +414,18 @@ class CommandInterface:
             pause = False
             t = util.time2epoch(t)
 
-        with self.device._busy:
-            try:
-                return self._setTime(t, pause=pause)
-            except IOError:
-                if retries > 0:
-                    sleep(.5)
-                    return self.setTime(pause=pause, retries=retries - 1,
-                                        timeout=timeout)
-                else:
-                    raise
+        try:
+            return self._setTime(t, pause=pause)
+        except IOError:
+            if retries > 0:
+                sleep(.5)
+                return self.setTime(pause=pause, retries=retries - 1,
+                                    timeout=timeout)
+            else:
+                raise
 
 
+    @device_synchronized
     def getClockDrift(self,
                       pause: bool = True,
                       retries: int = 1,
@@ -441,18 +443,17 @@ class CommandInterface:
                 is `True`, before raising a `TimeoutError`.
             :return: The length of the drift, in seconds.
         """
-        with self.device._busy:
-            try:
-                sysTime, devTime = self._getTime(pause=True, timeout=timeout)
-                return sysTime - devTime
-            except IOError:
-                if retries > 0:
-                    sleep(.25)
-                    return self.getClockDrift(pause=pause,
-                                              retries=retries - 1,
-                                              timeout=timeout)
-                else:
-                    raise
+        try:
+            sysTime, devTime = self._getTime(pause=True, timeout=timeout)
+            return sysTime - devTime
+        except IOError:
+            if retries > 0:
+                sleep(.25)
+                return self.getClockDrift(pause=pause,
+                                          retries=retries - 1,
+                                          timeout=timeout)
+            else:
+                raise
 
 
     def _setStatus(self,
@@ -826,8 +827,7 @@ class CommandInterface:
             return False
 
         def dismounted():
-            with self.device._busy:
-                return not self.device.available
+            return not self.device.available
 
         try:
             return util.waitfor(dismounted, timeout=timeout, interval=0.1,
@@ -874,10 +874,9 @@ class CommandInterface:
             return False
 
         def remounted():
-            with self.device._busy:
-                if update:
-                    self.device.update(paths=paths, strict=strict)
-                return self.device.available
+            if update:
+                self.device.update(paths=paths, strict=strict)
+            return self.device.available
 
         try:
             return util.waitfor(remounted, timeout=timeout,
@@ -910,8 +909,7 @@ class CommandInterface:
             return False
 
         def disconnected():
-            with self.device._busy:
-                return not self.available
+            return not self.available
 
         try:
             return util.waitfor(disconnected,
@@ -943,8 +941,7 @@ class CommandInterface:
             return False
 
         def available() -> bool:
-            with self.device._busy:
-                return self.available
+            return self.available
 
         try:
             return util.waitfor(available, timeout, 0.25, callback)
@@ -953,13 +950,15 @@ class CommandInterface:
 
 
     def _updateAll(self,
-                   secure: True,
+                   secure: bool = True,
                    wait: bool = True,
                    timeout: Union[int, float] = 10,
                    callback: Optional[Callable] = None) -> bool:
         """ Send interface-specific update command. Implemented for each
             subclass.
 
+            :param secure: if `True`, use the secure update command (requires
+                encrypted firmware).
             :param wait: If `True`, wait for the recorer to dismount,
                 indicating the update has started.
             :param timeout: Time (in seconds) to wait for the recorder to
@@ -1011,6 +1010,7 @@ class CommandInterface:
         return os.path.isfile(dest)
 
 
+    @device_synchronized
     def updateDevice(self,
                      firmware: Optional[str] = None,
                      userpage: Optional[str] = None,
@@ -1083,27 +1083,26 @@ class CommandInterface:
             if validate:
                 updating.validateUserpage(self, userpage)
 
-        with self.device._busy:
-            hasFw = self._copyUpdateFile(firmware, fw, clean)
-            hasUp = self._copyUpdateFile(userpage, up, clean)
+        hasFw = self._copyUpdateFile(firmware, fw, clean)
+        hasUp = self._copyUpdateFile(userpage, up, clean)
 
-            if not (hasFw or hasUp):
-                raise FileNotFoundError(errno.ENOENT,
-                                        "Device has no update files",
-                                        os.path.dirname(fw))
+        if not (hasFw or hasUp):
+            raise FileNotFoundError(errno.ENOENT,
+                                    "Device has no update files",
+                                    os.path.dirname(fw))
 
-            isPkg = hasFw and fw_ext == ".pkg"
-            signature = None if firmware is None or not isPkg else firmware + ".sig"
+        isPkg = hasFw and fw_ext == ".pkg"
+        signature = None if firmware is None or not isPkg else firmware + ".sig"
 
-            if isPkg and not self._copyUpdateFile(signature, sig, clean):
-                raise FileNotFoundError(errno.ENOENT,
-                                        "Firmware signature file not found",
-                                        (signature or sig))
+        if isPkg and not self._copyUpdateFile(signature, sig, clean):
+            raise FileNotFoundError(errno.ENOENT,
+                                    "Firmware signature file not found",
+                                    (signature or sig))
 
-            # Use 'secure' if the device FW update is a .pkg, or it has keys installed.
-            secure = bool(isPkg or keyRev)
+        # Use 'secure' if the device FW update is a .pkg, or it has keys installed.
+        secure = bool(isPkg or keyRev)
 
-            return self._updateAll(secure=secure, timeout=timeout, callback=callback)
+        return self._updateAll(secure=secure, timeout=timeout, callback=callback)
 
 
     def setKeys(self,
@@ -1131,6 +1130,7 @@ class CommandInterface:
     # Wi-Fi
     # =======================================================================
 
+    @device_synchronized
     def setAP(self,
               ssid: str,
               password: Optional[str] = None,
@@ -1162,25 +1162,24 @@ class CommandInterface:
         if password is not None:
             cmd['Password'] = password
 
-        with self.device._busy:
-            self.setWifi(cmd, timeout=timeout, callback=callback)
-            if not wait or timeout == 0:
+        self.setWifi(cmd, timeout=timeout, callback=callback)
+        if not wait or timeout == 0:
+            return None
+
+        while timeout < 0 or time() < deadline:
+            if callback is not None and callback():
                 return None
 
-            while timeout < 0 or time() < deadline:
-                if callback is not None and callback():
+            response = self.queryWifi(timeout=0.5)
+            if response:
+                status = response.get('WiFiConnectionStatus')
+                if status == WiFiConnectionStatus.CONNECTED:
                     return None
+            else:
+                logger.debug('setAP(): got bad queryWifi() response: {!r}'
+                             .format(response))
 
-                response = self.queryWifi(timeout=0.5)
-                if response:
-                    status = response.get('WiFiConnectionStatus')
-                    if status == WiFiConnectionStatus.CONNECTED:
-                        return None
-                else:
-                    logger.debug('setAP(): got bad queryWifi() response: {!r}'
-                                 .format(response))
-
-                sleep(min(timeout, 0.5))
+            sleep(min(timeout, 0.5))
 
         raise DeviceTimeout('Timed out waiting to connect to AP SSID {}'.format(ssid))
 
@@ -2055,6 +2054,7 @@ class SerialCommandInterface(CommandInterface):
         # raise TimeoutError("Timeout waiting for response to serial command")
 
 
+    @device_synchronized
     def _sendCommand(self,
                      cmd: dict,
                      response: bool = True,
@@ -2091,109 +2091,107 @@ class SerialCommandInterface(CommandInterface):
             :raise: DeviceTimeout
         """
         timeout = -1 if timeout is None else timeout
-        deadline = time() + timeout
+        now = time()
+        deadline = now + timeout
 
-        with self.device._busy:
-            self.getSerialPort()
-            try:
-                now = time()
+        self.getSerialPort()
+        try:
+            if 'EBMLCommand' in cmd:
+                if index:
+                    self.index += 1
+                    cmd['EBMLCommand']['CommandIdx'] = self.index
+                if lock:
+                    cmd['EBMLCommand']['LockID'] = self.hostId or (b'\x00' * 16)
 
-                if 'EBMLCommand' in cmd:
-                    if index:
-                        self.index += 1
-                        cmd['EBMLCommand']['CommandIdx'] = self.index
-                    if lock:
-                        cmd['EBMLCommand']['LockID'] = self.hostId or (b'\x00' * 16)
+            packet = self._encode(cmd)
+            self.lastCommand = now, deepcopy(cmd)
+            self._writeCommand(packet)
 
-                packet = self._encode(cmd)
-                self.lastCommand = now, deepcopy(cmd)
-                self._writeCommand(packet)
+            if timeout == 0 and not response:
+                self.response = now, None, None
+                return None
 
-                if timeout == 0 and not response:
-                    self.response = now, None, None
-                    return None
-
-                while True:
-                    try:
-                        resp = self._readResponse(timeout, callback=callback)
-                    except (IOError, serial.SerialException) as err:
-                        # Commands that reset can cause the device to close the
-                        # port faster than the response can be read. Fail
-                        # gracefully if no response is required.
-                        if (not isinstance(err, serial.SerialException)
-                                and getattr(err, 'errno') != errno.EIO):
-                            # Linux (possibly other POSIX) raises IOError EIO (5)
-                            # if the port is gone. Raise if other errno.
-                            raise
-                        if not response:
-                            logger.debug('Ignoring anticipated exception because '
-                                         'response not required: {!r}'.format(err))
-                            self.response = now, None, None
-                            return None
-                        else:
-                            raise
-
-                    if resp:
-                        self._encodeResponseCodes(resp)
-                        responseCode = resp.get('CommandResponseCode')
-                        responseMsg = resp.get('CommandResponseMessage')
-                        statusCode = resp.get('DeviceStatusCode')
-                        statusMsg = resp.get('DeviceStatusMessage')
-                        queueDepth = resp.get('CMDQueueDepth', 1)
-
-                        # If either DeviceStatusCode or CommandResponseCode
-                        # are missing, default to whichever one exists.
-                        if responseCode is None:
-                            responseCode = statusCode
-                        elif statusCode is None:
-                            statusCode = responseCode
-                        if responseMsg is None:
-                            responseMsg = statusMsg
-                        elif statusMsg is None:
-                            statusMsg = responseMsg
-
-                        self._setStatus(responseCode, responseMsg,
-                                        statusCode, statusMsg,
-                                        resp.get('LockID'))
-
-                        if responseCode < 0:
-                            # Raise a CommandError or DeviceError. -20 and -30 refer
-                            # to bad commands sent by the user.
-                            EXC = CommandError if -30 <= responseCode <= -20 else DeviceError
-                            raise EXC(responseCode, responseMsg)
-
-                        if queueDepth == 0:
-                            logger.debug('Command queue full, retrying.')
-                        else:
-                            respIdx = resp.get('ResponseIdx', self.index)
-                            if not index or respIdx == self.index:
-                                return resp if response else None
-                            else:
-                                logger.debug('Bad ResponseIdx; expected {}, got {}. '
-                                             'Retrying.'.format(self.index, respIdx))
+            while True:
+                try:
+                    resp = self._readResponse(timeout, callback=callback)
+                except (IOError, serial.SerialException) as err:
+                    # Commands that reset can cause the device to close the
+                    # port faster than the response can be read. Fail
+                    # gracefully if no response is required.
+                    if (not isinstance(err, serial.SerialException)
+                            and getattr(err, 'errno') != errno.EIO):
+                        # Linux (possibly other POSIX) raises IOError EIO (5)
+                        # if the port is gone. Raise if other errno.
+                        raise
+                    if not response:
+                        logger.debug('Ignoring anticipated exception because '
+                                     'response not required: {!r}'.format(err))
+                        self.response = now, None, None
+                        return None
                     else:
-                        queueDepth = 1
+                        raise
 
-                    # Failure!
-                    if timeout > 0 and time() >= deadline:
-                        if not response:
-                            return None
-                        if queueDepth == 0:
-                            raise DeviceTimeout('Timed out waiting for opening in command queue')
+                if resp:
+                    self._encodeResponseCodes(resp)
+                    responseCode = resp.get('CommandResponseCode')
+                    responseMsg = resp.get('CommandResponseMessage')
+                    statusCode = resp.get('DeviceStatusCode')
+                    statusMsg = resp.get('DeviceStatusMessage')
+                    queueDepth = resp.get('CMDQueueDepth', 1)
+
+                    # If either DeviceStatusCode or CommandResponseCode
+                    # are missing, default to whichever one exists.
+                    if responseCode is None:
+                        responseCode = statusCode
+                    elif statusCode is None:
+                        statusCode = responseCode
+                    if responseMsg is None:
+                        responseMsg = statusMsg
+                    elif statusMsg is None:
+                        statusMsg = responseMsg
+
+                    self._setStatus(responseCode, responseMsg,
+                                    statusCode, statusMsg,
+                                    resp.get('LockID'))
+
+                    if responseCode < 0:
+                        # Raise a CommandError or DeviceError. -20 and -30 refer
+                        # to bad commands sent by the user.
+                        EXC = CommandError if -30 <= responseCode <= -20 else DeviceError
+                        raise EXC(responseCode, responseMsg)
+
+                    if queueDepth == 0:
+                        logger.debug('Command queue full, retrying.')
+                    else:
+                        respIdx = resp.get('ResponseIdx', self.index)
+                        if not index or respIdx == self.index:
+                            return resp if response else None
                         else:
-                            raise DeviceTimeout('Timed out waiting for command response')
-
-            except TimeoutError:
-                if not response:
-                    logger.debug('Ignoring timeout waiting for response '
-                                 'because no response required')
-                    self.response = now, None, None
-                    return None
+                            logger.debug('Bad ResponseIdx; expected {}, got {}. '
+                                         'Retrying.'.format(self.index, respIdx))
                 else:
-                    raise
+                    queueDepth = 1
 
-            finally:
-                self.port.close()
+                # Failure!
+                if timeout > 0 and time() >= deadline:
+                    if not response:
+                        return None
+                    if queueDepth == 0:
+                        raise DeviceTimeout('Timed out waiting for opening in command queue')
+                    else:
+                        raise DeviceTimeout('Timed out waiting for command response')
+
+        except TimeoutError:
+            if not response:
+                logger.debug('Ignoring timeout waiting for response '
+                             'because no response required')
+                self.response = now, None, None
+                return None
+            else:
+                raise
+
+        finally:
+            self.port.close()
 
 
     def _getTime(self,
@@ -2220,19 +2218,18 @@ class SerialCommandInterface(CommandInterface):
         #  should implement their own as well.
 
         command = {'EBMLCommand': {'GetClock': {}}}
-        with self.device._busy:
-            sysTime = t = time()
+        sysTime = t = time()
 
-            if pause:
-                while int(t) == int(sysTime):
-                    sysTime = time()
+        if pause:
+            while int(t) == int(sysTime):
+                sysTime = time()
 
-            response = self._sendCommand(command, timeout=timeout)
-            try:
-                dt = response['ClockTime']
-                devTime = self._TIME_PARSER.unpack_from(dt)[0]
-            except KeyError:
-                raise DeviceError("GetClock response did not contain ClockTime")
+        response = self._sendCommand(command, timeout=timeout)
+        try:
+            dt = response['ClockTime']
+            devTime = self._TIME_PARSER.unpack_from(dt)[0]
+        except KeyError:
+            raise DeviceError("GetClock response did not contain ClockTime")
 
         return sysTime, devTime
 
@@ -2542,6 +2539,7 @@ class SerialCommandInterface(CommandInterface):
                                       callback=callback)
 
 
+    @device_synchronized
     def getStatus(self,
                   timeout: Union[int, float] = 10,
                   callback: Optional[Callable] = None
@@ -2558,12 +2556,11 @@ class SerialCommandInterface(CommandInterface):
                 timestamp of the status update, the status code, and the
                 corresponding status message (if any).
         """
-        with self.device._busy:
-            self.ping(timeout=timeout, callback=callback)
-            if self._statusChanged.is_set():
-                self._statusChanged.clear()
-                return self.status
-            raise CommandError('Device responded but did not report its status')
+        self.ping(timeout=timeout, callback=callback)
+        if self._statusChanged.is_set():
+            self._statusChanged.clear()
+            return self.status
+        raise CommandError('Device responded but did not report its status')
 
 
     def _updateAll(self,
@@ -2574,6 +2571,8 @@ class SerialCommandInterface(CommandInterface):
         """ Send the 'secure update all' command, installing any userpage
             and/or firmware update files copied to the device.
 
+            :param secure: if `True`, use the secure update command (requires
+                encrypted firmware).
             :param wait: If `True`, wait for the recorer to dismount,
                 indicating the update has started.
             :param timeout: Time (in seconds) to wait for the recorder to
@@ -2647,6 +2646,7 @@ class SerialCommandInterface(CommandInterface):
     # Lock ID: A weakly-enforced means of claiming exclusive use of a device.
     # =======================================================================
 
+    @device_synchronized
     def getLockID(self,
                   timeout: Union[int, float] = 5,
                   callback: Optional[Callable] = None) -> Union[bytearray, bytes, None]:
@@ -2663,37 +2663,37 @@ class SerialCommandInterface(CommandInterface):
                 be cancelled. The callback function should require no arguments.
             :returns: The device's current lock ID, if any.
         """
-        with self.device._busy:
-            cmd = {'EBMLCommand': {'GetLockID': {}}}
+        cmd = {'EBMLCommand': {'GetLockID': {}}}
 
-            try:
-                response = self._sendCommand(cmd,
-                                             response=True,
-                                             timeout=timeout,
-                                             callback=callback)
-            except CommandError as err:
-                # Older FW returns wrong status code
-                if err.errno == DeviceStatusCode.ERR_INVALID_COMMAND:
-                    raise CommandError(DeviceStatusCode.ERR_UNKNOWN_COMMAND,
-                                       *err.args[1:])
-                raise
+        try:
+            response = self._sendCommand(cmd,
+                                         response=True,
+                                         timeout=timeout,
+                                         callback=callback)
+        except CommandError as err:
+            # Older FW returns wrong status code
+            if err.errno == DeviceStatusCode.ERR_INVALID_COMMAND:
+                raise CommandError(DeviceStatusCode.ERR_UNKNOWN_COMMAND,
+                                   *err.args[1:])
+            raise
 
-            if not response:
-                logger.debug('GetLockID did not get a response!')
-                return None
+        if not response:
+            logger.debug('GetLockID did not get a response!')
+            return None
 
-            lockId = response.get('LockID', None)
+        lockId = response.get('LockID', None)
 
-            if isinstance(lockId, (bytearray, bytes)) and not any(lockId):
-                # All zeros; lock not set.
-                return None
-            elif not lockId:
-                logger.debug('GetLockID response did not contain LockID!')
-                return None
+        if isinstance(lockId, (bytearray, bytes)) and not any(lockId):
+            # All zeros; lock not set.
+            return None
+        elif not lockId:
+            logger.debug('GetLockID response did not contain LockID!')
+            return None
 
-            return lockId
+        return lockId
 
 
+    @device_synchronized
     def setLockID(self,
                   current: Union[bytearray, bytes, None] = None,
                   new: Union[bytearray, bytes, None] = None,
@@ -2720,31 +2720,31 @@ class SerialCommandInterface(CommandInterface):
                 be cancelled. The callback function should require no arguments.
             :returns: The new lock ID.
         """
-        with self.device._busy:
-            lockId = new or self.hostId
-            if lockId == self.getLockID():
-                return True
-
-            cmd = {'EBMLCommand':
-                       {'SetLockID':
-                            {'CurrentLockID': current or (b'\x00' * 16),
-                             'NewLockID': lockId}}}
-
-            try:
-                self._sendCommand(cmd,
-                                  response=response,
-                                  timeout=timeout,
-                                  callback=callback)
-            except CommandError as err:
-                # Older FW returns wrong status code
-                if err.errno == DeviceStatusCode.ERR_INVALID_COMMAND:
-                    raise CommandError(DeviceStatusCode.ERR_UNKNOWN_COMMAND,
-                                       *err.args[1:])
-                raise
-
+        lockId = new or self.hostId
+        if lockId == self.getLockID():
             return True
 
+        cmd = {'EBMLCommand':
+                   {'SetLockID':
+                        {'CurrentLockID': current or (b'\x00' * 16),
+                         'NewLockID': lockId}}}
 
+        try:
+            self._sendCommand(cmd,
+                              response=response,
+                              timeout=timeout,
+                              callback=callback)
+        except CommandError as err:
+            # Older FW returns wrong status code
+            if err.errno == DeviceStatusCode.ERR_INVALID_COMMAND:
+                raise CommandError(DeviceStatusCode.ERR_UNKNOWN_COMMAND,
+                                   *err.args[1:])
+            raise
+
+        return True
+
+
+    @device_synchronized
     def clearLockID(self,
                     current: Union[bytearray, bytes, None] = None,
                     response: bool = True,
@@ -2768,13 +2768,12 @@ class SerialCommandInterface(CommandInterface):
                 be cancelled. The callback function should require no arguments.
         """
         # Same as setting with new=b'\x00\x00\x00...', but more user-friendly
-        with self.device._busy:
-            new = b'\00' * 16
-            current = current or self.hostId
-            result = bool(self.setLockID(new=new, current=current,
-                                         response=response, timeout=timeout,
-                                         callback=callback))
-            return result
+        new = b'\00' * 16
+        current = current or self.hostId
+        result = bool(self.setLockID(new=new, current=current,
+                                     response=response, timeout=timeout,
+                                     callback=callback))
+        return result
 
 
     # =======================================================================
@@ -2865,6 +2864,7 @@ class FileCommandInterface(CommandInterface):
     A mechanism for sending commands to a recorder via the `COMMAND` file.
     """
 
+    @device_synchronized
     def _writeCommand(self,
                       packet: Union[AnyStr, bytearray]) -> int:
         """
@@ -2875,9 +2875,8 @@ class FileCommandInterface(CommandInterface):
         :param packet: An encoded EBMLCommand element.
         :return: The number of bytes written.
         """
-        with self.device._busy:
-            with open(self.device.commandFile, 'wb') as f:
-                f.write(packet)
+        with open(self.device.commandFile, 'wb') as f:
+            f.write(packet)
 
         return len(packet)
 
@@ -2907,12 +2906,14 @@ class FileCommandInterface(CommandInterface):
 
 
     @property
+    @device_synchronized
     def available(self) -> bool:
         """ Is the command interface available and able to accept commands? """
         return (self.device.available
                 and os.path.isfile(self.device.commandFile))
 
 
+    @device_synchronized
     def _readResponse(self,
                       timeout: Optional[Union[int, float]] = None,
                       callback: Optional[Callable] = None) -> Union[dict, None]:
@@ -2928,28 +2929,28 @@ class FileCommandInterface(CommandInterface):
         :return: A `dict` of response data, or `None` if `callback` caused
             the process to cancel.
         """
-        with self.device._busy:
-            responseFile = os.path.join(self.device.path, self.device._RESPONSE_FILE)
-            if not os.path.isfile(responseFile):
-                return None
+        responseFile = os.path.join(self.device.path, self.device._RESPONSE_FILE)
+        if not os.path.isfile(responseFile):
+            return None
 
-            try:
-                raw = os_specific.readUncachedFile(responseFile)
-                data = self._decode(raw)
+        try:
+            raw = os_specific.readUncachedFile(responseFile)
+            data = self._decode(raw)
 
-                if 'EBMLResponse' not in data:
-                    logger.warning('Response did not contain an EBMLResponse element')
+            if 'EBMLResponse' not in data:
+                logger.warning('Response did not contain an EBMLResponse element')
 
-                return data.get('EBMLResponse', data)
+            return data.get('EBMLResponse', data)
 
-            except (AttributeError, IndexError, KeyError, TypeError) as err:
-                # TODO: Better exception handling in readResponse()
-                warnings.warn("Ignoring exception in {}._readResponse(): {!r}"
-                              .format(type(self).__name__, err))
+        except (AttributeError, IndexError, KeyError, TypeError) as err:
+            # TODO: Better exception handling in readResponse()
+            warnings.warn("Ignoring exception in {}._readResponse(): {!r}"
+                          .format(type(self).__name__, err))
 
         return None
 
 
+    @device_synchronized
     def _getTime(self,
                  pause=False,
                  timeout: Union[int, float] = 3) -> Tuple[Epoch, Epoch]:
@@ -2967,18 +2968,18 @@ class FileCommandInterface(CommandInterface):
         :return: The system time and the device time. Both are epoch
             (UNIX) time (seconds since 1970-01-01T00:00:00).
         """
-        with self.device._busy:
-            if pause:
-                t = int(time())
-                while int(time()) == t:
-                    pass
-            sysTime, devTime = os_specific.readRecorderClock(self.device.clockFile,
-                                                             timeout=timeout)
-            devTime = self._TIME_PARSER.unpack_from(devTime)[0]
+        if pause:
+            t = int(time())
+            while int(time()) == t:
+                pass
+        sysTime, devTime = os_specific.readRecorderClock(self.device.clockFile,
+                                                         timeout=timeout)
+        devTime = self._TIME_PARSER.unpack_from(devTime)[0]
 
         return sysTime, devTime
 
 
+    @device_synchronized
     def _setTime(self,
                  t: Optional[int] = None,
                  pause: bool = True,
@@ -3021,6 +3022,7 @@ class FileCommandInterface(CommandInterface):
         return t0, t
 
 
+    @device_synchronized
     def _sendCommand(self,
                      cmd: dict,
                      response: bool = True,
@@ -3056,53 +3058,53 @@ class FileCommandInterface(CommandInterface):
         now = time()
         timeout = -1 if timeout is None else timeout
         deadline = now + timeout
+        queueDepth = '?'
 
-        with self.device._busy:
-            self.lastCommand = (now, deepcopy(cmd))
+        self.lastCommand = (now, deepcopy(cmd))
 
-            # Wait until the command queue is empty.
-            # The file interface does this first.
-            while True:  # a `while True` infinite loop
-                data = self._readResponse()
-                if data:
-                    idx = data.get('ResponseIdx')
-                    queueDepth = data.get('CMDQueueDepth', 1)
-                    if queueDepth > 0:
-                        break
-                else:
-                    sleep(interval)
-
-                if timeout >= 0 and time() > deadline:
-                    if not response:
-                        logger.debug('Ignoring timeout waiting for CMDQueue '
-                                     'to empty because no response required')
-                        return None
-
-                    raise DeviceTimeout("Timed out waiting for device to complete "
-                                        "queued commands (%s remaining)" % queueDepth)
-
-                if callback is not None and callback():
-                    return None
-
-            self._writeCommand(ebml)
-
-            while timeout < 0 or time() <= deadline:
-                data = self._readResponse()
-
-                if data and data.get("ResponseIdx") != idx:
-                    return data
-
-                if callback is not None and callback():
-                    return None
-
+        # Wait until the command queue is empty.
+        # The file interface does this first.
+        while True:  # a `while True` infinite loop
+            data = self._readResponse()
+            if data:
+                idx = data.get('ResponseIdx')
+                queueDepth = data.get('CMDQueueDepth', 1)
+                if queueDepth > 0:
+                    break
+            else:
                 sleep(interval)
 
-            if not response:
-                logger.debug('Ignoring timeout waiting for response '
-                             'because no response required')
+            if timeout >= 0 and time() > deadline:
+                if not response:
+                    logger.debug('Ignoring timeout waiting for CMDQueue '
+                                 'to empty because no response required')
+                    return None
+
+                raise DeviceTimeout("Timed out waiting for device to complete "
+                                    "queued commands (%s remaining)" % queueDepth)
+
+            if callback is not None and callback():
                 return None
 
-            raise DeviceTimeout("Timed out waiting for command response (%s seconds)" % timeout)
+        self._writeCommand(ebml)
+
+        while timeout < 0 or time() <= deadline:
+            data = self._readResponse()
+
+            if data and data.get("ResponseIdx") != idx:
+                return data
+
+            if callback is not None and callback():
+                return None
+
+            sleep(interval)
+
+        if not response:
+            logger.debug('Ignoring timeout waiting for response '
+                         'because no response required')
+            return None
+
+        raise DeviceTimeout("Timed out waiting for command response (%s seconds)" % timeout)
 
 
     # =======================================================================

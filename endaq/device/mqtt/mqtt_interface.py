@@ -35,14 +35,13 @@ from .. import (_module_busy, RECORDER_TYPES, RECORDERS,
 
 from .discovery import findBrokers, SERVICE_TYPE
 from ..base import Recorder, NonRecorder
-from ..client import synchronized
 from ..command_interfaces import SerialCommandInterface
 from ..devinfo import MQTTDeviceInfo
 from ..exceptions import CommandError, CommunicationError, DeviceError
 from ..response_codes import DeviceStatusCode
 from ..simserial import SimSerialPort
 from ..types import Filename
-from .. import util
+from ..util import getMyIP, makeClientID, synchronized
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -127,7 +126,7 @@ class MQTTConnector:
             `MQTTConnector.disconnectCallback` attribute.
         """
         if not host or host in ('localhost', '127.0.0.1'):
-            host = util.getMyIP()
+            host = getMyIP()
         elif isinstance(host, (list, tuple)):
             host = host[0]
 
@@ -145,7 +144,7 @@ class MQTTConnector:
         self.disconnectCallback = disconnectCallback
 
         self.clientArgs.update(clientArgs or {})
-        self.clientArgs.setdefault('client_id', util.makeClientID(type(self).__name__))
+        self.clientArgs.setdefault('client_id', makeClientID(type(self).__name__))
         self.connectArgs.update(connectArgs or {})
 
         self.client: mqtt.Client = None

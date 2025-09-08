@@ -9,7 +9,7 @@ from typing import Optional, Union
 
 from serial import PortNotOpenError
 
-from .client import synchronized
+from .util import synchronized
 
 
 class SimSerialPort:
@@ -103,4 +103,3 @@ class SimSerialPort:
     def in_waiting(self) -> int:
         """ The number of bytes currently in the buffer. """
         return len(self.buffer)
-

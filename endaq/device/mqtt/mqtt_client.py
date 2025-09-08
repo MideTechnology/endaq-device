@@ -8,9 +8,10 @@ from time import sleep, time
 from typing import Any, ByteString, Dict, Optional, Tuple, Union
 
 import ebmlite
-from ..client import CommandClient, synchronized
+from ..client import CommandClient
 from ..hdlc import HDLC_BREAK_CHAR
 from ..response_codes import DeviceStatusCode
+from ..util import synchronized
 from .mqtt_interface import COMMAND_TOPIC, RESPONSE_TOPIC, STATE_TOPIC
 
 import paho.mqtt.client
