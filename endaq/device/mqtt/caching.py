@@ -284,9 +284,10 @@ class FileCache(BaseCache):
                 pass
 
             try:
-                if time() - os.path.getmtime(filename) > limit:
-                    os.remove(filename)
-                    cleared.append((s, b, None))
+                with self._getLock(filename):
+                    if time() - os.path.getmtime(filename) > limit:
+                        os.remove(filename)
+                        cleared.append((s, b, None))
             except (IOError, OSError) as err:
                 cleared.append((s, b, err))
 
