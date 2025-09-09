@@ -11,6 +11,7 @@ from pathlib import Path
 import string
 from threading import RLock
 from typing import Dict, List, Optional, Union
+import warnings
 from weakref import WeakValueDictionary
 
 import logging
@@ -86,6 +87,10 @@ RECORDER_CACHE_SIZE = 100
 # classes have their own 'busy' locks as well.
 _module_busy = RLock()
 
+# The set of serial ports found in the last check, for detecting changes in
+# connected devices. See similar variables in the OS-specific modules.
+_LAST_PORTS = set()
+
 
 # ============================================================================
 # Platform-specific stuff. 
@@ -144,23 +149,51 @@ def getRecorder(path: Filename,
 
 
 def deviceChanged(recordersOnly: bool = True,
-                  clear: bool = False) -> bool:
-    """ Returns `True` if a drive has been connected or disconnected since
-        the last call to :meth:`~.endaq.device.deviceChanged`.
+                  clear: bool = False,
+                  drives: bool = True,
+                  serial: bool = True) -> bool:
+    """ Returns `True` if a drive and/or serial device has been connected or
+        disconnected since the last call to :meth:`~.endaq.device.deviceChanged`.
+        For quick checks.
         
         :param recordersOnly: If `False`, any change to the mounted drives
-            is reported as a change. If `True`, the mounted drives are checked
-            and `True` is only returned if the change occurred to a recorder.
-            Checking for recorders only takes marginally more time.
+            and/or USB serial devices is reported as a change. If `True`, a
+            basic test is done to filter non-recorders out of the check,
+            reducing false positives but taking marginally longer in
+            certain cases.
         :param clear: If `True`, clear the cache of previously-detected
             drives and devices.
+        :param drives: If `False`, exclude devices mounted as drives.
+        :param serial: If `False`, exclude devices connected via USB serial.
     """
-    return os_specific.deviceChanged(recordersOnly, RECORDER_TYPES, clear=clear)
+    if clear:
+        # `clear=False` is no longer used anywhere in our various codebases
+        warnings.warn("The deviceChanged 'clear' option is deprecated and "
+                      "will be removed in the future",
+                      DeprecationWarning)
+
+    if drives:
+        changed = os_specific.deviceChanged(recordersOnly, RECORDER_TYPES,
+                                            clear=clear)
+    else:
+        changed = False
+
+    if serial:
+        ports = set(SerialCommandInterface._possibleRecorders(recordersOnly))
+        with _module_busy:
+            global _LAST_PORTS
+            changed = changed or ports != _LAST_PORTS
+            if clear:
+                _LAST_PORTS.clear()
+            _LAST_PORTS.update(ports)
+            _LAST_PORTS = ports
+
+    return changed
 
 
 def getDeviceList(strict: bool = True) -> List[Drive]:
-    """ Get a list of local data recorders, as their respective path (or the
-        drive letter under Windows).
+    """ Get a list of local data recorders mounted as drives, as their
+        respective path (or the drive letter under Windows).
 
         :param strict: If `False`, only the directory structure is used
             to identify a recorder. If `True`, non-FAT file systems will
