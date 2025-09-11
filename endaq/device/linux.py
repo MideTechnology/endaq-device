@@ -159,19 +159,23 @@ def getDeviceList(types: dict, strict: bool = True) -> list:
     result = set()
 
     for device in psutil.disk_partitions():
+        print(f"Checking device {device}")
         try:
+            print(f"checking existance")
             if not os.path.exists(device.mountpoint):
                 continue
             for t in types:
+                print(f"checking type {t}")
                 if t.isRecorder(device.mountpoint, strict=strict):
                     result.add(device.mountpoint)
         except IOError as err:
+            print(f"IOError: {err}")
             # Rare error, may be caused by flaky device or USB.
             msg = (f"getDeviceList(): Could not access {device[0]} ({err}); "
                    "ignoring error and continuing")
             warnings.warn(msg)
             logger.error(msg)
-
+    print(f"Result: {result}")
     return sorted(result)
 
 
