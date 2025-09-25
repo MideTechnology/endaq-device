@@ -5,10 +5,11 @@ Some basic utility functions, for internal use.
 import calendar
 import datetime
 import errno
+from functools import wraps
 import os.path
 import pathlib
 import shutil
-from threading import get_native_id
+from threading import get_native_id, RLock
 from time import sleep, time
 from typing import Any, ByteString, Callable, Dict, Optional, Tuple, Union
 import socket
@@ -225,3 +226,91 @@ def waitfor(func: Callable,
         sleep(interval)
 
     raise TimeoutError
+
+
+def synchronized(method):
+    """ Decorator for making methods use a lock, modeled after the one in
+        Java. It uses `threading.RLock`; synchronized methods called from
+        the same thread that has claimed the lock are not blocked.
+    """
+    @wraps(method)
+    def wrapped(instance, *args, **kwargs):
+        try:
+            lock = instance._synchronized_lock
+        except AttributeError:
+            lock = instance._synchronized_lock = RLock()
+        with lock:
+            return method(instance, *args, **kwargs)
+    return wrapped
+
+
+def device_synchronized(method):
+    """ A specialized version of the `synchronized` decorator for objects
+        that have a `device` attribute referring to a `Recorder` instance.
+    """
+    @wraps(method)
+    def wrapped(instance, *args, **kwargs):
+        try:
+            lock = instance.device._synchronized_lock
+        except AttributeError:
+            if not instance.device:
+                # Edge case: object's `device` not assigned (e.g., a
+                # `CommandInterface` that was explicitly instantiated)
+                # Call without lock.
+                return method(instance, *args, **kwargs)
+            else:
+                lock = instance.device._synchronized_lock = RLock()
+
+        with lock:
+            return method(instance, *args, **kwargs)
+
+    return wrapped
+
+
+def _synchronized(method):
+    """ A version of the `synchronized` decorator that does some logging,
+        for debugging use.
+    """
+    @wraps(method)
+    def wrapped(instance, *args, **kwargs):
+        try:
+            lock = instance._synchronized_lock
+        except AttributeError:
+            lock = instance._synchronized_lock = RLock()
+        with lock:
+            # Don't log the `in_waiting` property checks (too many calls)
+            if 'waiting' not in str(method):
+                logger.debug(f'>>> calling synchronized method {method} (thread {get_native_id()})')
+            try:
+                return method(instance, *args, **kwargs)
+            finally:
+                if 'waiting' not in str(method):
+                    logger.debug(f'<<< exiting synchronized method {method} (thread {get_native_id()})')
+    return wrapped
+
+
+def _device_synchronized(method):
+    """ A version of the `device_synchronized` decorator that does some logging,
+        for debugging use.
+    """
+    @wraps(method)
+    def wrapped(instance, *args, **kwargs):
+        try:
+            lock = instance.device._synchronized_lock
+        except AttributeError:
+            if hasattr(instance, 'device'):
+                lock = instance.device._synchronized_lock = RLock()
+            else:
+                # Edge case: object's `device` not assigned.
+                # Ignore, use dummy lock.
+                lock = RLock()
+        with lock:
+            # Don't log the `in_waiting` property checks (too many calls)
+            if 'waiting' not in str(method):
+                logger.debug(f'>>> calling synchronized method {method} (thread {get_native_id()})')
+            try:
+                return method(instance, *args, **kwargs)
+            finally:
+                if 'waiting' not in str(method):
+                    logger.debug(f'<<< exiting synchronized method {method} (thread {get_native_id()})')
+    return wrapped

@@ -7,7 +7,6 @@ software in the enDAQ ecosystem.
 """
 
 from functools import wraps
-from threading import RLock, get_native_id
 from time import time
 from typing import Any, ByteString, Dict, Optional, Tuple, Union
 
@@ -18,50 +17,12 @@ logger = logging.getLogger(__name__)
 
 from .command_interfaces import SerialCommandInterface, CommandError, CRCError, CommandInterface
 from .response_codes import DeviceStatusCode
-from .util import dump
+from .util import dump, synchronized
 
 
 # ===========================================================================
 #
 # ===========================================================================
-
-def synchronized(method):
-    """ Decorator for making methods use a lock, modeled after the one in
-        Java. It uses `threading.RLock`; synchronized methods called from
-        the same thread that has claimed the lock are not blocked.
-    """
-    @wraps(method)
-    def wrapped(instance, *args, **kwargs):
-        try:
-            lock = instance._synchronized_lock
-        except AttributeError:
-            lock = instance._synchronized_lock = RLock()
-        with lock:
-            return method(instance, *args, **kwargs)
-    return wrapped
-
-
-def _synchronized(method):
-    """ Decorator for making methods use a lock, modeled after the one in
-        Java. This version does some debug logging.
-    """
-    @wraps(method)
-    def wrapped(instance, *args, **kwargs):
-        try:
-            lock = instance._synchronized_lock
-        except AttributeError:
-            lock = instance._synchronized_lock = RLock()
-        with lock:
-            # Don't log the `in_waiting` property checks (too many calls)
-            if 'waiting' not in str(method):
-                logger.debug(f'>>> calling synchronized method {method} (thread {get_native_id()})')
-            try:
-                return method(instance, *args, **kwargs)
-            finally:
-                if 'waiting' not in str(method):
-                    logger.debug(f'<<< exiting synchronized method {method} (thread {get_native_id()})')
-    return wrapped
-
 
 def requires_lock(method):
     """ Decorator for command methods that require a `LockID`. It is

@@ -30,11 +30,10 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-from ..client import dump, synchronized
 from ..response_codes import DeviceStatusCode, CommandResponseCode
 from ..command_interfaces import CommandInterface
 from ..exceptions import CommandError, CRCError, DeviceError, ValidationError
-from ..util import getMyIP, makeClientID
+from ..util import getMyIP, makeClientID, synchronized
 from .mqtt_interface import MQTT_BROKER, MQTT_PORT
 from .advertising import Advertiser
 from .caching import BaseCache, FileCache

@@ -27,6 +27,7 @@ from .types import Epoch
 from . import legacy
 from . import ui_defaults
 from . import util
+from .util import device_synchronized
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -1350,18 +1351,21 @@ class FileConfigInterface(ConfigInterface):
     # objects.
     # =======================================================================
 
+    @device_synchronized
     def _writeConfig(self, data: bytes) -> int:
         """ Open and write to the device's config file. """
         with open(self.device.configFile, 'wb') as f:
             return f.write(data)
 
 
+    @device_synchronized
     def _readConfig(self) -> bytes:
         """ Open and read the device's config file. """
         with open(self.device.configFile, 'rb') as f:
             return f.read()
 
 
+    @device_synchronized
     def _readUi(self):
         """ Open and read the device's `CONFIG.UI` file. """
         with open(self.device.configUIFile, 'rb') as f:
@@ -1374,11 +1378,13 @@ class FileConfigInterface(ConfigInterface):
         return os.path.isfile(filename)
 
 
+    @device_synchronized
     def _backupConfig(self) -> bool:
         """ Create a backup copy of the device's config file. """
         return util.makeBackup(self.device.configFile)
 
 
+    @device_synchronized
     def _restoreConfig(self,
                        remove: bool = False) -> bool:
         """ Restore a backup copy of the device's config file. """
@@ -1468,6 +1474,7 @@ class FileConfigInterface(ConfigInterface):
         return legacy.generateLegacyConfig(vals, self.device)
 
 
+    @device_synchronized
     def getConfigUI(self) -> Union[Document, MasterElement]:
         """ Load the device's ``ConfigUI`` data.
         """
@@ -1484,6 +1491,7 @@ class FileConfigInterface(ConfigInterface):
         return self.configUi
 
 
+    @device_synchronized
     def getConfig(self) -> Union[None, Document, MasterElement]:
         """ Low-level method that retrieves the device's config EBML (e.g.,
             the contents of a real device's `config.cfg` file), if any.
@@ -1505,6 +1513,7 @@ class FileConfigInterface(ConfigInterface):
         return None
 
 
+    @device_synchronized
     def loadConfig(self, config: Optional[MasterElement] = None):
         """ Process a device's configuration data.
 
@@ -1530,6 +1539,7 @@ class FileConfigInterface(ConfigInterface):
         self.configVersionRead = versionRead
 
 
+    @device_synchronized
     def applyConfig(self,
                     unknown: bool = True,
                     clear: bool = True,
