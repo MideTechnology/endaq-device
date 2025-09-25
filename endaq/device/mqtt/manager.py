@@ -37,6 +37,7 @@ from ..exceptions import CommandError, CRCError, DeviceError, ValidationError
 from ..util import getMyIP, makeClientID
 from .mqtt_interface import MQTT_BROKER, MQTT_PORT
 from .advertising import Advertiser
+from .caching import BaseCache, FileCache
 from .discovery import DEFAULT_NAME
 from .mqtt_client import MQTTClient
 from .mqtt_interface import STATE_TOPIC, HEADER_TOPIC, MEASUREMENT_TOPIC, COMMAND_TOPIC
@@ -321,7 +322,7 @@ class MQTTDevice:
                          exc_info=True)
 
 
-    def validateHeader(self, data: bytes) -> Union[bool, Dict[str, Any]]:
+    def validateHeader(self, data: bytes) -> Dict[str, Any]:
         """ Verify that header data is complete and valid. Raises a
             `ValidationError` if validation fails.
 
@@ -389,37 +390,15 @@ class MQTTDevice:
                          f'to {self.headerTopic}: {err!r}')
 
 
-    def _getCacheFile(self,
-                      create: bool = True) -> str:
-        """ Get the full path to this device's cached header data. The file
-            may or may not exist.
-
-            :param create: If `True`, create the directories for the
-                cache files. Mainly for use when saving.
-            :return: The full path to the cache file.
-        """
-        if create:
-            os.makedirs(self.manager.cachePath, exist_ok=True)
-        return os.path.join(self.manager.cachePath, f'{self.sn}_header.ide')
-
-
     def loadHeader(self) -> bytes:
         """ Load cached header data, if available.
 
             :return: Encoded EBML data containing the header of an IDE
                 file, or `None` if no cached header is available.
         """
-        try:
-            filename = self._getCacheFile(create=False)
-            if os.path.exists(filename):
-                with open(filename, 'rb') as f:
-                    header = f.read()
-                logger.debug(f'Loaded cached header for {self.sn} ({len(header)} bytes)')
-                return header
-        except IOError:
-            logger.error('Error loading header data', exc_info=True)
-
-        return None
+        header = self.manager.cache.get(self.sn, 'header')
+        logger.debug(f'Loaded cached header for {self.sn} ({len(header)} bytes)')
+        return header
 
 
     def saveHeader(self, data: bytes) -> None:
@@ -429,12 +408,7 @@ class MQTTDevice:
                 file.
         """
         logger.debug(f'Saving header data for {self.sn} ({len(data)} bytes)')
-        try:
-            filename = self._getCacheFile(create=True)
-            with open(filename, 'wb') as f:
-                f.write(data)
-        except IOError:
-            logger.error('Error saving header data', exc_info=True)
+        self.manager.cache.set(self.sn, 'header', data)
 
 
     @synchronized
@@ -477,7 +451,7 @@ class MQTTDeviceManager(MQTTClient):
                  make_crc: bool = True,
                  ignore_crc: bool = False,
                  interval: int = 45,
-                 cache: Union[str, Path] = CACHE_PATH,
+                 cache: Union[str, Path, BaseCache] = CACHE_PATH,
                  shutdown: bool = False):
         """ A client that monitors several MQTT topics, providing additional
             features for device discovery and data streaming.
@@ -489,7 +463,8 @@ class MQTTDeviceManager(MQTTClient):
                 or responses.
             :param interval: The time between published `state` updates. If
                 0, no `state` updates will be published.
-            :param cache: The path to the directory where cached data is stored.
+            :param cache: The location for cached device data, either a
+                directory or an instance of a `BaseCache` storage handler.
             :param shutdown: If `True`, the manager can be shut down remotely
                 via the ``Shutdown`` EBML command.
         """
@@ -499,7 +474,11 @@ class MQTTDeviceManager(MQTTClient):
 
         type(self).__instances__.add(self)
 
-        self.cachePath = cache
+        if isinstance(cache, (str, Path)):
+            self.cache = FileCache(cache)
+        else:
+            self.cachePath = cache
+
         self.allowShutdown = shutdown
 
         self.knownDevices: dict[int, MQTTDevice] = {}
@@ -616,26 +595,17 @@ class MQTTDeviceManager(MQTTClient):
                 modified in `retention` hours will be removed.
         """
         logger.debug(f'MQTTDeviceManager.cleanCache: Clearing cached headers '
-                     f'older than {retention} hours from "{self.cachePath}"...')
-        limit = retention * 60 * 60
-        errs = []
-        cleared = []
-        if os.path.isdir(self.cachePath):
-            for f in os.listdir(self.cachePath):
-                if f.lower().endswith('_header.ide'):
-                    try:
-                        filename = os.path.join(self.cachePath, f)
-                        if time() - os.path.getmtime(filename) > limit:
-                            os.remove(filename)
-                            cleared.append(filename)
-                    except (IOError, OSError) as err:
-                        errs.append(err)
+                     f'older than {retention} hours')
 
-        logger.debug(f'MQTTDeviceManager.cleanCache: {len(cleared)} files deleted, '
-                     f'{len(errs)} failed.')
+        items = self.cache.cleanCache(None, 'header', retention)
+        cleared = [f for f in items if f[-1] is None]
+        errs = [f for f in items if f[-1] is not None]
+
+        logger.debug(f'MQTTDeviceManager.cleanCache: {len(cleared)} '
+                     f'cached items deleted, {len(errs)} failed.')
         if errs:
             logger.error(f'MQTTDeviceManager.cleanCache failed to remove '
-                         f'some cached files: {errs!r}')
+                         f'some cached items: {errs!r}')
 
         return cleared, errs
 
