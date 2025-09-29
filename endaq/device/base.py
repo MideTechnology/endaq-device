@@ -185,7 +185,8 @@ class Recorder:
 
         for interface in devinfo.INTERFACES:
             if interface.hasInterface(self):
-                self._devinfo = interface(self)
+                interface.replaceInterface(self)
+                break
 
         if self._devinfo is None:
             raise DeviceError('Cannot find information reader for device')
@@ -207,11 +208,11 @@ class Recorder:
         if self.isVirtual:
             raise UnsupportedFeature("Virtual devices cannot execute commands")
 
-        if self._command is None:
+        if self._command is None or self._command._update.is_set():
             for interface in command_interfaces.INTERFACES:
                 if interface.hasInterface(self):
                     # logger.debug('Instantiating command interface: {!r}'.format(interface))
-                    self._command = interface(self)
+                    interface.replaceInterface(self)
                     break
 
             if self._command is None:
@@ -305,6 +306,13 @@ class Recorder:
         """
         if not virtual and self.isVirtual:
             return False
+
+        if self._command:
+            self._command._update.set()
+        if self._config:
+            self._config._update.set()
+        if self._devinfo:
+            self._devinfo._update.set()
 
         path = self.path
 
@@ -1509,11 +1517,11 @@ class Recorder:
         """ The device's "configuration interface," the means through which to
             read and/or write device config.
         """
-        if self._config is None:
+        if self._config is None or self._config._update.is_set():
             for interface in config.INTERFACES:
                 if interface.hasInterface(self):
                     # logger.debug('Instantiating config interface: {!r}'.format(interface))
-                    self._config = interface(self)
+                    interface.replaceInterface(self)
                     break
 
             if self._config is None:

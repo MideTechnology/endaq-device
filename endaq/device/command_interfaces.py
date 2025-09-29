@@ -115,6 +115,9 @@ class CommandInterface:
         self._response: Tuple[float, Optional[Dict]] = None  # (timestamp, parsed response)
         self._lastbuf = None  # Raw binary of previous response, for debugging
 
+        # Indicator that the interface may no longer be applicable and need replacement
+        self._update = Event()
+
 
     def __del__(self):
         # Destructor; does a bit of cleanup. Just in case.
@@ -144,9 +147,15 @@ class CommandInterface:
                 even if the device's interface class is the same class,
                 or the device isn't marked as compatible.
         """
-        new = replaceInterface(device._command, cls, force=force)
+        if not device._command:
+            new = cls(device)
+        else:
+            new = replaceInterface(device._command, cls, force=force)
+            if new:
+                new._update.clear()
+
         # (Do any special-case setup here in subclasses)
-        device.command = new
+        device._command = new
 
 
     @property

@@ -14,6 +14,7 @@ import errno
 import logging
 import os.path
 from pathlib import Path
+from threading import Event
 from time import struct_time
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import warnings
@@ -482,6 +483,9 @@ class ConfigInterface:
         self.configVersionRead = None
         self._supportedConfigVersions = None
 
+        # Indicator that the interface may no longer be applicable and need replacement
+        self._update = Event()
+
 
     @classmethod
     def _handleUnknownField(cls, stream, offset: int, size: int,
@@ -573,9 +577,14 @@ class ConfigInterface:
                 even if the device's interface class is the same class,
                 or the device isn't marked as compatible.
         """
-        new = replaceInterface(device._command, cls, force=force)
+        if not device._config:
+            new = cls(device)
+        else:
+            new = replaceInterface(device._config, cls, force=force)
+            if new:
+                new._update.clear()
         # (Do any special-case setup here in subclasses)
-        device.config = new
+        device._config = new
 
 
     @property

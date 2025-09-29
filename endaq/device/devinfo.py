@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 import logging
 import os.path
 import struct
+from threading import Event
 from typing import Optional, Tuple, Union, TYPE_CHECKING
 
 from .types import Drive, Filename
@@ -32,6 +33,13 @@ class DeviceInfo(ABC):
     methods only read and write the raw binary; any parsing and/or is done by
     the caller.
     """
+
+    def __init__(self, device: 'Recorder', **_kwargs):
+        self.device = device
+
+        # Indicator that the interface may no longer be applicable and need replacement
+        self._update = Event()
+
 
     @classmethod
     @abstractmethod
@@ -97,7 +105,12 @@ class DeviceInfo(ABC):
                 even if the device's interface class is the same class,
                 or the device isn't marked as compatible.
         """
-        new = util.replaceInterface(device._command, cls, force=force)
+        if not device._command:
+            new = cls(device)
+        else:
+            new = util.replaceInterface(device._command, cls, force=force)
+            if new:
+                new._update.clear()
         # (Do any special-case setup here in subclasses)
         device._devinfo = new
 
@@ -117,8 +130,8 @@ class FileDeviceInfo(DeviceInfo):
 
 
     def __init__(self, device: 'Recorder', **_kwargs):
-        self.device = device
-    
+        super().__init__(device, **_kwargs)
+
 
     @classmethod
     def hasInterface(cls, device: "Recorder") -> bool:
@@ -282,10 +295,6 @@ class SerialDeviceInfo(DeviceInfo):
     via a serial command interface. Its methods only read and write the raw
     binary; any parsing and/or encoding is done by the caller.
     """
-
-    def __init__(self, device: 'Recorder', **_kwargs):
-        self.device = device
-
 
     @classmethod
     def hasInterface(cls, device: "Recorder") -> bool:

@@ -347,6 +347,9 @@ def replaceInterface(interface, newtype, exclude=('device'), force=False):
             device are skipped, and a new interface will be instantiated
             even if it is the same class as the original.
     """
+    if interface is None:
+        force = True
+
     if not force:
         if not newtype.hasInterface(interface.device):
             raise TypeError(f"{newtype.__name__} is not compatible with "
