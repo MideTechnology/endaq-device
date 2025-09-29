@@ -27,7 +27,7 @@ from .types import Epoch
 from . import legacy
 from . import ui_defaults
 from . import util
-from .util import device_synchronized
+from .util import device_synchronized, replaceInterface
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -559,6 +559,23 @@ class ConfigInterface:
         if getattr(device, "_config", None) is not None:
             return True
         return ui_defaults.getDefaultConfigUI(device) is not None
+
+
+    @classmethod
+    def replaceInterface(cls, device, force=False):
+        """ Replace a device's config interface with one of this type,
+            intended for use when a device's connection type changes.
+            Critical attributes are copied, so the conversion should be
+            more or less seamless.
+
+            :param device: The device with the interface to replace.
+            :param force: If true, replace the device's config interface
+                even if the device's interface class is the same class,
+                or the device isn't marked as compatible.
+        """
+        new = replaceInterface(device._command, cls, force=force)
+        # (Do any special-case setup here in subclasses)
+        device.config = new
 
 
     @property

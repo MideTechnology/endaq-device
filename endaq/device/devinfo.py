@@ -85,6 +85,23 @@ class DeviceInfo(ABC):
         raise NotImplementedError
 
 
+    @classmethod
+    def replaceInterface(cls, device, force=False):
+        """ Replace a device's device info interface with one of this type,
+            intended for use when a device's connection type changes.
+            Critical attributes are copied, so the conversion should be
+            more or less seamless.
+
+            :param device: The device with the interface to replace.
+            :param force: If true, replace the device's command interface
+                even if the device's interface class is the same class,
+                or the device isn't marked as compatible.
+        """
+        new = util.replaceInterface(device._command, cls, force=force)
+        # (Do any special-case setup here in subclasses)
+        device._devinfo = new
+
+
 # ===========================================================================
 #
 # ===========================================================================

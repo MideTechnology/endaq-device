@@ -228,6 +228,10 @@ def waitfor(func: Callable,
     raise TimeoutError
 
 
+# ===========================================================================
+#
+# ===========================================================================
+
 def synchronized(method):
     """ Decorator for making methods use a lock, modeled after the one in
         Java. It uses `threading.RLock`; synchronized methods called from
@@ -280,12 +284,14 @@ def _synchronized(method):
         with lock:
             # Don't log the `in_waiting` property checks (too many calls)
             if 'waiting' not in str(method):
-                logger.debug(f'>>> calling synchronized method {method} (thread {get_native_id()})')
+                logger.debug(f'>>> calling synchronized method {method} '
+                             f'(thread {get_native_id()})')
             try:
                 return method(instance, *args, **kwargs)
             finally:
                 if 'waiting' not in str(method):
-                    logger.debug(f'<<< exiting synchronized method {method} (thread {get_native_id()})')
+                    logger.debug(f'<<< exiting synchronized method '
+                                 f'{method} (thread {get_native_id()})')
     return wrapped
 
 
@@ -307,10 +313,58 @@ def _device_synchronized(method):
         with lock:
             # Don't log the `in_waiting` property checks (too many calls)
             if 'waiting' not in str(method):
-                logger.debug(f'>>> calling synchronized method {method} (thread {get_native_id()})')
+                logger.debug(f'>>> calling synchronized method {method} '
+                             f'(thread {get_native_id()})')
             try:
                 return method(instance, *args, **kwargs)
             finally:
                 if 'waiting' not in str(method):
-                    logger.debug(f'<<< exiting synchronized method {method} (thread {get_native_id()})')
+                    logger.debug(f'<<< exiting synchronized method {method} '
+                                 f'(thread {get_native_id()})')
     return wrapped
+
+
+# ===========================================================================
+#
+# ===========================================================================
+
+def replaceInterface(interface, newtype, exclude=('device'), force=False):
+    """ Create a new interface (`CommandInterface`, `ConfigInterface`, etc.)
+        with the properties of the old one. It is expected that the original
+        interface instance has a `device` attribute, and the new class takes
+        a `Recorder` as an argument. If the new class is the same as that of
+        the given interface (and `force` is `False`), the original interface
+        instance is returned. It is expected that interface subclass will
+        do any additional post-instantiation work on the new interface.
+
+        :param interface: The interface to duplicate, or `None` to create
+            a new one (same as a normal instantiation of the new class
+            with the old instance's `device`).
+        :param newtype: The new interface class.
+        :param exclude: A list of attribute names to exclude from copying to
+            the new interface.
+        :param force: If `True`, compatibility checks with the interface's
+            device are skipped, and a new interface will be instantiated
+            even if it is the same class as the original.
+    """
+    if not force:
+        if not newtype.hasInterface(interface.device):
+            raise TypeError(f"{newtype.__name__} is not compatible with "
+                            f"{type(interface.device).__name__}.")
+
+        if type(interface) is newtype:
+            return interface
+
+    new = newtype(interface.device)
+    if interface is not None:
+        for k, v in vars(interface).items():
+            if k in exclude:
+                continue
+            try:
+                if hasattr(new, k):
+                    setattr(new, k, v)
+            except AttributeError:
+                # Possibly a read-only attribute/property
+                pass
+
+    return new
