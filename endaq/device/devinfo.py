@@ -105,14 +105,8 @@ class DeviceInfo(ABC):
                 even if the device's interface class is the same class,
                 or the device isn't marked as compatible.
         """
-        if not device._command:
-            new = cls(device)
-        else:
-            new = util.replaceInterface(device._command, cls, force=force)
-            if new:
-                new._update.clear()
         # (Do any special-case setup here in subclasses)
-        device._devinfo = new
+        device._devinfo = util.replaceInterface(device, device._command, cls, force=force)
 
 
 # ===========================================================================

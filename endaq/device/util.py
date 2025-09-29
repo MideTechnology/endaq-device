@@ -11,8 +11,11 @@ import pathlib
 import shutil
 from threading import get_native_id, RLock
 from time import sleep, time
-from typing import Any, ByteString, Callable, Dict, Optional, Tuple, Union
+from typing import Any, ByteString, Callable, Dict, Optional, Tuple, Type, Union, TYPE_CHECKING
 import socket
+
+if TYPE_CHECKING:
+    from .base import Recorder
 
 import logging
 logger = logging.getLogger(__name__)
@@ -328,7 +331,11 @@ def _device_synchronized(method):
 #
 # ===========================================================================
 
-def replaceInterface(interface, newtype, exclude=('device'), force=False):
+def replaceInterface(device: "Recorder",
+                     interface: Type,
+                     newtype: Type,
+                     exclude: Tuple[str] = ('device', '_update'),
+                     force: bool = False):
     """ Create a new interface (`CommandInterface`, `ConfigInterface`, etc.)
         with the properties of the old one. It is expected that the original
         interface instance has a `device` attribute, and the new class takes
@@ -337,6 +344,7 @@ def replaceInterface(interface, newtype, exclude=('device'), force=False):
         instance is returned. It is expected that interface subclass will
         do any additional post-instantiation work on the new interface.
 
+        :param device: The device that owns the interface to replace.
         :param interface: The interface to duplicate, or `None` to create
             a new one (same as a normal instantiation of the new class
             with the old instance's `device`).
@@ -351,14 +359,15 @@ def replaceInterface(interface, newtype, exclude=('device'), force=False):
         force = True
 
     if not force:
-        if not newtype.hasInterface(interface.device):
+        if not newtype.hasInterface(device):
             raise TypeError(f"{newtype.__name__} is not compatible with "
                             f"{type(interface.device).__name__}.")
 
         if type(interface) is newtype:
+            interface._update.clear()
             return interface
 
-    new = newtype(interface.device)
+    new = newtype(device)
     if interface is not None:
         for k, v in vars(interface).items():
             if k in exclude:

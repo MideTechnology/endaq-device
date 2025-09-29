@@ -567,7 +567,7 @@ class ConfigInterface:
 
     @classmethod
     def replaceInterface(cls, device, force=False):
-        """ Replace a device's config interface with one of this type,
+        """ Add or replace a device's config interface with one of this type,
             intended for use when a device's connection type changes.
             Critical attributes are copied, so the conversion should be
             more or less seamless.
@@ -577,14 +577,8 @@ class ConfigInterface:
                 even if the device's interface class is the same class,
                 or the device isn't marked as compatible.
         """
-        if not device._config:
-            new = cls(device)
-        else:
-            new = replaceInterface(device._config, cls, force=force)
-            if new:
-                new._update.clear()
         # (Do any special-case setup here in subclasses)
-        device._config = new
+        device._config = replaceInterface(device, device._config, cls, force=force)
 
 
     @property
