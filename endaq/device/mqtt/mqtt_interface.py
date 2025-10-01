@@ -457,17 +457,19 @@ class MQTTConnector:
         self.devManager.command = MQTTCommandInterface(self.devManager, self)
         self.devManager._devinfo = MQTTDeviceInfo(self.devManager)
 
+        tries = 0
         deadline = time() + timeout
         while time() < deadline:
+            tries += 1
             try:
                 self.devManager.command.ping()
                 return self.devManager
             except (TimeoutError, ConnectionError):
-                if time() > deadline:
-                    raise ConnectionError('Could not connect to remote Device Manager')
+                logger.debug(f'Failed to ping manager (attempt {tries})')
                 sleep(0.5)
 
         raise TimeoutError('Timed out pinging the remote Device Manager')
+
 
 
     @property
@@ -909,6 +911,8 @@ class MQTTCommandInterface(SerialCommandInterface):
                 If the callback returns `True`, the wait for a response will
                 be cancelled. The callback function should require no arguments.
         """
+        logger.debug(f'{self.device} Setting info index {infoIdx}')
+
         # Note: `LockID` and `CommandIdx` are explicitly added to ensure they
         #   come before the `InfoPayload` in the command dict.
         cmd = {
@@ -929,6 +933,39 @@ class MQTTCommandInterface(SerialCommandInterface):
                           callback=callback)
 
         return True
+
+
+    def _getInfo(self,
+                 infoIdx: int,
+                 timeout: Union[int, float] = 10,
+                 interval: float = .25,
+                 lock: bool = False,
+                 index: bool = True,
+                 callback: Optional[Callable] = None) -> bytes:
+        """ Retrieve device system information. For 'local' devices, this
+            is retrieved via the filesystem. This method is called indirectly
+            by methods in `Recorder`.
+
+            :param infoIdx: The index of the information to retrieve.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
+            :param interval: Time (in seconds) between checks for a response.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will
+                be cancelled. The callback function should require no arguments.
+            :param lock: If `True`, include the current `hostId` in the
+                command, as some `SetInfo` commands require.
+            :param index: If `True`, include a ``CommandIdx`` in the command,
+                and use it to validate the response (if any).
+            :return: The raw info, as unparsed EBML binary data. It is up to
+                the caller to know how to process the results (e.g., choose
+                the correct schema, etc.).
+        """
+        # Note: Reading config or user calibration requires a LockID
+        # lock = index in (5, 6)
+        logger.debug(f'{self.device} Getting info index {infoIdx}')
+        return super()._getInfo(infoIdx, timeout, interval, lock, index, callback)
 
 
     def getStatus(self,

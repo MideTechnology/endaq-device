@@ -1662,8 +1662,8 @@ class SerialCommandInterface(CommandInterface):
         self.port = None
 
         serial_kwargs.pop('port', None)
-        self.portArgs = serial_kwargs
-        self.portArgs.update(self.SERIAL_PARAMS)
+        self.portArgs = self.SERIAL_PARAMS.copy()
+        self.portArgs.update(serial_kwargs)
 
 
     @classmethod
