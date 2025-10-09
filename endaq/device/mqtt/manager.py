@@ -59,7 +59,7 @@ DEVICE_TIMEOUT = 60 * 5  # seconds
 # Maximum valid difference between device and system time. Times reported by
 # the device that differ from system time by this amount or more are
 # considered untrustworthy.
-MAX_DRIFT = 60 * 60 * 24 * 2
+MAX_DRIFT = 60 * 60
 
 # Paths for cached data (IDE headers, etc.)
 if sys.platform == 'win32':

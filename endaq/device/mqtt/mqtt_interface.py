@@ -444,6 +444,7 @@ class MQTTConnector:
         return port
 
 
+    @synchronized
     def _getDevManager(self, timeout=5):
         """ Get or create a special `Recorder` instance representing the
             connection to the MQTT Device Manager.
@@ -457,19 +458,7 @@ class MQTTConnector:
         self.devManager.command = MQTTCommandInterface(self.devManager, self)
         self.devManager._devinfo = MQTTDeviceInfo(self.devManager)
 
-        tries = 0
-        deadline = time() + timeout
-        while time() < deadline:
-            tries += 1
-            try:
-                self.devManager.command.ping()
-                return self.devManager
-            except (TimeoutError, ConnectionError):
-                logger.debug(f'Failed to ping manager (attempt {tries})')
-                sleep(0.5)
-
-        raise TimeoutError('Timed out pinging the remote Device Manager')
-
+        return self.devManager
 
 
     @property
