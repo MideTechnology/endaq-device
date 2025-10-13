@@ -14,7 +14,7 @@ from zeroconf import IPVersion, ServiceInfo, Zeroconf
 from zeroconf import NonUniqueNameException
 
 from .mqtt_interface import MQTT_BROKER, MQTT_PORT
-from .discovery import DEFAULT_NAME, splitServiceName
+from .discovery import DEFAULT_NAME, splitServiceName, findBrokers
 from ..util import getMyIP
 
 logger = logging.getLogger(__name__)
@@ -109,21 +109,31 @@ class Advertiser(Thread):
                      f'on {self.address}:{self.port}.')
         zeroconf = Zeroconf(ip_version=self.ipVersion)
 
+        existing = findBrokers(None)
+        basename = self.serviceName
+
         try:
             if self.rename:
                 for n in itertools.count(1):
+                    self.info = ServiceInfo(
+                            self.serviceType,
+                            self.fullName,
+                            addresses=[socket.inet_aton(self.address)],
+                            port=self.port,
+                            properties=self.properties)
                     try:
-                        zeroconf.register_service(self.info)
-                        break
+                        # Duplicate names (apparently) allowed on different
+                        # segments of same network (e.g., ethernet adn Wi-Fi);
+                        # explicitly check for duplicates
+                        if not any(broker['name'] == self.serviceName for broker in existing):
+                            zeroconf.register_service(self.info)
+                            break
                     except NonUniqueNameException:
-                        self.fullName = f'{self.serviceName} {n}.{self.serviceType}'
-                        logger.info(f'Name not unique, trying {self.fullName}')
-                        self.info = ServiceInfo(
-                                self.serviceType,
-                                self.fullName,
-                                addresses=[socket.inet_aton(self.address)],
-                                port=self.port,
-                                properties=self.properties)
+                        continue
+
+                    self.serviceName = f'{basename} {n}'
+                    self.fullName = f'{self.serviceName}.{self.serviceType}'
+                    logger.info(f'Name not unique, trying {self.fullName}')
             else:
                 zeroconf.register_service(self.info)
 
