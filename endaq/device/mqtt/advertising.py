@@ -139,6 +139,8 @@ class Advertiser(Thread):
                 self.fullName = f'{self.serviceName}.{self.serviceType}'
                 logger.info(f'Name not unique, trying {self.fullName}')
         else:
+            if any(broker['name'] == self.serviceName for broker in existing):
+                raise NonUniqueNameException
             self.zeroconf.register_service(self.info)
 
         super().start()
