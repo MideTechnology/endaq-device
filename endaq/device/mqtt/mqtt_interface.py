@@ -190,7 +190,7 @@ class MQTTConnector:
         return f'<{type(self).__name__} {self.host}:{self.port}>'
 
 
-    def subscribe(self, topic, *args, **kwargs):
+    def subscribe(self, topic, *args, **kwargs) -> tuple[mqtt.MQTTErrorCode, Optional[int]]:
         """ Wrapper for subscribing to MQTT topics, which are stored for
             resubscribing if the broker connection changes (e.g., its IP
             changed after rebooting).
@@ -200,10 +200,15 @@ class MQTTConnector:
                 self._subscriptions[t] = args, kwargs
         else:
             self._subscriptions[topic] = args, kwargs
-        return self.client.subscribe(topic, *args, **kwargs)
+        result, mid = self.client.subscribe(topic, *args, **kwargs)
+        if result == mqtt.MQTT_ERR_SUCCESS:
+            logger.debug(f'Subscribed to {topic}')
+        else:
+            logger.error(f'Error subscribing to "{topic}": {result!r}')
+        return result, mid
 
 
-    def unsubscribe(self, topic, properties=None):
+    def unsubscribe(self, topic, properties=None) -> tuple[mqtt.MQTTErrorCode, Optional[int]]:
         """ Wrapper for unsubscribing to MQTT topics, which also removes
             them from the set of cached topics.
         """
@@ -212,7 +217,12 @@ class MQTTConnector:
                 self._subscriptions.pop(t, None)
         else:
             self._subscriptions.pop(topic, None)
-        return self.client.unsubscribe(topic, properties)
+        result, mid = self.client.unsubscribe(topic, properties)
+        if result == mqtt.MQTT_ERR_SUCCESS:
+            logger.debug(f'Unsubscribed to {topic}')
+        else:
+            logger.error(f'Error unsubscribing to "{topic}": {result!r}')
+        return result, mid
 
 
     def resubscribe(self):
@@ -253,9 +263,6 @@ class MQTTConnector:
         result, _mid = self.subscribe(self._managerStateTopic, qos=0)
         if result == mqtt.MQTT_ERR_SUCCESS:
             self.client.message_callback_add(self._managerStateTopic, self._onMessage)
-            logger.debug(f'connect: Subscribed to {self._managerStateTopic}...')
-        else:
-            logger.error(f'Error subscribing to "{self._managerStateTopic}": {result!r}')
 
         self.client.loop_start()
 
@@ -296,14 +303,6 @@ class MQTTConnector:
 
         if subscriber not in self._ports.values():
             self._ports[subscriber.readTopic] = subscriber
-
-        result, _mid = self.subscribe(subscriber.readTopic,
-                                             qos=subscriber.qos)
-        if result != mqtt.MQTT_ERR_SUCCESS:
-            logger.error(f'Error subscribing to {subscriber.readTopic!r}: '
-                         f'{result!r}')
-        else:
-            logger.debug(f'Subscribed to {subscriber.readTopic!r}')
 
 
     @synchronized
@@ -787,6 +786,22 @@ class MQTTSerialPort(SimSerialPort):
             self.manager._publishSubscriber(self, data)
             return len(data)
         raise TypeError('No write topic specified, port is read-only.')
+
+
+    @synchronized
+    def open(self):
+        """ Open the virtual port with current settings. """
+        if self.readTopic and not self.is_open:
+            self.manager.subscribe(self.readTopic, qos=self.qos)
+        return super().open()
+
+
+    @synchronized
+    def close(self):
+        """ Close the virtual port. """
+        if self.readTopic:
+            self.manager.unsubscribe(self.readTopic)
+        return super().close()
 
 
 # ===========================================================================
