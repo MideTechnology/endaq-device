@@ -14,7 +14,7 @@ from zeroconf import IPVersion, ServiceInfo, Zeroconf
 from zeroconf import NonUniqueNameException
 
 from .mqtt_interface import MQTT_BROKER, MQTT_PORT
-from .discovery import DEFAULT_NAME, splitServiceName
+from .discovery import DEFAULT_NAME, splitServiceName, findBrokers
 from ..util import getMyIP
 
 logger = logging.getLogger(__name__)
@@ -101,37 +101,61 @@ class Advertiser(Thread):
         return stopped
 
 
+    def start(self) -> None:
+        """ Start the advertising thread's activity.
+
+        It must be called at most once per thread object. It arranges for the
+        object's run() method to be invoked in a separate thread of control.
+
+        This method will raise a `RuntimeError` if called more than once on the
+        same `Advertiser` object.
+        """
+        logger.debug(f'Starting zeroconf advertising of {self.fullName} '
+                     f'on {self.address}:{self.port}.')
+        self.zeroconf = Zeroconf(ip_version=self.ipVersion)
+
+        existing = findBrokers(None)
+        basename = self.serviceName
+
+        if self.rename:
+            for n in itertools.count(1):
+                self.info = ServiceInfo(
+                        self.serviceType,
+                        self.fullName,
+                        addresses=[socket.inet_aton(self.address)],
+                        port=self.port,
+                        properties=self.properties)
+                try:
+                    # Duplicate names (apparently) allowed on different
+                    # segments of same network (e.g., ethernet adn Wi-Fi);
+                    # explicitly check for duplicates
+                    if not any(broker['name'] == self.serviceName for broker in existing):
+                        self.zeroconf.register_service(self.info)
+                        break
+                except NonUniqueNameException:
+                    continue
+
+                self.serviceName = f'{basename} {n}'
+                self.fullName = f'{self.serviceName}.{self.serviceType}'
+                logger.info(f'Name not unique, trying {self.fullName}')
+        else:
+            if any(broker['name'] == self.serviceName for broker in existing):
+                raise NonUniqueNameException
+            self.zeroconf.register_service(self.info)
+
+        super().start()
+
+
     def run(self):
         """
         Main thread.
         """
-        logger.debug(f'Starting zeroconf advertising of {self.fullName} '
-                     f'on {self.address}:{self.port}.')
-        zeroconf = Zeroconf(ip_version=self.ipVersion)
-
         try:
-            if self.rename:
-                for n in itertools.count(1):
-                    try:
-                        zeroconf.register_service(self.info)
-                        break
-                    except NonUniqueNameException:
-                        self.fullName = f'{self.serviceName} {n}.{self.serviceType}'
-                        logger.info(f'Name not unique, trying {self.fullName}')
-                        self.info = ServiceInfo(
-                                self.serviceType,
-                                self.fullName,
-                                addresses=[socket.inet_aton(self.address)],
-                                port=self.port,
-                                properties=self.properties)
-            else:
-                zeroconf.register_service(self.info)
-
             while not self._stopEvent.is_set():
-                sleep(0.1)
+                sleep(0.25)
 
         finally:
             logger.debug(f'Ending zeroconf advertising of {self.fullName} '
                          f'on {self.address}:{self.port}.')
-            zeroconf.unregister_service(self.info)
-            zeroconf.close()
+            self.zeroconf.unregister_service(self.info)
+            self.zeroconf.close()
