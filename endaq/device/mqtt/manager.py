@@ -165,8 +165,8 @@ class MQTTDevice:
             if abs(now - t) < MAX_DRIFT:
                 self.infoTime = t
             else:
-                logger.warning(f'state update from {self.sn} ClockTime '
-                               f'differs from system by {now - t}')
+                logger.debug(f'state update from {self.sn} ClockTime differs '
+                             f'from system by {now - t:.2f} (clock not set?)')
         except KeyError:
             pass
         except (struct.error, IndexError):
