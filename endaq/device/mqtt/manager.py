@@ -744,6 +744,7 @@ def start(host: Optional[str] = MQTT_BROKER,
           port: int = MQTT_PORT,
           advertise: bool = True,
           name: Optional[str] = DEFAULT_NAME,
+          rename: bool = False,
           background: bool = True,
           clientArgs: Dict[str, Any] = None,
           connectArgs: Dict[str, Any] = None,
@@ -759,6 +760,8 @@ def start(host: Optional[str] = MQTT_BROKER,
     :param port: The port to which to connect.
     :param advertise: If `True`, start the mDNS advertising of the broker.
     :param name: The name under which the MQTT broker will be advertised.
+    :param rename: If `True` and the broker name is already being advertised,
+        add an incrementing number until the name is unique.
     :param background: If `True`, this function returns an
         `MQTTDeviceManager` instance with the client loop running in a
         thread. If `False`, the function will run the client loop in the
@@ -798,13 +801,13 @@ def start(host: Optional[str] = MQTT_BROKER,
         manager.cleanCache(retention=clean)
 
     if advertise:
-        kwargs = {'address': host, 'port': port, 'name': name}
+        kwargs = {'address': host, 'port': port, 'name': name, 'rename': rename}
         if advertArgs:
             kwargs.update(advertArgs)
         manager.advertiser = Advertiser(**kwargs)
-        logger.info(f'Starting advertising broker on {host}:{port} '
-                     f'as "{manager.advertiser.fullName}"')
         manager.advertiser.start()
+        logger.info(f'Advertising broker on {host}:{port} '
+                     f'as "{manager.advertiser.fullName}"')
 
     logger.info("Starting manager's MQTT client loop thread")
 
@@ -820,7 +823,7 @@ def start(host: Optional[str] = MQTT_BROKER,
     finally:
         if advertise:
             logger.debug('stopping advertiser')
-            manager.advertiser.stop()
+            manager.stop()
 
     logger.debug('exited loop')
 
@@ -860,6 +863,9 @@ if __name__ == "__main__":
                         help="Do not advertise the MQTT broker via mDNS.")
     parser.add_argument('-n', '--name', type=str, default=DEFAULT_NAME,
                         help="The advertised name of the MQTT broker.")
+    parser.add_argument('-r', '--rename', action='store_true',
+                        help="Add an incrementing number to the advertised name "
+                             "if that name is already in use.")
     parser.add_argument('-c', '--config', type=str, default=None, metavar="FILENAME",
                         help="The name of a configuration JSON file with additional "
                              "arguments for the Device Manager and advertising. "
@@ -871,7 +877,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     kwargs = {'host': args.address, 'port': args.port,
               'advertise': not args.silent, 'name': args.name,
-              'clean': args.clean, 'background': False}
+              'rename': args.rename, 'clean': args.clean,
+              'background': False}
 
     if args.config:
         with open(args.config, 'r') as f:
