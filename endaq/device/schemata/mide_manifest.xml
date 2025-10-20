@@ -170,6 +170,7 @@
         <MasterElement name="ChargerMCP73837" id="0x4D60" mandatory="0" multiple="0" minver="1">Indicates the presence of a MCP73837 battery charger.</MasterElement>
         <MasterElement name="ChargerMAX14747" id="0x4D61" mandatory="0" multiple="0" minver="1">Indicates the presence of a MAX14747 battery charger.</MasterElement>
         <MasterElement name="ChargerBQ25611D" id="0x4D62" mandatory="0" multiple="0" minver="1">Indicates the presence of a BQ25611D battery charger.</MasterElement>
+        <MasterElement name="ChargerBQ25185" id="0x4D63" mandatory="0" multiple="0" minver="1">Indicates the presence of a BQ25185 battery charger.</MasterElement>
 
         <!-- Communication -->
         <MasterElement name="CommunicationWiFi_ESP32" id="0x4D70" mandatory="0" multiple="0" minver="1">Indicates the presence of an ESP32 Wi-Fi module.</MasterElement>
@@ -182,7 +183,7 @@
         <MasterElement name="DigitalLedThree" id="0x4DD2" mandatory="0" multiple="0" minver="1">Indicates that the membrane has a 3rd LED driven by the MCU.</MasterElement>
         <MasterElement name="DigitalSensorSI1133" id="0x4DD3" mandatory="0" multiple="0" minver="1">Indicates the presence of a SI1133 light sensor on the I2C1 bus.</MasterElement>
         <MasterElement name="UseLegacyUserInterface" id="0x4DD7" mandatory="0" multiple="0" minver="1">Indicates that the device should be displaing the legacy UI.</MasterElement>
-        <MasterElement name="DeepSleepWakeupPins" id="0x4DD8" mandatory="0" multiple="0" minver="1">Indicates that the device has proper wakeup pins for lowest possible sleep level.</MasterElement>
+        <MasterElement name="DeepSleepWakeupPins" id="0x4DD8" mandatory="0" multiple="0" minver="1">Indicates that the device has line USB_VBUS_Sense connected to PA3 instead of PA9, giving it the proper wakeup pins for lowest possible sleep level.</MasterElement>
 
         <!-- Analog Out -->
         <MasterElement name="PeripheralHeater" id="0x4F00" mandatory="0" multiple="0" minver="1">Indicates the presence of an analog heater device.
