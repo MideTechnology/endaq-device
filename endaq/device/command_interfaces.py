@@ -1266,7 +1266,7 @@ class CommandInterface:
         if response is None:
             return None
 
-        return response.get('QueryWiFiResponse')
+        return self._encodeResponseCodes(response.get('QueryWiFiResponse'))
 
 
     def scanWifi(self,
@@ -1417,7 +1417,7 @@ class CommandInterface:
                                  interval=interval,
                                  callback=callback)
 
-        return response.get('NetworkStatusResponse')
+        return self._encodeResponseCodes(response.get('NetworkStatusResponse'))
 
 
     def getNetworkAddress(self,
@@ -1662,8 +1662,8 @@ class SerialCommandInterface(CommandInterface):
         self.port = None
 
         serial_kwargs.pop('port', None)
-        self.portArgs = serial_kwargs
-        self.portArgs.update(self.SERIAL_PARAMS)
+        self.portArgs = self.SERIAL_PARAMS.copy()
+        self.portArgs.update(serial_kwargs)
 
 
     @classmethod

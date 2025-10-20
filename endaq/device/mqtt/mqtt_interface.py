@@ -190,7 +190,7 @@ class MQTTConnector:
         return f'<{type(self).__name__} {self.host}:{self.port}>'
 
 
-    def subscribe(self, topic, *args, **kwargs):
+    def subscribe(self, topic, *args, **kwargs) -> tuple[mqtt.MQTTErrorCode, Optional[int]]:
         """ Wrapper for subscribing to MQTT topics, which are stored for
             resubscribing if the broker connection changes (e.g., its IP
             changed after rebooting).
@@ -200,10 +200,15 @@ class MQTTConnector:
                 self._subscriptions[t] = args, kwargs
         else:
             self._subscriptions[topic] = args, kwargs
-        return self.client.subscribe(topic, *args, **kwargs)
+        result, mid = self.client.subscribe(topic, *args, **kwargs)
+        if result == mqtt.MQTT_ERR_SUCCESS:
+            logger.debug(f'Subscribed to {topic}')
+        else:
+            logger.error(f'Error subscribing to "{topic}": {result!r}')
+        return result, mid
 
 
-    def unsubscribe(self, topic, properties=None):
+    def unsubscribe(self, topic, properties=None) -> tuple[mqtt.MQTTErrorCode, Optional[int]]:
         """ Wrapper for unsubscribing to MQTT topics, which also removes
             them from the set of cached topics.
         """
@@ -212,7 +217,12 @@ class MQTTConnector:
                 self._subscriptions.pop(t, None)
         else:
             self._subscriptions.pop(topic, None)
-        return self.client.unsubscribe(topic, properties)
+        result, mid = self.client.unsubscribe(topic, properties)
+        if result == mqtt.MQTT_ERR_SUCCESS:
+            logger.debug(f'Unsubscribed to {topic}')
+        else:
+            logger.error(f'Error unsubscribing to "{topic}": {result!r}')
+        return result, mid
 
 
     def resubscribe(self):
@@ -253,9 +263,6 @@ class MQTTConnector:
         result, _mid = self.subscribe(self._managerStateTopic, qos=0)
         if result == mqtt.MQTT_ERR_SUCCESS:
             self.client.message_callback_add(self._managerStateTopic, self._onMessage)
-            logger.debug(f'connect: Subscribed to {self._managerStateTopic}...')
-        else:
-            logger.error(f'Error subscribing to "{self._managerStateTopic}": {result!r}')
 
         self.client.loop_start()
 
@@ -296,14 +303,6 @@ class MQTTConnector:
 
         if subscriber not in self._ports.values():
             self._ports[subscriber.readTopic] = subscriber
-
-        result, _mid = self.subscribe(subscriber.readTopic,
-                                             qos=subscriber.qos)
-        if result != mqtt.MQTT_ERR_SUCCESS:
-            logger.error(f'Error subscribing to {subscriber.readTopic!r}: '
-                         f'{result!r}')
-        else:
-            logger.debug(f'Subscribed to {subscriber.readTopic!r}')
 
 
     @synchronized
@@ -444,7 +443,8 @@ class MQTTConnector:
         return port
 
 
-    def _getDevManager(self):
+    @synchronized
+    def _getDevManager(self, timeout=5):
         """ Get or create a special `Recorder` instance representing the
             connection to the MQTT Device Manager.
         """
@@ -456,10 +456,6 @@ class MQTTConnector:
         self.devManager._sn, self.devManager._snInt = 'manager', 0
         self.devManager.command = MQTTCommandInterface(self.devManager, self)
         self.devManager._devinfo = MQTTDeviceInfo(self.devManager)
-        try:
-            self.devManager.command.ping()
-        except (TimeoutError, ConnectionError):
-            raise ConnectionError('Could not connect to remote Device Manager')
 
         return self.devManager
 
@@ -792,6 +788,22 @@ class MQTTSerialPort(SimSerialPort):
         raise TypeError('No write topic specified, port is read-only.')
 
 
+    @synchronized
+    def open(self):
+        """ Open the virtual port with current settings. """
+        if self.readTopic and not self.is_open:
+            self.manager.subscribe(self.readTopic, qos=self.qos)
+        return super().open()
+
+
+    @synchronized
+    def close(self):
+        """ Close the virtual port. """
+        if self.readTopic:
+            self.manager.unsubscribe(self.readTopic)
+        return super().close()
+
+
 # ===========================================================================
 #
 # ===========================================================================
@@ -903,6 +915,8 @@ class MQTTCommandInterface(SerialCommandInterface):
                 If the callback returns `True`, the wait for a response will
                 be cancelled. The callback function should require no arguments.
         """
+        logger.debug(f'{self.device} Setting info index {infoIdx}')
+
         # Note: `LockID` and `CommandIdx` are explicitly added to ensure they
         #   come before the `InfoPayload` in the command dict.
         cmd = {
@@ -923,6 +937,39 @@ class MQTTCommandInterface(SerialCommandInterface):
                           callback=callback)
 
         return True
+
+
+    def _getInfo(self,
+                 infoIdx: int,
+                 timeout: Union[int, float] = 10,
+                 interval: float = .25,
+                 lock: bool = False,
+                 index: bool = True,
+                 callback: Optional[Callable] = None) -> bytes:
+        """ Retrieve device system information. For 'local' devices, this
+            is retrieved via the filesystem. This method is called indirectly
+            by methods in `Recorder`.
+
+            :param infoIdx: The index of the information to retrieve.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
+            :param interval: Time (in seconds) between checks for a response.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will
+                be cancelled. The callback function should require no arguments.
+            :param lock: If `True`, include the current `hostId` in the
+                command, as some `SetInfo` commands require.
+            :param index: If `True`, include a ``CommandIdx`` in the command,
+                and use it to validate the response (if any).
+            :return: The raw info, as unparsed EBML binary data. It is up to
+                the caller to know how to process the results (e.g., choose
+                the correct schema, etc.).
+        """
+        # Note: Reading config or user calibration requires a LockID
+        # lock = index in (5, 6)
+        logger.debug(f'{self.device} Getting info index {infoIdx}')
+        return super()._getInfo(infoIdx, timeout, interval, lock, index, callback)
 
 
     def getStatus(self,

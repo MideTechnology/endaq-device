@@ -33,7 +33,7 @@ logger.setLevel(logging.DEBUG)
 from ..response_codes import DeviceStatusCode, CommandResponseCode
 from ..command_interfaces import CommandInterface
 from ..exceptions import CommandError, CRCError, DeviceError, ValidationError
-from ..util import getMyIP, makeClientID, synchronized
+from ..util import getMyIP, makeClientID, synchronized, dump
 from .mqtt_interface import MQTT_BROKER, MQTT_PORT
 from .advertising import Advertiser
 from .caching import BaseCache, FileCache
@@ -59,7 +59,7 @@ DEVICE_TIMEOUT = 60 * 5  # seconds
 # Maximum valid difference between device and system time. Times reported by
 # the device that differ from system time by this amount or more are
 # considered untrustworthy.
-MAX_DRIFT = 60 * 60 * 24 * 2
+MAX_DRIFT = 60 * 60
 
 # Paths for cached data (IDE headers, etc.)
 if sys.platform == 'win32':
@@ -165,8 +165,8 @@ class MQTTDevice:
             if abs(now - t) < MAX_DRIFT:
                 self.infoTime = t
             else:
-                logger.warning(f'state update from {self.sn} ClockTime '
-                               f'differs from system by {now - t}')
+                logger.debug(f'state update from {self.sn} ClockTime differs '
+                             f'from system by {now - t:.2f} (clock not set?)')
         except KeyError:
             pass
         except (struct.error, IndexError):
