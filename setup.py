@@ -23,7 +23,7 @@ INSTALL_REQUIRES = [
     'idelib>=3.2.9',
     'numpy>=1.19.4',
     'paho-mqtt>=2.1.0',
-    'psutil >=5.5.0, <6.0.0; sys_platform == "linux" or sys_platform=="darwin"',
+    'psutil >=5.5.0; sys_platform == "linux" or sys_platform=="darwin"',
     'pyserial>=3.5',
     'pywin32>=228; sys_platform == "win32"',
     'zeroconf'
