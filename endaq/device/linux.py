@@ -166,6 +166,7 @@ def getDeviceList(types: dict, strict: bool = True) -> list:
             for t in types:
                 if t.isRecorder(device.mountpoint, strict=strict):
                     result.add(device.mountpoint)
+                    break
         except IOError as err:
             # Rare error, may be caused by flaky device or USB.
             msg = (f"getDeviceList(): Could not access {device=} ({err}); "
