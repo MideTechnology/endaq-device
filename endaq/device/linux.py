@@ -156,22 +156,19 @@ def getDeviceList(types: dict, strict: bool = True) -> list:
     """ Get a list of data recorders, as their respective mount points.
     """
     result = set()
-    found_devices = set()       # Working around a linux specific issue where sometimes multiple device dirs point to
-                                # the same mount point
     for device in psutil.disk_partitions():
         try:
             if not os.path.exists(device.mountpoint):
                 continue
             # Skip devices we've already found (Linux oddity workaround)
-            if device.mountpoint in found_devices:
+            if device.mountpoint in result:
                 continue
             for t in types:
                 if t.isRecorder(device.mountpoint, strict=strict):
                     result.add(device.mountpoint)
-                    found_devices.add(device.mountpoint)
         except IOError as err:
             # Rare error, may be caused by flaky device or USB.
-            msg = (f"getDeviceList(): Could not access {device[0]} ({err}); "
+            msg = (f"getDeviceList(): Could not access {device=} ({err}); "
                    "ignoring error and continuing")
             warnings.warn(msg)
             logger.error(msg)
