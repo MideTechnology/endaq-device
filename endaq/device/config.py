@@ -22,6 +22,7 @@ from ebmlite.core import loadSchema, Schema
 from ebmlite.core import Document, MasterElement, UnknownElement
 from idelib.dataset import Channel, SubChannel
 
+from .command_interfaces import SerialCommandInterface
 from .exceptions import ConfigError, DeviceError, UnsupportedFeature
 from .types import Epoch
 from . import legacy
@@ -1651,7 +1652,7 @@ class RemoteConfigInterface(FileConfigInterface):
             return False
 
         # TODO: FW version check?
-        return True
+        return isinstance(device.command, SerialCommandInterface)
 
 
     @property

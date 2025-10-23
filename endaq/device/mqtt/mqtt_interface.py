@@ -37,7 +37,7 @@ from .discovery import findBrokers, SERVICE_TYPE
 from ..base import Recorder, NonRecorder
 from ..command_interfaces import SerialCommandInterface
 from ..devinfo import MQTTDeviceInfo
-from ..exceptions import CommandError, CommunicationError, DeviceError
+from ..exceptions import CommandError, CommunicationError, DeviceError, UnsupportedFeature
 from ..response_codes import DeviceStatusCode
 from ..simserial import SimSerialPort
 from ..types import Filename
@@ -156,6 +156,10 @@ class MQTTConnector:
         self.devManager = None
         self._managerStateTopic = STATE_TOPIC.format(sn='manager')
         self.lastUsedTime = time()
+
+        # Serial numbers to exclude from updates (e.g., devices that are also
+        # USB/serial) to prevent conflicts. Not automatically populated.
+        self.exclude: set[int] = set()
 
 
     @classmethod
@@ -372,7 +376,7 @@ class MQTTConnector:
                 deviceList = response['DeviceList']['DeviceListItem']
                 for listItem in deviceList:
                     sn = listItem.get('SerialNumber')
-                    if not sn:
+                    if not sn or sn in self.exclude:
                         continue
                     elif sn in RECORDERS_BY_SN:
                         self._updateDeviceInfo(RECORDERS_BY_SN[sn], listItem)
@@ -568,6 +572,9 @@ class MQTTConnector:
                 sn = 'missing!'
                 try:
                     sn = listItem['SerialNumber']
+                    if sn in self.exclude:
+                        continue
+
                     infoIdx = listItem['GetInfoResponse']['InfoIndex']
                     info = bytes(listItem['GetInfoResponse']['InfoPayload'])
 
@@ -1034,3 +1041,117 @@ class MQTTCommandInterface(SerialCommandInterface):
         # FUTURE: Implement this if the device can report via command if it
         #  is mounted as an MSD.
         return False
+
+
+    def getBatteryStatus(self,
+                         timeout: Union[int, float] = 1,
+                         callback: Optional[Callable] = None) -> Union[dict, None]:
+        """ Get the status of the recorder's battery. Not supported on all
+            devices.
+
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a response
+                will be cancelled. The callback function should require no
+                arguments.
+            :return: A dictionary with the parsed battery status. It will
+                always contain the key `"hasBattery"`, and if that is `True`,
+                it will contain other keys:
+
+                * `"charging"`: (bool)
+                * `"percentage"`: (bool) `True` if the reported charge
+                    level is a percentage, or 3 states (0 = empty,
+                    255 = full, anything else is 'some' charge).
+                * `"level"`: (int) The current battery charge level.
+
+                If the device is capable of reporting if it is receiving
+                external power, the dict will contain `"externalPower"`
+                (bool).
+        """
+        if not self.manager.autoupdate:
+            return super().getBatteryStatus(timeout, callback)
+        return self._battery[1]
+
+
+    # =======================================================================
+    # Lock ID: A weakly-enforced means of claiming exclusive use of a device.
+    # =======================================================================
+
+    def getLockID(self,
+                  timeout: Union[int, float] = 5,
+                  callback: Optional[Callable] = None) -> Union[bytearray, bytes, None]:
+        """ Get the device's current lock ID, if any. Not supported by all
+            device types or firmware versions.
+
+            Lock IDs are a weakly-enforced means of requesting exclusive use
+            of a device. If a device has a lock ID set, commands sent without
+            that ID will generate an error.
+
+            :param timeout: Time (in seconds) to wait for a response.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will
+                be cancelled. The callback function should require no arguments.
+            :returns: The device's current lock ID, if any.
+        """
+        if not self.manager.autoupdate:
+            return super().getLockID(timeout, callback)
+
+        # Device Manager should keep this up to date.
+        return self.lockId[1]
+
+
+    # =======================================================================
+    # Wi-Fi - These functions cannot be used over MQTT.
+    # =======================================================================
+
+    def setAP(self,
+              ssid: str,
+              password: Optional[str] = None,
+              wait: bool = False,
+              timeout: Union[int, float] = 10,
+              callback: Optional[Callable] = None):
+        """ Quickly set the Wi-Fi access point (router) and password.
+            Only applicable to devices connected via USB.
+
+            :raises UnsupportedFeature: This cannot be done via MQTT.
+        """
+        raise UnsupportedFeature(f'Wi-Fi cannot be configured via MQTT')
+
+
+    def setWifi(self,
+                wifi_data: dict,
+                timeout: Union[int, float] = 10,
+                interval: float = 1.25,
+                callback: Optional[Callable] = None):
+        """ Configure all known Wi-Fi access points. Only applicable to
+            devices connected via USB.
+
+            :raises UnsupportedFeature: This cannot be done via MQTT.
+                """
+        raise UnsupportedFeature(f'Wi-Fi cannot be configured via MQTT')
+
+
+    def queryWifi(self,
+                  timeout: Union[int, float] = 10,
+                  interval: float = .25,
+                  callback: Optional[Callable] = None) -> Union[None, dict]:
+        """ Check the current state of the Wi-Fi (if present). Only
+            applicable to devices connected via USB.
+
+            :raises UnsupportedFeature: This cannot be done via MQTT.
+        """
+        raise UnsupportedFeature(f'Wi-Fi cannot be configured via MQTT')
+
+
+    def scanWifi(self,
+                 timeout: Union[int, float] = 10,
+                 interval: float = .25,
+                 callback: Optional[Callable] = None) -> Union[None, list]:
+        """ Initiate a scan for Wi-Fi access points (APs). Applicable only
+            to devices with Wi-Fi hardware. Only applicable to devices
+            connected via USB.
+
+            :raises UnsupportedFeature: This cannot be done via MQTT.
+        """
+        raise UnsupportedFeature(f'Wi-Fi cannot be configured via MQTT')
