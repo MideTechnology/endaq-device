@@ -1558,6 +1558,21 @@ class CommandInterface:
         raise UnsupportedFeature(self, self.clearLockID)
 
 
+    def isLocked(self,
+                 timeout: Union[int, float] = 5,
+                 callback: Optional[Callable] = None) -> tuple[bool, bool]:
+        """ Has the hardware been 'claimed' for exclusive use via :meth:`setLockID()`?
+
+            :param timeout: Time (in seconds) to wait for a response.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will
+                be cancelled. The callback function should require no arguments.
+            :return: A tuple of Booleans: whether the device has a lock set,
+                and whether the lock belongs to this instance.
+        """
+        return False, False
+
+
     # =======================================================================
     # General device info getting/setting
     # =======================================================================
@@ -2774,6 +2789,24 @@ class SerialCommandInterface(CommandInterface):
                                      response=response, timeout=timeout,
                                      callback=callback))
         return result
+
+
+    def isLocked(self,
+                 timeout: Union[int, float] = 5,
+                 callback: Optional[Callable] = None) -> tuple[bool, bool]:
+        """ Has the hardware been 'claimed' for exclusive use via `setLockID()`?
+
+            :param timeout: Time (in seconds) to wait for a response.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will
+                be cancelled. The callback function should require no arguments.
+            :return: A tuple of Booleans: whether the device has a lock set,
+                and whether the lock belongs to this instance.
+        """
+        lock = self.getLockID(timeout=timeout, callback=callback)
+        if not lock or not any(lock):
+            return False, False
+        return True, self.hostId == self.lockId[1]
 
 
     # =======================================================================

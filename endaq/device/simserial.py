@@ -1,5 +1,5 @@
 """
-A base class for simulated/vitual serial ports, implementing the core
+A base class for simulated/virtual serial ports, implementing the core
 subset of `serial.Serial` methods required by `endaq.device`.
 """
 
@@ -14,7 +14,7 @@ from .util import synchronized
 
 class SimSerialPort:
     """
-    A base class for simulated/vitual serial ports, implementing the core
+    A base class for simulated/virtual serial ports, implementing the core
     subset of `serial.Serial` methods required by `endaq.device`.
     """
 
