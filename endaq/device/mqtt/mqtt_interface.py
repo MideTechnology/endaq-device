@@ -45,7 +45,7 @@ from ..types import Filename
 from ..util import getMyIP, makeClientID, synchronized
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 __all__ = ('MQTTConnector',)
 
@@ -154,7 +154,7 @@ class MQTTConnector:
         self._ports: Dict[str, "MQTTSerialPort"] = WeakValueDictionary()
         self._subscriptions = {}
 
-        self._streams: Dict[str, Recorder] = {}
+        self._streams: Dict[str, "MQTTCommandInterface"] = {}
 
         self.devManager = None
         self._managerStateTopic = STATE_TOPIC.format(sn='manager')
@@ -357,7 +357,7 @@ class MQTTConnector:
         elif message.topic == self._managerStateTopic:
             self._onManagerState(client, userdata, message)
         elif message.topic in self._streams:
-            self._streams[message.topic]._writeSteamChunk(message.payload)
+            self._streams[message.topic]._writeStreamChunk(message.payload)
         else:
             logger.debug(f'Message from unknown topic: {message.topic}')
 
@@ -857,13 +857,13 @@ class MQTTCommandInterface(SerialCommandInterface):
         self.manager = manager
 
         self.streamCallback: Optional[Callable] = None
-        self._streamTopic = MEASUREMENT_TOPIC.format(f'{self.device.serialInt:08d}')
         self._stream: BinaryIO = None
         self._streamedBytes: int = 0
         self._lastStreamChunk: bytes = b''
         self._lastChunkTime: float = 0
 
         super().__init__(device, make_crc=make_crc, ignore_crc=ignore_crc, **kwargs)
+        self._streamTopic = MEASUREMENT_TOPIC.format(sn=f'{self.device.serialInt:08d}')
 
 
     @property
@@ -1219,6 +1219,7 @@ class MQTTCommandInterface(SerialCommandInterface):
     def canStream(self) -> bool:
         """ Is the device capable of streaming data?
         """
+        # TODO: Check device config to see if the option is enabled?
         return True
 
 
@@ -1228,7 +1229,8 @@ class MQTTCommandInterface(SerialCommandInterface):
                     timeout: Union[int, float] = 10,
                     callback: Optional[Callable] = None,
                     streamCallback: Optional[Callable] = None) -> bool:
-        """
+        """ Start a device recording/streaming and save the data it sends
+            to a file.
 
             :param filename: The name of the file to which to write the
                 streamed data (e.g., an ``.IDE``).
@@ -1246,9 +1248,13 @@ class MQTTCommandInterface(SerialCommandInterface):
             :param streamCallback: A function to call each time a 'chunk'
                 of streamed data arrives. It should take two parameters:
                 the `Recorder` instance, and the number of bytes in the
-                chunk.
+                chunk. Note: Unlike other callback functions, its return
+                value is ignored, so returning `False` does not cancel
+                the operation.
             :returns: `True` if the command was successful.
         """
+        # TODO: Check device status? Or is it better to send the command
+        #  and fail if already recording/streaming?
         if self._stream is not None and not self._stream.closed:
             return False
 
@@ -1277,21 +1283,25 @@ class MQTTCommandInterface(SerialCommandInterface):
                 arguments.
             :returns: `True` if the command was successful.
         """
-        if self._stream is None or self._stream.closed:
-            return False
+        stopped = self.stopRecording(wait, timeout, callback)
 
-        self.manager._streams.pop(self._streamTopic)
+        # TODO: Wait until the `ExitCond` Attribute element is received?
+        #  (and/or a timeout after the last packet received, and/or a change
+        #  in DeviceStatusCode)
+        self.manager._streams.pop(self._streamTopic, None)
         self.manager.unsubscribe(self._streamTopic)
-        self.streamCallback = None
-        self._stream.close()
 
-        return self.stopRecording(wait, timeout, callback)
+        if self._stream and not self._stream.closed:
+            self._stream.close()
+
+        self.streamCallback = None
+        return stopped
 
 
     def streaming(self) -> bool:
-        """ Is this instance recording data streamed from the device?
+        """ Is this instance receiving and recording data streamed from the device?
         """
-        # TODO: Check DeviceStatusCode as well?
+        # TODO: Check DeviceStatusCode for STREAMING or RECORDING as well?
         return (self._streamTopic in self.manager._streams
                 and self._stream and not self._stream.closed)
 
@@ -1303,6 +1313,8 @@ class MQTTCommandInterface(SerialCommandInterface):
             :param chunk: The payload of a ``measurement`` topic message.
             :returns: The number of bytes written.
         """
+        # TODO: Automatic stream shutdown if ExitCond in the packet (and/or
+        #  DeviceStatusCode indicates not streaming)? This could get complicated.
         numbytes = 0
         if self._stream is None:
             logger.error(f'{self.device} received stream chunk, but file not open!')
