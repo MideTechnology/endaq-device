@@ -152,6 +152,14 @@ class CommandInterface:
         return self.device and not self.device.isVirtual
 
 
+    @property
+    def canStream(self) -> bool:
+        """ Can the device stream data? Only applicable to wireless devices
+            connected through an MQTT broker.
+        """
+        return False
+
+
     def resetConnection(self) -> bool:
         """
         Reset the interface. Only applicable to subclasses with a persistent
@@ -618,10 +626,13 @@ class CommandInterface:
 
 
     def stopRecording(self,
+                      wait: bool = True,
                       timeout: Union[int, float] = 5,
                       callback: Optional[Callable] = None):
         """ Stop a device that is recording, if supported.
 
+            :param wait: If `True`, wait for the recorer to respond and/or
+                remount, indicating the recording has stopped.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
