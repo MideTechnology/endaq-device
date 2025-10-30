@@ -714,7 +714,7 @@ class CommandInterface:
         """ Verify the recorder is present and responding. Not supported on
             all devices.
 
-            :param data: An optional binary payload, not larger than 30 bytes, 
+            :param data: An optional binary payload, not larger than 30 bytes,
                 returned by the recorder verbatim.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately; `None` or -1 will wait
@@ -1061,11 +1061,12 @@ class CommandInterface:
 
         if firmware:
             if fw_ext == '.pkg':
-                updating.validatePackage(self, fw)
+                if validate:
+                    updating.validatePackage(self.device, firmware)
 
             elif fw_ext == '.bin':
                 if validate:
-                    updating.validateFirmware(self, firmware)
+                    updating.validateFirmware(self.device, firmware)
 
                 # HACK: Unencrypted STM32-based firmware has `STM_` prefix
                 # FUTURE: Handle in Recorder subclass instead?
