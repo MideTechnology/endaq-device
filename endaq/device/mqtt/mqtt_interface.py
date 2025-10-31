@@ -858,6 +858,7 @@ class MQTTCommandInterface(SerialCommandInterface):
 
         self.streamCallback: Optional[Callable] = None
         self._stream: BinaryIO = None
+        self._streamStartTime: float = 0
         self._streamedBytes: int = 0
         self._lastStreamChunk: bytes = b''
         self._lastChunkTime: float = 0
@@ -1260,6 +1261,7 @@ class MQTTCommandInterface(SerialCommandInterface):
 
         self.streamCallback = streamCallback
         self._stream = open(filename, mode='wb')
+        self._streamStartTime = 0
         self._streamedBytes = 0
         self._lastStreamChunk = b''
         self.manager._streams[self._streamTopic] = self
@@ -1325,6 +1327,8 @@ class MQTTCommandInterface(SerialCommandInterface):
             self._streamedBytes += numbytes
             self._lastStreamChunk = chunk
             self._lastChunkTime = time()
+            if self._streamStartTime == 0:
+                self._streamStartTime = self._lastChunkTime
             if self.streamCallback:
                 self.streamCallback(self.device, numbytes)
         return numbytes

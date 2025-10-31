@@ -57,6 +57,25 @@ class DeviceStatusCode(IntEnum):
 CommandResponseCode = DeviceStatusCode
 
 
+responsestrings = {
+    CommandResponseCode.ERR_BUSY: "Communication channel is busy",
+    CommandResponseCode.ERR_INVALID_COMMAND: "Badly formed command",
+    CommandResponseCode.ERR_BAD_LOCK_ID: "Command Lock ID invalid",
+    CommandResponseCode.ERR_BAD_INFO_INDEX: "Unknown info index, or info is read or write only",
+    CommandResponseCode.ERR_BAD_PARAMETER: "One or more command parameters are invalid in some way",
+    CommandResponseCode.ERR_UNKNOWN_COMMAND: "Command not recognized",
+    CommandResponseCode.ERR_BAD_PAYLOAD: "Bad command payload",
+    CommandResponseCode.ERR_BAD_EBML: "Command EBML is malformed",
+    CommandResponseCode.ERR_RESPONSE_TOO_LARGE: "EBML command response too large for device",
+    CommandResponseCode.ERR_BAD_CHECKSUM: "Command checksum failed (error transmitting packet)",
+    CommandResponseCode.ERR_BAD_PACKET: "Content of command packet bad/damaged",
+    CommandResponseCode.ERR_DISCONNECTED: "The device has gone offline unexpectedly",
+    CommandResponseCode.ERR_INTERNAL_ERROR: "MQTT Device Manager internal error",
+    CommandResponseCode.ERR_UNKNOWN_DEVICE: "Device/serial number unknown to MQTT Device Manager"
+}
+""" Default message strings for `DeviceStatusCode`/`CommandResponseCode` errors """
+
+
 class WiFiConnectionStatus(IntEnum):
     """ The status of the Wi-Fi connection, returned when querying Wi-Fi.
     """
