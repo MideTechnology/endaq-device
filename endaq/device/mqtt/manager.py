@@ -240,6 +240,7 @@ class MQTTDevice:
                 if myId != newId:
                     logger.debug(f'Captured SetLockID command for {self.sn}: '
                                  f'{dump(newId, 0)!r}')
+                    self.manager.updateState()
 
         except KeyError as err:
             logger.debug(repr(err))

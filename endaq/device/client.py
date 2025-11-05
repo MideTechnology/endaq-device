@@ -290,7 +290,7 @@ class CommandClient:
     # overwritten; subclasses will probably just add command methods.
     #
     # Methods should be named `command_` plus the name of the command's
-    # EBML element, (e.g., `command_sendPing()`). `GetInfo` and `SetInfo`
+    # EBML element, (e.g., `command_SendPing()`). `GetInfo` and `SetInfo`
     # have separate methods for each index, and have the index as a suffix
     # (e.g., `command_GetInfo_0`). The base `command_GetInfo()` and
     # `command_SetInfo()` probably won't need to be overridden.
