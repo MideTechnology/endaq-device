@@ -936,7 +936,7 @@ class MQTTCommandInterface(SerialCommandInterface):
                 If the callback returns `True`, the wait for a response will
                 be cancelled. The callback function should require no arguments.
         """
-        logger.debug(f'{self.device} Setting info index {infoIdx}')
+        logger.debug(f'{self.device.serial} Setting info index {infoIdx}')
 
         # Note: `LockID` and `CommandIdx` are explicitly added to ensure they
         #   come before the `InfoPayload` in the command dict.
@@ -989,7 +989,7 @@ class MQTTCommandInterface(SerialCommandInterface):
         """
         # Note: Reading config or user calibration requires a LockID
         # lock = index in (5, 6)
-        logger.debug(f'{self.device} Getting info index {infoIdx}')
+        logger.debug(f'{self.device.serial} Getting info index {infoIdx}')
         return super()._getInfo(infoIdx, timeout, interval, lock, index, callback)
 
 
@@ -1321,9 +1321,9 @@ class MQTTCommandInterface(SerialCommandInterface):
         #  DeviceStatusCode indicates not streaming)? This could get complicated.
         numbytes = 0
         if self._stream is None:
-            logger.error(f'{self.device} received stream chunk, but file not open!')
+            logger.error(f'{self.device.serial} received stream chunk, but file not open!')
         elif self._stream.closed:
-            logger.debug(f'{self.device} received stream chunk after file closed; ignoring')
+            logger.debug(f'{self.device.serial} received stream chunk after file closed; ignoring')
         else:
             numbytes = self._stream.write(chunk)
             self._streamedBytes += numbytes
