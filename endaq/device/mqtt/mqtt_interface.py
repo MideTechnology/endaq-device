@@ -1200,7 +1200,7 @@ class MQTTCommandInterface(SerialCommandInterface):
                       wait: bool = True,
                       timeout: Union[int, float] = 5,
                       callback: Optional[Callable] = None):
-        """ Stop a device that is recording,.
+        """ Stop a device that is recording.
 
             :param wait: If `True`, wait for the recorer to respond and/or
                 remount, indicating the recording has stopped.
@@ -1213,7 +1213,21 @@ class MQTTCommandInterface(SerialCommandInterface):
             :returns: `True` if the command was successful.
         """
         # TODO: Implement `wait` actually waiting on change of status code
-        return super().stopRecording(wait, timeout, callback)
+        stopped = super().stopRecording(wait, timeout, callback)
+
+        # TODO: Wait until the `ExitCond` Attribute element is received?
+        #  (and/or a timeout after the last packet received, and/or a change
+        #  in DeviceStatusCode)
+        self.manager._streams.pop(self._streamTopic, None)
+        self.manager.unsubscribe(self._streamTopic)
+
+        try:
+            self._stream.close()
+        except AttributeError:
+            pass
+
+        self.streamCallback = None
+        return stopped
 
 
     @property
@@ -1285,19 +1299,7 @@ class MQTTCommandInterface(SerialCommandInterface):
                 arguments.
             :returns: `True` if the command was successful.
         """
-        stopped = self.stopRecording(wait, timeout, callback)
-
-        # TODO: Wait until the `ExitCond` Attribute element is received?
-        #  (and/or a timeout after the last packet received, and/or a change
-        #  in DeviceStatusCode)
-        self.manager._streams.pop(self._streamTopic, None)
-        self.manager.unsubscribe(self._streamTopic)
-
-        if self._stream and not self._stream.closed:
-            self._stream.close()
-
-        self.streamCallback = None
-        return stopped
+        return self.stopRecording(wait, timeout, callback)
 
 
     def streaming(self) -> bool:

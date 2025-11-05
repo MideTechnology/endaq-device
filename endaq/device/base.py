@@ -163,10 +163,10 @@ class Recorder:
         # was asleep at the time). Initially set after instantiation, and
         # automatically updated by the MQTTConnector with data from the
         # Device Manager.
-        self._lastContact: int = 0
-        self._lastMeasurement: int = 0
-        self._lastHeader: int = 0
-        self._lastCommand: int = 0
+        self._lastContact: float = 0.
+        self._lastMeasurement: float = 0.
+        self._lastHeader: float = 0.
+        self._lastCommand: float = 0.
 
         # Also for remote devices: the EBML ID of the last command received,
         # updated by the MQTTConnector using data from the Device Manager.

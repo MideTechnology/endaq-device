@@ -2157,6 +2157,8 @@ class SerialCommandInterface(CommandInterface):
                     else:
                         raise
 
+                self.device._lastContact = now
+
                 if resp:
                     self._encodeResponseCodes(resp)
                     responseCode = resp.get('CommandResponseCode')

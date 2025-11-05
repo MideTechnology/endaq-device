@@ -164,9 +164,9 @@ class MQTTDevice:
             t = CommandInterface._TIME_PARSER.unpack_from(info['ClockTime'])[0]
             if abs(now - t) < MAX_DRIFT:
                 self.infoTime = t
-            else:
-                logger.debug(f'state update from {self.sn} ClockTime differs '
-                             f'from system by {now - t:.2f} (clock not set?)')
+            # else:
+            #     logger.debug(f'state update from {self.sn} ClockTime differs '
+            #                  f'from system by {now - t:.2f} (clock not set?)')
         except KeyError:
             pass
         except (struct.error, IndexError):
