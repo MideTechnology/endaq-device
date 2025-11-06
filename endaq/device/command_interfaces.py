@@ -2504,12 +2504,17 @@ class SerialCommandInterface(CommandInterface):
                 arguments.
             :returns: `True` if the command was successful.
         """
-        return self._runSimpleCommand({'EBMLCommand': {'RecStart': {}}},
-                                      statusCode=DeviceStatusCode.START_PENDING,
-                                      timeoutMsg="Timed out waiting for recording to start",
-                                      wait=wait,
-                                      timeout=timeout,
-                                      callback=callback)
+        try:
+            return self._runSimpleCommand({'EBMLCommand': {'RecStart': {}}},
+                                          statusCode=DeviceStatusCode.START_PENDING,
+                                          timeoutMsg="Timed out waiting for recording to start",
+                                          wait=wait,
+                                          timeout=timeout,
+                                          callback=callback)
+        except CommandError as err:
+            if err.errno == DeviceStatusCode.ERR_INVALID_COMMAND and None in err.args:
+                raise CommandError(err.errno, 'Could not start recording (device already recording?)')
+            raise
 
 
     def stopRecording(self,
@@ -2531,16 +2536,22 @@ class SerialCommandInterface(CommandInterface):
         if self.device.isRemote:
             wait = False
 
-        response = self._sendCommand({'EBMLCommand': {'RecStop': {}}},
-                                     response=False,
-                                     timeout=timeout,
-                                     callback=callback)
+        try:
+            response = self._sendCommand({'EBMLCommand': {'RecStop': {}}},
+                                         response=False,
+                                         timeout=timeout,
+                                         callback=callback)
 
-        if response is not None or not wait:
+            if response is not None or not wait:
+                return True
+
+            self.awaitRemount(timeout, callback=callback)
             return True
 
-        self.awaitRemount(timeout, callback=callback)
-        return True
+        except CommandError as err:
+            if err.errno == DeviceStatusCode.ERR_INVALID_COMMAND and None in err.args:
+                raise CommandError(err.errno, 'Could not stop recording (device already stopped?)')
+            raise
 
 
     def reset(self,
@@ -3247,11 +3258,16 @@ class FileCommandInterface(CommandInterface):
 
         # FUTURE: Write commands wrapped in a <EBMLCommand> element?
         #  Exclude LegacyFileCommandInterface.
-        return self._runSimpleCommand({'RecStart': {}},
-                                      timeoutMsg="Timed out waiting for recording to start",
-                                      wait=wait,
-                                      timeout=timeout,
-                                      callback=callback)
+        try:
+            return self._runSimpleCommand({'RecStart': {}},
+                                          timeoutMsg="Timed out waiting for recording to start",
+                                          wait=wait,
+                                          timeout=timeout,
+                                          callback=callback)
+        except CommandError as err:
+            if err.errno == DeviceStatusCode.ERR_INVALID_COMMAND and None in err.args:
+                raise CommandError(err.errno, 'Could not stop recording (device already stopped?)')
+            raise
 
 
     def reset(self,

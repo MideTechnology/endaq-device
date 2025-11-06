@@ -568,31 +568,31 @@ class MQTTConnector:
                 response will be cancelled. The callback function
                 requires no arguments.
         """
-        with _module_busy:
-            devices = []
+        devices = []
 
-            items = self.getDeviceInfo(timeout, managerTimeout, callback)
+        items = self.getDeviceInfo(timeout, managerTimeout, callback)
 
-            for n, listItem in enumerate(items):
-                sn = 'missing!'
-                try:
-                    sn = listItem['SerialNumber']
-                    if sn in self.exclude:
-                        continue
-
-                    infoIdx = listItem['GetInfoResponse']['InfoIndex']
-                    info = bytes(listItem['GetInfoResponse']['InfoPayload'])
-
-                    if infoIdx != 0:
-                        logger.error(f'DeviceListItem {n} (SN {sn}) from Manager '
-                                     f'had wrong InfoIndex {infoIdx!r}, continuing')
-                        continue
-
-                except KeyError as err:
-                    logger.error(f'DeviceListItem {n} (SN {sn}) from Manager '
-                                 f'did not contain {err.args[0]!r}, continuing')
+        for n, listItem in enumerate(items):
+            sn = 'missing!'
+            try:
+                sn = listItem['SerialNumber']
+                if sn in self.exclude:
                     continue
 
+                infoIdx = listItem['GetInfoResponse']['InfoIndex']
+                info = bytes(listItem['GetInfoResponse']['InfoPayload'])
+
+                if infoIdx != 0:
+                    logger.error(f'DeviceListItem {n} (SN {sn}) from Manager '
+                                 f'had wrong InfoIndex {infoIdx!r}, continuing')
+                    continue
+
+            except KeyError as err:
+                logger.error(f'DeviceListItem {n} (SN {sn}) from Manager '
+                             f'did not contain {err.args[0]!r}, continuing')
+                continue
+
+            with _module_busy:
                 device = RECORDERS.get(hash(info), None)
                 systemState = listItem.get('DeviceStatusCode')
                 if systemState is None:
