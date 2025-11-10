@@ -1097,9 +1097,6 @@ class Recorder:
         """ Read the device's manifest data. The data is a superset of the
             information returned by `getInfo()`.
         """
-        # Note: This method sets `Recorder._propData`, `Recorder._manData`,
-        # `Recorder._calData`, `Recorder._manifest`, and `Recorder._calibration`.
-
         if self._manifest is not None or self.isVirtual:
             return self._manifest
 

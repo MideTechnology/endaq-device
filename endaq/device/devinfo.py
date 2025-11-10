@@ -207,7 +207,7 @@ class FileDeviceInfo(DeviceInfo):
 
         try:
             with open(calFile, 'rb') as f:
-                self._manData = f.read()
+                self._calData = f.read()
         except (FileNotFoundError, AttributeError) as err:
             logger.debug(f"Possibly-allowed exception when reading {calFile}: {err!r}")
 
@@ -215,7 +215,7 @@ class FileDeviceInfo(DeviceInfo):
             # _propData is read and cached here but parsed in `getSensors()`.
             # Old EFM32 recorders stored this w/ the manifest in the USERPAGE.
             with open(self.device.recpropFile, 'rb') as f:
-                self._manData = f.read()
+                self._propData = f.read()
         except (FileNotFoundError, AttributeError) as err:
             logger.debug("Possibly-allowed exception when reading "
                          f"{self.device.recpropFile}: {err!r}")
