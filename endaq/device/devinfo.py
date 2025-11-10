@@ -67,6 +67,20 @@ class DeviceInfo(ABC):
 
 
     @abstractmethod
+    def readCalibration(self) -> Union[None, bytearray, bytes]:
+        """ Read the device's factory calibration.
+        """
+        raise NotImplementedError
+
+
+    @abstractmethod
+    def readProperties(self) -> Union[None, bytearray, bytes]:
+        """ Read the device's properties.
+        """
+        raise NotImplementedError
+
+
+    @abstractmethod
     def readUserCalibration(self) -> Union[None, bytearray, bytes]:
         """ Get the recorder's user-defined calibration data as a dictionary
             of parameters.
@@ -101,6 +115,9 @@ class FileDeviceInfo(DeviceInfo):
 
     def __init__(self, device: 'Recorder', **_kwargs):
         self.device = device
+        self._manData = None
+        self._calData = None
+        self._propData = None
     
 
     @classmethod
@@ -120,8 +137,7 @@ class FileDeviceInfo(DeviceInfo):
     def readDevinfo(cls,
                     path: Filename,
                     info: Union[None, bytearray, bytes] = None) -> Union[None, bytearray, bytes]:
-        """ Retrieve a DEVINFO data. Calculate the device's hash. Separated from `__hash__()` so it
-            can be used by `getDevices()` to find known recorders.
+        """ Retrieve a device's DEVINFO data.
 
             :param path: The device's filesystem path.
             :param info: The contents of the device's `DEVINFO` file, if
@@ -137,16 +153,12 @@ class FileDeviceInfo(DeviceInfo):
         return info
 
 
-    def _readUserpage(self) \
-            -> Tuple[Union[None, bytearray, bytes], Union[None, bytearray, bytes], Union[None, bytearray, bytes]]:
+    def _readUserpage(self):
         """ Read the device's manifest data from the EFM32 'userpage'. The
             data is a superset of the information returned by `getInfo()`.
             Factory calibration and recorder properties are also read
             and cached, since one or both are in the userpage.
         """
-        if self.device._manifest is not None:
-            return self.device._manifest
-
         # Recombine all the 'user page' files
         data = bytearray()
         for i in range(4):
@@ -158,26 +170,23 @@ class FileDeviceInfo(DeviceInfo):
          calOffset, calSize,
          propOffset, propSize) = struct.unpack_from("<HHHHHH", data)
 
-        manData = data[manOffset:manOffset + manSize]
-        calData = data[calOffset:calOffset + calSize]
+        self._manData = data[manOffset:manOffset + manSize]
+        self._calData = data[calOffset:calOffset + calSize]
 
         # _propData is read and cached here but parsed in `getSensors()`.
         # New devices use a dynamically-generated properties file, which
         # overrides any property data in the USERPAGE.
         if os.path.exists(self.device.recpropFile):
             with open(self.device.recpropFile, 'rb') as f:
-                propData = f.read()
+                self._propData = f.read()
         else:
             # Zero offset means no property data (very old devices). For new
             # devices, a size of 1 also means no data (it's a null byte).
             propSize = 0 if (propOffset == 0 or propSize <= 1) else propSize
-            propData = data[propOffset:propOffset + propSize]
-
-        return manData, calData, propData
+            self._propData = data[propOffset:propOffset + propSize]
 
 
-    def _readManifest(self) \
-            -> Tuple[Union[None, bytearray, bytes], Union[None, bytearray, bytes], Union[None, bytearray, bytes]]:
+    def _readManifest(self):
         """ Read the device's manifest data from the 'MANIFEST' file. The
             data is a superset of the information returned by `getInfo()`.
 
@@ -188,17 +197,17 @@ class FileDeviceInfo(DeviceInfo):
         manFile = os.path.join(self.device.path, self.device._MANIFEST_FILE)
         calFile = os.path.join(self.device.path, self.device._SYSCAL_FILE)
 
-        manData = calData = propData = None
+        self._manData = self._manData = self._manData = None
 
         try:
             with open(manFile, 'rb') as f:
-                manData = f.read()
+                self._manData = f.read()
         except (FileNotFoundError, AttributeError) as err:
             logger.debug(f"Possibly-allowed exception when reading {manFile}: {err!r}")
 
         try:
             with open(calFile, 'rb') as f:
-                calData = f.read()
+                self._manData = f.read()
         except (FileNotFoundError, AttributeError) as err:
             logger.debug(f"Possibly-allowed exception when reading {calFile}: {err!r}")
 
@@ -206,25 +215,54 @@ class FileDeviceInfo(DeviceInfo):
             # _propData is read and cached here but parsed in `getSensors()`.
             # Old EFM32 recorders stored this w/ the manifest in the USERPAGE.
             with open(self.device.recpropFile, 'rb') as f:
-                propData = f.read()
+                self._manData = f.read()
         except (FileNotFoundError, AttributeError) as err:
             logger.debug("Possibly-allowed exception when reading "
                          f"{self.device.recpropFile}: {err!r}")
 
-        return manData, calData, propData
 
-
-    def readManifest(self) \
-            -> Tuple[Union[None, bytearray, bytes], Union[None, bytearray, bytes], Union[None, bytearray, bytes]]:
+    def readManifest(self) -> Union[None, bytearray, bytes]:
         """ Read the device's manifest data. The data is a superset of the
             information returned by `getInfo()`.
-        """
-        if os.path.exists(os.path.join(self.device.path, self.device._USERPAGE_FILE % 0)):
-            return  self._readUserpage()
-        elif os.path.exists(os.path.join(self.device.path, self.device._MANIFEST_FILE)):
-            return self._readManifest()
 
-        return None, None, None
+            :return: The raw, EBML encoded manifest data (or `None` if no
+                manifest data are available).
+        """
+        if self._manData:
+            return self._manData
+
+        if os.path.exists(os.path.join(self.device.path, self.device._USERPAGE_FILE % 0)):
+            self._readUserpage()
+        elif os.path.exists(os.path.join(self.device.path, self.device._MANIFEST_FILE)):
+            self._readManifest()
+
+        return self._manData
+
+
+    def readCalibration(self) -> Union[None, bytearray, bytes]:
+        """ Read the device's factory calibration data.
+
+            :return: The raw, EBML encoded calibration data (or `None` if no
+            calibration data are available).
+        """
+        if self._calData:
+            return self._calData
+
+        self.readManifest()
+        return self._calData
+
+
+    def readProperties(self) -> Union[None, bytearray, bytes]:
+        """ Read the device's properties data.
+
+            :return: The raw, EBML encoded `RecorderProperties` data (or
+                `None` if no properties are available).
+        """
+        if self._propData:
+            return self._propData
+
+        self.readManifest()
+        return self._propData
 
 
     def readUserCalibration(self) -> Union[None, bytearray, bytes]:
@@ -301,8 +339,7 @@ class SerialDeviceInfo(DeviceInfo):
         return info
 
 
-    def readManifest(self) \
-            -> Tuple[Optional[bytes], Optional[bytes], Optional[bytes]]:
+    def readManifest(self) -> Union[None, bytes, bytearray]:
         """ Read the device's manifest data from the 'MANIFEST' file. The
             data is a superset of the information returned by `getInfo()`.
 
@@ -310,11 +347,25 @@ class SerialDeviceInfo(DeviceInfo):
             cached for backwards compatibility, since both are in the older
             devices' EFM32 'userpage'.
         """
-        manData = self.device.command._getInfo(3) or None
-        calData = self.device.command._getInfo(4) or None
-        propData = self.device.command._getInfo(1) or None
+        return self.device.command._getInfo(3) or None
 
-        return manData, calData, propData
+
+    def readCalibration(self) -> Union[None, bytearray, bytes]:
+        """ Read the device's factory calibration data.
+
+            :return: The raw, EBML encoded calibration data (or `None` if no
+            calibration data are available).
+        """
+        return self.device.command._getInfo(4) or None
+
+
+    def readProperties(self) -> Union[None, bytearray, bytes]:
+        """ Read the device's properties data.
+
+            :return: The raw, EBML encoded `RecorderProperties` data (or
+                `None` if no properties are available).
+        """
+        return self.device.command._getInfo(1) or None
 
 
     def readUserCalibration(self) -> Union[None, bytearray, bytes]:

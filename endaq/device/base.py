@@ -1104,8 +1104,7 @@ class Recorder:
             return self._manifest
 
         manSchema = loadSchema('mide_manifest.xml')
-        calSchema = loadSchema('mide_ide.xml')
-        manData, calData, propData = self._getDevinfo().readManifest()
+        manData = self._getDevinfo().readManifest()
 
         if manData:
             self._manData = manData
@@ -1117,20 +1116,6 @@ class Recorder:
         else:
             logger.warning(f'No manifest data for {self}!')
             self._manData = self._manifest = None
-
-        if calData:
-            self._calData = calSchema.loads(calData)
-            try:
-                self._calibration = self._calData[0].dump()
-            except IndexError:
-                logger.warning(f'No system calibration for {self}!')
-                self._calibration = None
-        else:
-            logger.warning(f'No system calibration for {self}!')
-            self._calData = self._calibration = None
-
-        if propData:
-            self._propData = propData
 
         return self._manifest
 
@@ -1201,7 +1186,24 @@ class Recorder:
             if c is not None:
                 return c
 
-        self.getManifest()
+        if self._calibration is not None:
+            # Already read, or a virtual device
+            return self._calibration
+
+        calSchema = loadSchema('mide_ide.xml')
+        calData = self._getDevinfo().readCalibration()
+
+        if calData:
+            self._calData = calSchema.loads(calData)
+            try:
+                self._calibration = self._calData[0].dump()
+            except IndexError:
+                logger.warning(f'No system calibration for {self}!')
+                self._calibration = None
+        else:
+            logger.warning(f'No system calibration for {self}!')
+            self._calData = self._calibration = None
+
         return self._calibration
 
 
@@ -1319,10 +1321,14 @@ class Recorder:
         if self.isVirtual or self._properties is not None:
             return self._properties
 
-        self.getManifest()
-        props = loadSchema("mide_ide.xml").loads(self._propData).dump()
+        if self._manifest is not None or self.isVirtual:
+            return self._manifest
 
-        self._properties = props.get('RecordingProperties', {})
+        self._propData = self._getDevinfo().readProperties()
+        if self._propData:
+            props = loadSchema("mide_ide.xml").loads(self._propData).dump()
+            self._properties = props.get('RecordingProperties', {})
+
         return self._properties
 
 
@@ -1330,7 +1336,7 @@ class Recorder:
     def getSensors(self) -> Dict[int, Sensor]:
         """ Get the recorder sensor description data.
         """
-        self.getManifest()
+        self.getProperties()
 
         if self._sensors is not None:
             return self._sensors
