@@ -7,6 +7,7 @@ from copy import deepcopy
 from datetime import datetime
 import errno
 import os.path
+from pathlib import Path
 from random import randint
 import shutil
 import string
@@ -150,14 +151,6 @@ class CommandInterface:
         """ Can the device record on command? """
         # Modern devices can record on command, assume True as default
         return self.device and not self.device.isVirtual
-
-
-    @property
-    def canStream(self) -> bool:
-        """ Can the device stream data? Only applicable to wireless devices
-            connected through an MQTT broker.
-        """
-        return False
 
 
     def resetConnection(self) -> bool:
@@ -1582,6 +1575,86 @@ class CommandInterface:
                 and whether the lock belongs to this instance.
         """
         return False, False
+
+
+    # =======================================================================
+    # Streaming. Only wireless devices on MQTT can stream.
+    # =======================================================================
+
+    @property
+    def canStream(self) -> bool:
+        """ Can the device stream data? Only applicable to wireless devices
+            connected through an MQTT broker.
+        """
+        return False
+
+
+    def startStream(self,
+                    filename: Union[str, Path],
+                    wait: bool = True,
+                    timeout: Union[int, float] = 10,
+                    callback: Optional[Callable] = None,
+                    streamCallback: Optional[Callable] = None) -> bool:
+        """ Start a device recording/streaming and save the data it sends
+            to a file.
+
+            This command is only applicable to wireless devices (i.e., the
+            enDAQ W-series) on an MQTT network running an enDAQ MQTT
+            Device Manager.
+
+            :param filename: The name of the file to which to write the
+                streamed data (e.g., an ``.IDE``).
+            :param wait: If `True`, wait for the recorer to respond and/or
+                disconnect, indicating the streaming has started.
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately; `None` or -1 will wait
+                indefinitely.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a
+                response will be cancelled. The callback function should
+                require no arguments. Note that this only applies while
+                starting the stream; use :meth:`stopStreaming()` to
+                stop an active stream.
+            :param streamCallback: A function to call each time a 'chunk'
+                of streamed data arrives. It should take two parameters:
+                the `Recorder` instance, and the number of bytes in the
+                chunk. Note: Unlike other callback functions, its return
+                value is ignored, so returning `False` does not cancel
+                the operation.
+            :returns: `True` if the command was successful.
+        """
+        raise UnsupportedFeature(self, self.startStream)
+
+
+    def stopStream(self,
+                   wait: bool = True,
+                   timeout: Union[int, float] = 5,
+                   callback: Optional[Callable] = None) -> bool:
+        """ Stop a device that is streaming data.
+
+            This command is only applicable to wireless devices (i.e., the
+            enDAQ W-series) on an MQTT network running an enDAQ MQTT
+            Device Manager.
+
+            :param wait: If `True`, wait for the recorer to respond
+                indicating the streaming has stopped.
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a response
+                will be cancelled. The callback function should require no
+                arguments.
+            :returns: `True` if the command was successful.
+        """
+        raise UnsupportedFeature(self, self.stopStream)
+
+
+    def streaming(self) -> bool:
+        """ Is this instance receiving and recording data streamed from the
+            device? Note: Only applicable to wireless devices connected
+            through an MQTT broker.
+        """
+        return False
 
 
     # =======================================================================
