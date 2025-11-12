@@ -154,7 +154,7 @@ class MQTTConnector:
         self._ports: Dict[str, "MQTTSerialPort"] = WeakValueDictionary()
         self._subscriptions = {}
 
-        self._streams: Dict[str, "MQTTCommandInterface"] = {}
+        self._streamers: Dict[str, "MQTTCommandInterface"] = {}
 
         self.devManager = None
         self._managerStateTopic = STATE_TOPIC.format(sn='manager')
@@ -356,8 +356,8 @@ class MQTTConnector:
             self._ports[message.topic].append(message.payload)
         elif message.topic == self._managerStateTopic:
             self._onManagerState(client, userdata, message)
-        elif message.topic in self._streams:
-            self._streams[message.topic]._writeStreamChunk(message.payload)
+        elif message.topic in self._streamers:
+            self._streamers[message.topic]._writeStreamChunk(message.payload)
         else:
             logger.debug(f'Message from unknown topic: {message.topic}')
 
@@ -453,7 +453,7 @@ class MQTTConnector:
 
 
     @synchronized
-    def _getDevManager(self, timeout=5):
+    def _getDevManager(self):
         """ Get or create a special `Recorder` instance representing the
             connection to the MQTT Device Manager.
         """
@@ -1218,7 +1218,7 @@ class MQTTCommandInterface(SerialCommandInterface):
         # TODO: Wait until the `ExitCond` Attribute element is received?
         #  (and/or a timeout after the last packet received, and/or a change
         #  in DeviceStatusCode)
-        self.manager._streams.pop(self._streamTopic, None)
+        self.manager._streamers.pop(self._streamTopic, None)
         self.manager.unsubscribe(self._streamTopic)
 
         try:
@@ -1278,7 +1278,7 @@ class MQTTCommandInterface(SerialCommandInterface):
         self._streamStartTime = 0
         self._streamedBytes = 0
         self._lastStreamChunk = b''
-        self.manager._streams[self._streamTopic] = self
+        self.manager._streamers[self._streamTopic] = self
         self.manager.subscribe(self._streamTopic)
         return self.startRecording(wait, timeout, callback)
 
@@ -1305,8 +1305,8 @@ class MQTTCommandInterface(SerialCommandInterface):
     def streaming(self) -> bool:
         """ Is this instance receiving and recording data streamed from the device?
         """
-        # TODO: Check DeviceStatusCode for STREAMING or RECORDING as well?
-        return (self._streamTopic in self.manager._streams
+        return (self.status[1] == DeviceStatusCode.STREAMING
+                and self._streamTopic in self.manager._streamers
                 and self._stream and not self._stream.closed)
 
 
