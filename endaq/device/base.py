@@ -1318,9 +1318,6 @@ class Recorder:
         if self.isVirtual or self._properties is not None:
             return self._properties
 
-        if self._manifest is not None or self.isVirtual:
-            return self._manifest
-
         self._propData = self._getDevinfo().readProperties()
         if self._propData:
             props = loadSchema("mide_ide.xml").loads(self._propData).dump()
