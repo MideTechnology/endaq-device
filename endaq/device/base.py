@@ -163,10 +163,10 @@ class Recorder:
         # was asleep at the time). Initially set after instantiation, and
         # automatically updated by the MQTTConnector with data from the
         # Device Manager.
-        self._lastContact: int = 0
-        self._lastMeasurement: int = 0
-        self._lastHeader: int = 0
-        self._lastCommand: int = 0
+        self._lastContact: float = 0.
+        self._lastMeasurement: float = 0.
+        self._lastHeader: float = 0.
+        self._lastCommand: float = 0.
 
         # Also for remote devices: the EBML ID of the last command received,
         # updated by the MQTTConnector using data from the Device Manager.
@@ -236,10 +236,10 @@ class Recorder:
         """
         if self.isVirtual:
             return False
-        try:
-            return bool(self.command)
-        except UnsupportedFeature:
-            return False
+        elif self._command:
+            return True
+
+        return any(ci.hasInterface(self) for ci in command_interfaces.INTERFACES)
 
 
     @property
@@ -339,17 +339,24 @@ class Recorder:
     @synchronized
     def __repr__(self) -> str:
         """ Return repr(self). """
-        if self.isVirtual:
-            path = "virtual"
-        else:
-            # FUTURE: Show appropriate message for remote devices
-            path = self._path or "unmounted"
-
-        if self.name:
-            name = '{} "{}"'.format(self.partNumber, self.name)
-        else:
+        try:
+            path = 'virtual' if self.isVirtual else (self._path or 'unmounted')
             name = self.partNumber
-        return '<{} {} SN:{} ({})>'.format(type(self).__name__, name, self.serial, path)
+
+            try:
+                # Some debugging tools and messages can indirectly call __repr__
+                # and get stuck in a recursive loop trying to resolve `name`
+                if self.name:
+                    name = f'{self.partNumber} "{self.name}"'
+            except RecursionError:
+                logger.warning('RecursionError getting name in __repr__()!', exc_info=True)
+
+            return f'<{type(self).__name__} {name} SN:{self.serial} ({path})>'
+
+        except Exception as err:
+            # repr should never completely fail; use default object repr.
+            logger.warning(f'Error in {type(self).__name__}.__repr__(): {err!r}', exc_info=True)
+            return object.__repr__(self)
 
 
     @classmethod
@@ -1532,10 +1539,9 @@ class Recorder:
     def hasConfigInterface(self) -> bool:
         """ Can this device be configured?
         """
-        try:
-            return bool(self.config)
-        except UnsupportedFeature:
-            return False
+        if self._config:
+            return True
+        return any(ci.hasInterface(self) for ci in config.INTERFACES)
 
 
     # ===========================================================================

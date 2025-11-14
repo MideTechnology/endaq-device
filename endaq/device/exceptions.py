@@ -7,9 +7,23 @@ __all__ = ('CommandError', 'CommunicationError', 'ConfigError',
            'DeviceTimeout', 'UnsupportedFeature',
            'ValidationError')
 
+from .response_codes import DeviceStatusCode, responsestrings
+
 
 class DeviceError(Exception):
-    """ Base class for device-related exceptions. """
+    """ Base class for device-related exceptions.
+    """
+
+    def __init__(self, *args):
+        """ Base class for device-related exceptions. """
+        # If arguments are (CommandResponseCode, CommandResponseMessage), use
+        # default message if the device's response did not include the latter.
+        if len(args) > 1 and isinstance(args[0], (int, DeviceStatusCode)):
+            if not args[1]:
+                args = args[0], responsestrings.get(args[0], ''), *args[2:]
+        super().__init__(*args)
+
+
     @property
     def errno(self):
         if len(self.args) > 1:

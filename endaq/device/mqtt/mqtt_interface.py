@@ -21,10 +21,11 @@ be found using the :meth:`getDevices()` method.
 """
 
 import logging
+from pathlib import Path
 import string
 from threading import Event, Thread
 from time import sleep, time
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, BinaryIO, Callable, Dict, List, Optional, Tuple, Union
 from weakref import WeakValueDictionary
 
 import paho.mqtt.client as mqtt
@@ -44,7 +45,7 @@ from ..types import Filename
 from ..util import getMyIP, makeClientID, synchronized
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 __all__ = ('MQTTConnector',)
 
@@ -152,6 +153,8 @@ class MQTTConnector:
         self._stop = Event()
         self._ports: Dict[str, "MQTTSerialPort"] = WeakValueDictionary()
         self._subscriptions = {}
+
+        self._streamers: Dict[str, "MQTTCommandInterface"] = {}
 
         self.devManager = None
         self._managerStateTopic = STATE_TOPIC.format(sn='manager')
@@ -353,6 +356,8 @@ class MQTTConnector:
             self._ports[message.topic].append(message.payload)
         elif message.topic == self._managerStateTopic:
             self._onManagerState(client, userdata, message)
+        elif message.topic in self._streamers:
+            self._streamers[message.topic]._writeStreamChunk(message.payload)
         else:
             logger.debug(f'Message from unknown topic: {message.topic}')
 
@@ -448,7 +453,7 @@ class MQTTConnector:
 
 
     @synchronized
-    def _getDevManager(self, timeout=5):
+    def _getDevManager(self):
         """ Get or create a special `Recorder` instance representing the
             connection to the MQTT Device Manager.
         """
@@ -563,31 +568,31 @@ class MQTTConnector:
                 response will be cancelled. The callback function
                 requires no arguments.
         """
-        with _module_busy:
-            devices = []
+        devices = []
 
-            items = self.getDeviceInfo(timeout, managerTimeout, callback)
+        items = self.getDeviceInfo(timeout, managerTimeout, callback)
 
-            for n, listItem in enumerate(items):
-                sn = 'missing!'
-                try:
-                    sn = listItem['SerialNumber']
-                    if sn in self.exclude:
-                        continue
-
-                    infoIdx = listItem['GetInfoResponse']['InfoIndex']
-                    info = bytes(listItem['GetInfoResponse']['InfoPayload'])
-
-                    if infoIdx != 0:
-                        logger.error(f'DeviceListItem {n} (SN {sn}) from Manager '
-                                     f'had wrong InfoIndex {infoIdx!r}, continuing')
-                        continue
-
-                except KeyError as err:
-                    logger.error(f'DeviceListItem {n} (SN {sn}) from Manager '
-                                 f'did not contain {err.args[0]!r}, continuing')
+        for n, listItem in enumerate(items):
+            sn = 'missing!'
+            try:
+                sn = listItem['SerialNumber']
+                if sn in self.exclude:
                     continue
 
+                infoIdx = listItem['GetInfoResponse']['InfoIndex']
+                info = bytes(listItem['GetInfoResponse']['InfoPayload'])
+
+                if infoIdx != 0:
+                    logger.error(f'DeviceListItem {n} (SN {sn}) from Manager '
+                                 f'had wrong InfoIndex {infoIdx!r}, continuing')
+                    continue
+
+            except KeyError as err:
+                logger.error(f'DeviceListItem {n} (SN {sn}) from Manager '
+                             f'did not contain {err.args[0]!r}, continuing')
+                continue
+
+            with _module_busy:
                 device = RECORDERS.get(hash(info), None)
                 systemState = listItem.get('DeviceStatusCode')
                 if systemState is None:
@@ -850,7 +855,16 @@ class MQTTCommandInterface(SerialCommandInterface):
         if not device.serial:
             raise ValueError('Device must have a serial number')
         self.manager = manager
+
+        self.streamCallback: Optional[Callable] = None
+        self._stream: BinaryIO = None
+        self._streamStartTime: float = 0
+        self._streamedBytes: int = 0
+        self._lastStreamChunk: bytes = b''
+        self._lastChunkTime: float = 0
+
         super().__init__(device, make_crc=make_crc, ignore_crc=ignore_crc, **kwargs)
+        self._streamTopic = MEASUREMENT_TOPIC.format(sn=f'{self.device.serialInt:08d}')
 
 
     @property
@@ -922,7 +936,7 @@ class MQTTCommandInterface(SerialCommandInterface):
                 If the callback returns `True`, the wait for a response will
                 be cancelled. The callback function should require no arguments.
         """
-        logger.debug(f'{self.device} Setting info index {infoIdx}')
+        logger.debug(f'{self.device.serial} Setting info index {infoIdx}')
 
         # Note: `LockID` and `CommandIdx` are explicitly added to ensure they
         #   come before the `InfoPayload` in the command dict.
@@ -975,7 +989,7 @@ class MQTTCommandInterface(SerialCommandInterface):
         """
         # Note: Reading config or user calibration requires a LockID
         # lock = index in (5, 6)
-        logger.debug(f'{self.device} Getting info index {infoIdx}')
+        logger.debug(f'{self.device.serial} Getting info index {infoIdx}')
         return super()._getInfo(infoIdx, timeout, interval, lock, index, callback)
 
 
@@ -1155,3 +1169,168 @@ class MQTTCommandInterface(SerialCommandInterface):
             :raises UnsupportedFeature: This cannot be done via MQTT.
         """
         raise UnsupportedFeature(f'Wi-Fi cannot be configured via MQTT')
+
+
+    # =======================================================================
+    #
+    # =======================================================================
+
+    def startRecording(self,
+                       wait: bool = True,
+                       timeout: Union[int, float] = 5,
+                       callback: Optional[Callable] = None) -> bool:
+        """ Start the device recording, if supported.
+
+            :param wait: If `True`, wait for the recorer to respond
+                indicatingthe recording has started.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a `DeviceTimeout` exception. `None` or -1 will wait
+                indefinitely.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a
+                response will be cancelled. The callback function should
+                require no arguments.
+            :returns: `True` if the command was successful.
+        """
+        # TODO: Implement `wait` actually waiting on change of status code
+        return super().startRecording(wait, timeout, callback)
+
+
+    def stopRecording(self,
+                      wait: bool = True,
+                      timeout: Union[int, float] = 5,
+                      callback: Optional[Callable] = None):
+        """ Stop a device that is recording.
+
+            :param wait: If `True`, wait for the recorer to respond and/or
+                remount, indicating the recording has stopped.
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a response
+                will be cancelled. The callback function should require no
+                arguments.
+            :returns: `True` if the command was successful.
+        """
+        # TODO: Implement `wait` actually waiting on change of status code
+        stopped = super().stopRecording(wait, timeout, callback)
+
+        # TODO: Wait until the `ExitCond` Attribute element is received?
+        #  (and/or a timeout after the last packet received, and/or a change
+        #  in DeviceStatusCode)
+        self.manager._streamers.pop(self._streamTopic, None)
+        self.manager.unsubscribe(self._streamTopic)
+
+        try:
+            self._stream.close()
+        except AttributeError:
+            pass
+
+        self.streamCallback = None
+        return stopped
+
+
+    @property
+    def canStream(self) -> bool:
+        """ Is the device capable of streaming data?
+        """
+        # TODO: Check device config to see if the option is enabled?
+        return True
+
+
+    def startStream(self,
+                    filename: Union[str, Path],
+                    wait: bool = True,
+                    timeout: Union[int, float] = 10,
+                    callback: Optional[Callable] = None,
+                    streamCallback: Optional[Callable] = None) -> bool:
+        """ Start a device recording/streaming and save the data it sends
+            to a file.
+
+            :param filename: The name of the file to which to write the
+                streamed data (e.g., an ``.IDE``).
+            :param wait: If `True`, wait for the recorer to respond and/or
+                disconnect, indicating the streaming has started.
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately; `None` or -1 will wait
+                indefinitely.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a
+                response will be cancelled. The callback function should
+                require no arguments. Note that this only applies while
+                starting the stream; use :meth:`stopStreaming()` to
+                stop an active stream.
+            :param streamCallback: A function to call each time a 'chunk'
+                of streamed data arrives. It should take two parameters:
+                the `Recorder` instance, and the number of bytes in the
+                chunk. Note: Unlike other callback functions, its return
+                value is ignored, so returning `False` does not cancel
+                the operation.
+            :returns: `True` if the command was successful.
+        """
+        # TODO: Check device status? Or is it better to send the command
+        #  and fail if already recording/streaming?
+        if self._stream is not None and not self._stream.closed:
+            return False
+
+        self.streamCallback = streamCallback
+        self._stream = open(filename, mode='wb')
+        self._streamStartTime = 0
+        self._streamedBytes = 0
+        self._lastStreamChunk = b''
+        self.manager._streamers[self._streamTopic] = self
+        self.manager.subscribe(self._streamTopic)
+        return self.startRecording(wait, timeout, callback)
+
+
+    def stopStream(self,
+                   wait: bool = True,
+                   timeout: Union[int, float] = 5,
+                   callback: Optional[Callable] = None) -> bool:
+        """ Stop a device that is streaming data.
+
+            :param wait: If `True`, wait for the recorer to respond
+                indicating the streaming has stopped.
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a response
+                will be cancelled. The callback function should require no
+                arguments.
+            :returns: `True` if the command was successful.
+        """
+        return self.stopRecording(wait, timeout, callback)
+
+
+    def streaming(self) -> bool:
+        """ Is this instance receiving and recording data streamed from the device?
+        """
+        return (self.status[1] == DeviceStatusCode.STREAMING
+                and self._streamTopic in self.manager._streamers
+                and self._stream and not self._stream.closed)
+
+
+    def _writeStreamChunk(self, chunk: bytearray) -> int:
+        """ Write a chunk of streamed measurement data to file. Called by
+            the `MQTTConnector`.
+
+            :param chunk: The payload of a ``measurement`` topic message.
+            :returns: The number of bytes written.
+        """
+        # TODO: Automatic stream shutdown if ExitCond in the packet (and/or
+        #  DeviceStatusCode indicates not streaming)? This could get complicated.
+        numbytes = 0
+        if self._stream is None:
+            logger.error(f'{self.device.serial} received stream chunk, but file not open!')
+        elif self._stream.closed:
+            logger.debug(f'{self.device.serial} received stream chunk after file closed; ignoring')
+        else:
+            numbytes = self._stream.write(chunk)
+            self._streamedBytes += numbytes
+            self._lastStreamChunk = chunk
+            self._lastChunkTime = time()
+            if self._streamStartTime == 0:
+                self._streamStartTime = self._lastChunkTime
+            if self.streamCallback:
+                self.streamCallback(self.device, numbytes)
+        return numbytes

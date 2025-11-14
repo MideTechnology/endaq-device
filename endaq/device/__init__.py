@@ -226,30 +226,30 @@ def getDevices(paths: Optional[List[Filename]] = None,
     """
     global RECORDERS, RECORDERS_BY_SN
 
-    with _module_busy:
-        if paths is None:
-            paths = getDeviceList(strict=strict)
-        else:
-            if isinstance(paths, (str, bytes, bytearray, Path)):
-                paths = [paths]
+    if paths is None:
+        paths = getDeviceList(strict=strict)
+    else:
+        if isinstance(paths, (str, bytes, bytearray, Path)):
+            paths = [paths]
 
-        result = set()
+    result = set()
 
-        for path in paths:
-            dev = getRecorder(path, update=update, strict=strict)
-            if dev is not None:
-                result.add(dev)
+    for path in paths:
+        dev = getRecorder(path, update=update, strict=strict)
+        if dev is not None:
+            result.add(dev)
 
-        if unmounted:
-            for dev in getSerialDevices(known=RECORDERS_BY_SN):
-                if not dev.available:
-                    dev.path = None
-                result.add(dev)
+    if unmounted:
+        for dev in getSerialDevices(known=RECORDERS_BY_SN):
+            if not dev.available:
+                dev.path = None
+            result.add(dev)
+            with _module_busy:
                 RECORDERS.pop(hash(dev), None)
                 RECORDERS[hash(dev)] = dev
                 RECORDERS_BY_SN[dev.serialInt] = dev
 
-        return sorted(result, key=lambda x: x.path or '\uffff')
+    return sorted(result, key=lambda x: x.path or '\uffff')
 
 
 def findDevice(sn: Optional[Union[str, int]] = None,
@@ -286,28 +286,27 @@ def findDevice(sn: Optional[Union[str, int]] = None,
             representing the device with the specified serial number or chip
             ID, or `None` if it cannot be found.
     """
-    with _module_busy:
-        if sn and chipId:
-            raise ValueError('Either a serial number or chip ID is required, not both')
-        elif sn is None and chipId is None:
-            raise ValueError('Either a serial number or chip ID is required')
+    if sn and chipId:
+        raise ValueError('Either a serial number or chip ID is required, not both')
+    elif sn is None and chipId is None:
+        raise ValueError('Either a serial number or chip ID is required')
 
-        if isinstance(sn, str):
-            sn = sn.lstrip(string.ascii_letters+"0")
-            if not sn:
-                sn = 0
-            sn = int(sn)
+    if isinstance(sn, str):
+        sn = sn.lstrip(string.ascii_letters+"0")
+        if not sn:
+            sn = 0
+        sn = int(sn)
 
-        if isinstance(chipId, str):
-            chipId = int(chipId, 16)
+    if isinstance(chipId, str):
+        chipId = int(chipId, 16)
 
-        for d in getDevices(paths, update=update, strict=strict, unmounted=unmounted):
-            if sn is not None and d.serialInt == sn:
-                return d
-            elif chipId is not None and d.chipId == chipId:
-                return d
+    for d in getDevices(paths, update=update, strict=strict, unmounted=unmounted):
+        if sn is not None and d.serialInt == sn:
+            return d
+        elif chipId is not None and d.chipId == chipId:
+            return d
 
-        return None
+    return None
 
 
 # ============================================================================

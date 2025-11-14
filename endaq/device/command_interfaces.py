@@ -7,6 +7,7 @@ from copy import deepcopy
 from datetime import datetime
 import errno
 import os.path
+from pathlib import Path
 from random import randint
 import shutil
 import string
@@ -618,10 +619,13 @@ class CommandInterface:
 
 
     def stopRecording(self,
+                      wait: bool = True,
                       timeout: Union[int, float] = 5,
                       callback: Optional[Callable] = None):
         """ Stop a device that is recording, if supported.
 
+            :param wait: If `True`, wait for the recorer to respond and/or
+                remount, indicating the recording has stopped.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
@@ -1575,6 +1579,86 @@ class CommandInterface:
 
 
     # =======================================================================
+    # Streaming. Only wireless devices on MQTT can stream.
+    # =======================================================================
+
+    @property
+    def canStream(self) -> bool:
+        """ Can the device stream data? Only applicable to wireless devices
+            connected through an MQTT broker.
+        """
+        return False
+
+
+    def startStream(self,
+                    filename: Union[str, Path],
+                    wait: bool = True,
+                    timeout: Union[int, float] = 10,
+                    callback: Optional[Callable] = None,
+                    streamCallback: Optional[Callable] = None) -> bool:
+        """ Start a device recording/streaming and save the data it sends
+            to a file.
+
+            This command is only applicable to wireless devices (i.e., the
+            enDAQ W-series) on an MQTT network running an enDAQ MQTT
+            Device Manager.
+
+            :param filename: The name of the file to which to write the
+                streamed data (e.g., an ``.IDE``).
+            :param wait: If `True`, wait for the recorer to respond and/or
+                disconnect, indicating the streaming has started.
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately; `None` or -1 will wait
+                indefinitely.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a
+                response will be cancelled. The callback function should
+                require no arguments. Note that this only applies while
+                starting the stream; use :meth:`stopStreaming()` to
+                stop an active stream.
+            :param streamCallback: A function to call each time a 'chunk'
+                of streamed data arrives. It should take two parameters:
+                the `Recorder` instance, and the number of bytes in the
+                chunk. Note: Unlike other callback functions, its return
+                value is ignored, so returning `False` does not cancel
+                the operation.
+            :returns: `True` if the command was successful.
+        """
+        raise UnsupportedFeature(self, self.startStream)
+
+
+    def stopStream(self,
+                   wait: bool = True,
+                   timeout: Union[int, float] = 5,
+                   callback: Optional[Callable] = None) -> bool:
+        """ Stop a device that is streaming data.
+
+            This command is only applicable to wireless devices (i.e., the
+            enDAQ W-series) on an MQTT network running an enDAQ MQTT
+            Device Manager.
+
+            :param wait: If `True`, wait for the recorer to respond
+                indicating the streaming has stopped.
+            :param timeout: Time (in seconds) to wait for the recorder to
+                respond. 0 will return immediately.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a response
+                will be cancelled. The callback function should require no
+                arguments.
+            :returns: `True` if the command was successful.
+        """
+        raise UnsupportedFeature(self, self.stopStream)
+
+
+    def streaming(self) -> bool:
+        """ Is this instance receiving and recording data streamed from the
+            device? Note: Only applicable to wireless devices connected
+            through an MQTT broker.
+        """
+        return False
+
+
+    # =======================================================================
     # General device info getting/setting
     # =======================================================================
 
@@ -2147,6 +2231,8 @@ class SerialCommandInterface(CommandInterface):
                     else:
                         raise
 
+                self.device._lastContact = now
+
                 if resp:
                     self._encodeResponseCodes(resp)
                     responseCode = resp.get('CommandResponseCode')
@@ -2492,12 +2578,17 @@ class SerialCommandInterface(CommandInterface):
                 arguments.
             :returns: `True` if the command was successful.
         """
-        return self._runSimpleCommand({'EBMLCommand': {'RecStart': {}}},
-                                      statusCode=DeviceStatusCode.START_PENDING,
-                                      timeoutMsg="Timed out waiting for recording to start",
-                                      wait=wait,
-                                      timeout=timeout,
-                                      callback=callback)
+        try:
+            return self._runSimpleCommand({'EBMLCommand': {'RecStart': {}}},
+                                          statusCode=DeviceStatusCode.START_PENDING,
+                                          timeoutMsg="Timed out waiting for recording to start",
+                                          wait=wait,
+                                          timeout=timeout,
+                                          callback=callback)
+        except CommandError as err:
+            if err.errno == DeviceStatusCode.ERR_INVALID_COMMAND and None in err.args:
+                raise CommandError(err.errno, 'Could not start recording (device already recording?)')
+            raise
 
 
     def stopRecording(self,
@@ -2519,16 +2610,22 @@ class SerialCommandInterface(CommandInterface):
         if self.device.isRemote:
             wait = False
 
-        response = self._sendCommand({'EBMLCommand': {'RecStop': {}}},
-                                     response=False,
-                                     timeout=timeout,
-                                     callback=callback)
+        try:
+            response = self._sendCommand({'EBMLCommand': {'RecStop': {}}},
+                                         response=False,
+                                         timeout=timeout,
+                                         callback=callback)
 
-        if response is not None or not wait:
+            if response is not None or not wait:
+                return True
+
+            self.awaitRemount(timeout, callback=callback)
             return True
 
-        self.awaitRemount(timeout, callback=callback)
-        return True
+        except CommandError as err:
+            if err.errno == DeviceStatusCode.ERR_INVALID_COMMAND and None in err.args:
+                raise CommandError(err.errno, 'Could not stop recording (device already stopped?)')
+            raise
 
 
     def reset(self,
@@ -3235,11 +3332,16 @@ class FileCommandInterface(CommandInterface):
 
         # FUTURE: Write commands wrapped in a <EBMLCommand> element?
         #  Exclude LegacyFileCommandInterface.
-        return self._runSimpleCommand({'RecStart': {}},
-                                      timeoutMsg="Timed out waiting for recording to start",
-                                      wait=wait,
-                                      timeout=timeout,
-                                      callback=callback)
+        try:
+            return self._runSimpleCommand({'RecStart': {}},
+                                          timeoutMsg="Timed out waiting for recording to start",
+                                          wait=wait,
+                                          timeout=timeout,
+                                          callback=callback)
+        except CommandError as err:
+            if err.errno == DeviceStatusCode.ERR_INVALID_COMMAND and None in err.args:
+                raise CommandError(err.errno, 'Could not stop recording (device already stopped?)')
+            raise
 
 
     def reset(self,
