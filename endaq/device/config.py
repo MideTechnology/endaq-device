@@ -1632,14 +1632,12 @@ class RemoteConfigInterface(FileConfigInterface):
     def _writeConfig(self, data: bytes) -> int:
         """ Open and write to the device's config file.
         """
-        self.device.command.setLockID()
         self.device.command._setInfo(5, data, callback=self.callback)
 
 
     def _readConfig(self) -> bytes:
         """ Open and read the device's config file.
         """
-        self.device.command.setLockID()
         return self.device.command._getInfo(5, lock=True,
                                             callback=self.callback)
 
