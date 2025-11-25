@@ -19,7 +19,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import warnings
 
 from ebmlite.core import loadSchema, Schema
-from ebmlite.core import Document, MasterElement, UnknownElement
+from ebmlite.core import Document, Element, MasterElement, UnknownElement
 from idelib.dataset import Channel, SubChannel
 
 from .command_interfaces import SerialCommandInterface
@@ -491,7 +491,7 @@ class ConfigInterface:
 
     @classmethod
     def _handleUnknownField(cls, stream, offset: int, size: int,
-                            payloadOffset: int, eid: int, schema: Schema):
+                            payloadOffset: int, eid: int, schema: Schema) -> Element:
         """ Handler for unknown special-case field subclasses. For forwards
             compatibility, special-case fields fall back to their base type.
             See `ebmlite.UnknownElement` for argument info.

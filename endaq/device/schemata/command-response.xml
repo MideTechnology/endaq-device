@@ -153,7 +153,6 @@
                 1: The device is currently trying to connect.
                 2: Connected to Wi-Fi without connection to the cloud (if cloud checking is not implemented and thus the status unknown, this should be used).
                 3: Connected to Wi-Fi with cloud connection
-                10: AP_MODE, the device is running as an access point. Not applicable to enDAQ data recorders.
             </UIntegerElement>
         </MasterElement>
 		<BinaryElement name="ClockTime" id="0x5501" multiple="0" mandatory="0">Serial and Wireless only. 10 byte RTC clock time. Comparable to reading the CLOCK file.</BinaryElement>

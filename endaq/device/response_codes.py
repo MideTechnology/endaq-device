@@ -82,6 +82,7 @@ class WiFiConnectionStatus(IntEnum):
     IDLE = 0  #: Wi-Fi is inactive (and/or disconnected).
     PENDING = 1  #: The device is in the process of connecting to the Wi-Fi AP.
     CONNECTED = 2  #: The device is connected to the Wi-Fi AP.
+    AP_MODE = 10  #: For Cloud Gateway hardware: Gateway is acting as an access point.
 
 
 class CurrentWiFiStatus(IntEnum):
