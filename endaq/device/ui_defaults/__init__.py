@@ -7,7 +7,10 @@ data.
 
 from importlib import import_module
 import logging
-from typing import Union
+from typing import Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..base import Recorder
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +63,7 @@ def _getGenericName(pn: str) -> str:
     return "{}x{}{}".format(family[0], sep, model)
 
 
-def getDefaultConfigUI(device) -> Union[str, None]:
+def getDefaultConfigUI(device: "Recorder") -> Union[bytes, None]:
     """ Attempt to find canned 'default' ConfigUI file for the device,
         based on its part number.
 
@@ -68,6 +71,9 @@ def getDefaultConfigUI(device) -> Union[str, None]:
         :return: The raw binary ConfigUI EBML if there is a corresponding
             module, or `None`.
     """
+    if not device:
+        return None
+
     # FUTURE: Also have default variants based on HwRev and/or FwRev?
     uiName = device.partNumber
     ui = _getConfigUI(uiName)

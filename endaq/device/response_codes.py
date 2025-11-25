@@ -60,11 +60,11 @@ CommandResponseCode = DeviceStatusCode
 responsestrings = {
     CommandResponseCode.ERR_BUSY: "Communication channel is busy",
     CommandResponseCode.ERR_INVALID_COMMAND: "Badly formed command",
-    CommandResponseCode.ERR_BAD_LOCK_ID: "Command Lock ID invalid",
+    CommandResponseCode.ERR_BAD_LOCK_ID: "Command Lock ID invalid or already set",
     CommandResponseCode.ERR_BAD_INFO_INDEX: "Unknown info index, or info is read or write only",
     CommandResponseCode.ERR_BAD_PARAMETER: "One or more command parameters are invalid in some way",
-    CommandResponseCode.ERR_UNKNOWN_COMMAND: "Command not recognized",
-    CommandResponseCode.ERR_BAD_PAYLOAD: "Bad command payload",
+    CommandResponseCode.ERR_UNKNOWN_COMMAND: "Command not recognized by device",
+    CommandResponseCode.ERR_BAD_PAYLOAD: "Bad command parameters/payload",
     CommandResponseCode.ERR_BAD_EBML: "Command EBML is malformed",
     CommandResponseCode.ERR_RESPONSE_TOO_LARGE: "EBML command response too large for device",
     CommandResponseCode.ERR_BAD_CHECKSUM: "Command checksum failed (error transmitting packet)",
@@ -82,6 +82,7 @@ class WiFiConnectionStatus(IntEnum):
     IDLE = 0  #: Wi-Fi is inactive (and/or disconnected).
     PENDING = 1  #: The device is in the process of connecting to the Wi-Fi AP.
     CONNECTED = 2  #: The device is connected to the Wi-Fi AP.
+    AP_MODE = 10  #: For Cloud Gateway hardware: Gateway is acting as an access point.
 
 
 class CurrentWiFiStatus(IntEnum):

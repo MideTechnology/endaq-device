@@ -139,7 +139,9 @@
             <UIntegerElement name="WiFiConnectionStatus" id="0x5301" multiple="0" mandatory="1">Integer enum.
                 0: IDLE, no connection is in process, error fields are valid.
                 1: PENDING, connection is in process,
-                2: CONNECTED, error fields will all be 0, RSSI tag is present in this data structure and represents the strength of the connected net</UIntegerElement>
+                2: CONNECTED, error fields will all be 0, RSSI tag is present in this data structure and represents the strength of the connected net
+                10: AP_MODE, the device is running as an access point. Not applicable to enDAQ data recorders.
+            </UIntegerElement>
             <UIntegerElement name="WiFiConnectionError" id="0x5304" multiple="0" mandatory="0">Integer enum. Holds ESP32 error codes, found in https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/wifi.html#wi-fi-reason-code</UIntegerElement>
             <IntegerElement name="RSSI" id="0x5205" multiple="0" mandatory="0">Signal Strength, 0-100, where 100 is perfect. Only present if CONNECTED</IntegerElement>
         </MasterElement>
