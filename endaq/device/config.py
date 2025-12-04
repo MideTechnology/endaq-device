@@ -690,6 +690,7 @@ class ConfigInterface:
                     {'RecorderConfigurationItem': config}}
 
 
+    @device_synchronized
     def getConfigUI(self) -> Union[Document, MasterElement]:
         """ Get the device's ``ConfigUI`` data.
         """
@@ -1702,6 +1703,7 @@ class RemoteConfigInterface(FileConfigInterface):
         return self.device.command.available
 
 
+    @device_synchronized
     def loadConfig(self, config: Optional[MasterElement] = None):
         """ Process a device's configuration data.
 
@@ -1711,6 +1713,20 @@ class RemoteConfigInterface(FileConfigInterface):
         """
         # FileCommandInterface legacy stuff not needed.
         return super().loadConfig(config)
+
+
+    @device_synchronized
+    def getConfig(self) -> Union[None, Document, MasterElement]:
+        """ Low-level method that retrieves the device's config EBML (e.g.,
+            the contents of a real device's `config.cfg` file), if any.
+        """
+        data = self._readConfig()
+        if data:
+            return loadSchema('mide_ide.xml').loads(data)
+        else:
+            logger.debug('No config data could be read (device not configured?), ignoring')
+
+        return None
 
 
 # ===========================================================================
