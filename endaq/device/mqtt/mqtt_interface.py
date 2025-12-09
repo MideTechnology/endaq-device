@@ -268,8 +268,8 @@ class MQTTConnector:
                 raise CommunicationError(f'Failed to connect to broker: {err!r}')
 
         result, _mid = self.subscribe(self._managerStateTopic, qos=0)
-        if result == mqtt.MQTT_ERR_SUCCESS:
-            self.client.message_callback_add(self._managerStateTopic, self._onMessage)
+        # if result == mqtt.MQTT_ERR_SUCCESS:
+        #     self.client.message_callback_add(self._managerStateTopic, self._onMessage)
 
         self.client.loop_start()
 
@@ -355,7 +355,10 @@ class MQTTConnector:
             self.lastUsedTime = time()
             self._ports[message.topic].append(message.payload)
         elif message.topic == self._managerStateTopic:
-            self._onManagerState(client, userdata, message)
+            # XXX: EXPERIMENT
+            t = Thread(target=self._onManagerState, args=(client, userdata, message), daemon=True)
+            t.start()
+            # self._onManagerState(client, userdata, message)
         elif message.topic in self._streamers:
             self._streamers[message.topic]._writeStreamChunk(message.payload)
         else:

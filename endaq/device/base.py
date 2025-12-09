@@ -1615,6 +1615,9 @@ class NonRecorder(Recorder):
 
 
     def __repr__(self):
-        if self._name:
-            return f'<{type(self).__name__} "{self._name}">'
+        try:
+            if self._name:
+                return f'<{type(self).__name__} "{self._name}">'
+        except AttributeError:
+            pass
         return object.__repr__(self)
