@@ -1729,6 +1729,21 @@ class RemoteConfigInterface(FileConfigInterface):
         return None
 
 
+    @device_synchronized
+    def getConfigUI(self) -> Union[Document, MasterElement]:
+        """ Load the device's ``ConfigUI`` data.
+        """
+        if self.configUi:
+            return self.configUi
+
+        elif self._isfile(self.device.configUIFile):
+            ui = self._schema.loads(self._readUi())
+            if ui:
+                self.configUi = ui
+
+        return super().getConfigUI()
+
+
 # ===========================================================================
 #
 # ===========================================================================
