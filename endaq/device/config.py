@@ -11,6 +11,7 @@ also takes effect immediately.
 
 from datetime import datetime
 import errno
+from functools import partial
 import logging
 import os.path
 from pathlib import Path
@@ -1633,14 +1634,17 @@ class RemoteConfigInterface(FileConfigInterface):
     def _writeConfig(self, data: bytes) -> int:
         """ Open and write to the device's config file.
         """
-        self.device.command._setInfo(5, data, callback=self.callback)
+        func = partial(self.device.command._setInfo, 5, data,
+                       callback=self.callback)
+        return util.info_lock_required(func, 'Writing configuration data')
 
 
     def _readConfig(self) -> bytes:
         """ Open and read the device's config file.
         """
-        return self.device.command._getInfo(5, lock=True,
-                                            callback=self.callback)
+        func = partial(self.device.command._getInfo, 5, lock=True,
+                       callback=self.callback)
+        return util.info_lock_required(func, 'Reading configuration data')
 
 
     def _readUi(self):

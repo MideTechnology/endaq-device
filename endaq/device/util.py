@@ -14,6 +14,9 @@ from time import sleep, time
 from typing import Any, ByteString, Callable, Dict, Optional, Tuple, Union
 import socket
 
+from .response_codes import CommandResponseCode
+from .exceptions import CommandError
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -314,3 +317,24 @@ def _device_synchronized(method):
                 if 'waiting' not in str(method):
                     logger.debug(f'<<< exiting synchronized method {method} (thread {get_native_id()})')
     return wrapped
+
+
+def info_lock_required(func: Callable,
+                       what: str = 'Function/method call') -> Optional[bytes]:
+    """ Convenience function for getting/setting info requiring the device's
+        Lock ID match the host's. It turns ERR_BAD_LOCK_ID errors into a
+        more useful message, since .
+
+        :param func: The function to be called, e.g., a `functools.partial`
+            that calls `CommandInterface._getInfo()` or
+            `CommandInterface._setInfo()` with the required parameters.
+        :param what: The name or short description of the function called.
+    """
+    try:
+        return func()
+    except CommandError as err:
+        if err.errno == CommandResponseCode.ERR_BAD_LOCK_ID:
+            err.args = (err.args[0],
+                        f'{what} requires a matching lock ID '
+                        'set with Recorder.command.setLockID()')
+        raise

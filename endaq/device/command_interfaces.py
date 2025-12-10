@@ -190,8 +190,8 @@ class CommandInterface:
         ebml = self.schema.encodes(data, headers=False)
 
         if checkSize and self.maxCommandSize and len(ebml) > self.maxCommandSize:
-            raise CommandError("Command too large ({}); max size is {}".format(
-                    len(ebml), self.maxCommandSize))
+            raise CommandError(CommandResponseCode.ERR_BAD_PACKET,
+                               f"Command too large ({len(ebml)}); max size is {self.maxCommandSize}")
 
         return ebml
 
@@ -1798,7 +1798,7 @@ class SerialCommandInterface(CommandInterface):
         try:
             self.getSerialPort()
             return True
-        except CommandError as err:
+        except CommunicationError as err:
             if 'No serial port found' in str(err):
                 return False
             raise
@@ -1927,10 +1927,10 @@ class SerialCommandInterface(CommandInterface):
         self.port = None
 
         if sys.platform == 'linux':
-            raise CommandError('No serial port found for device '
-                               "('sudo' may be required to access serial ports)")
+            raise CommunicationError('No serial port found for device '
+                              "('sudo' may be required to access serial ports)")
         else:
-            raise CommandError('No serial port found for device')
+            raise CommunicationError('No serial port found for device')
 
 
     # =======================================================================
@@ -2032,8 +2032,8 @@ class SerialCommandInterface(CommandInterface):
             else:
                 errname = {0x01: "Corbus command failed",
                            0x07: "bad Corbus command"}.get(resultcode, "unknown error")
-                raise CommandError(f"Response header indicated an error "
-                                   f"(0x{resultcode:02x}: {errname})")
+                raise CommunicationError(f"Response header indicated an error "
+                                         f"(0x{resultcode:02x}: {errname})")
         else:
             raise CommunicationError('Response was corrupted or incomplete; '
                                      'did not have expected Corbus header')
@@ -2403,7 +2403,7 @@ class SerialCommandInterface(CommandInterface):
 
         try:
             port = self.getSerialPort()
-        except CommandError:
+        except CommunicationError:
             return True
 
         def disconnected():
@@ -2444,7 +2444,7 @@ class SerialCommandInterface(CommandInterface):
             try:
                 _ = self.getSerialPort()
                 return True
-            except CommandError:
+            except CommunicationError:
                 return False
 
         try:
@@ -2673,7 +2673,7 @@ class SerialCommandInterface(CommandInterface):
         if self._statusChanged.is_set():
             self._statusChanged.clear()
             return self.status
-        raise CommandError('Device responded but did not report its status')
+        raise DeviceError('Device responded but did not report its status')
 
 
     def _updateAll(self,

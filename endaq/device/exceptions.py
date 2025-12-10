@@ -7,7 +7,7 @@ __all__ = ('CommandError', 'CommunicationError', 'ConfigError',
            'DeviceTimeout', 'UnsupportedFeature',
            'ValidationError')
 
-from .response_codes import DeviceStatusCode, responsestrings
+from .response_codes import CommandResponseCode, responsestrings
 
 
 class DeviceError(Exception):
@@ -18,39 +18,56 @@ class DeviceError(Exception):
         """ Base class for device-related exceptions. """
         # If arguments are (CommandResponseCode, CommandResponseMessage), use
         # default message if the device's response did not include the latter.
-        if len(args) > 1 and isinstance(args[0], (int, DeviceStatusCode)):
-            if not args[1]:
-                args = args[0], responsestrings.get(args[0], ''), *args[2:]
+        if args and isinstance(args[0], int):
+            try:
+                errno = CommandResponseCode(args[0])
+                msg = args[1] if len(args) > 1 else None
+                if not msg:
+                    msg = responsestrings.get(errno, None)
+                args = errno, msg, *args[2:]
+            except ValueError:
+                # Probably a code not in the enum
+                pass
         super().__init__(*args)
 
 
     @property
     def errno(self):
-        if len(self.args) > 1:
+        if len(self.args) > 1 and isinstance(self.args[0], int):
             return self.args[0]
         return None
 
 
     def __str__(self):
         if not self.args:
-            return repr(self)
-        elif len(self.args) == 1:
-            return str(self.args[0])
+            return super().__str__()
+
+        errno = self.errno
+
+        # Make a CommandResponseCode/DeviceStatusCode pretty
+        if isinstance(errno, CommandResponseCode):
+            try:
+                errno = f'{errno.name} {errno.value}'
+            except (AttributeError, IndexError, TypeError):
+                pass
+
+        if len(self.args) == 1:
+            return str(errno)
         elif len(self.args) == 2:
-            return f'[{self.args[0]}] {self.args[1]}'
+            return f'[{errno}] {self.args[1]}'
         else:
-            return f'[{self.args[0]}] {self.args[1:]}'
+            return f'[{errno}] {self.args[1:]}'
 
 
-class CommandError(RuntimeError, DeviceError):
+class CommandError(DeviceError, RuntimeError):
     """ Exception raised by a failure to process a command. """
 
 
-class CommunicationError(RuntimeError, DeviceError):
+class CommunicationError(DeviceError, RuntimeError):
     """ Exception raised by a failure to communicate. """
 
 
-class ConfigError(ValueError, DeviceError):
+class ConfigError(DeviceError, ValueError):
     """ Exception raised when configuration data is invalid.
     """
 
@@ -61,7 +78,7 @@ class ConfigVersionError(ConfigError, DeviceError):
     """
 
 
-class DeviceTimeout(TimeoutError, DeviceError):
+class DeviceTimeout(DeviceError, TimeoutError):
     """ Exception raised when a device fails to respond within an expected
         length of time.
     """

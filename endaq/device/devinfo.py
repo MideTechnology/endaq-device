@@ -6,6 +6,7 @@ accessed directly.
 """
 
 from abc import ABC, abstractmethod
+from functools import partial
 import logging
 import os.path
 import struct
@@ -374,16 +375,15 @@ class SerialDeviceInfo(DeviceInfo):
         """ Get the recorder's user-defined calibration data as a dictionary
             of parameters.
         """
-        self.device.command.setLockID()
-        try:
-            return self.device.command._getInfo(6, lock=True) or None
-        finally:
-            self.device.command.clearLockID()
+        func = partial(self.device.command._getInfo, 6, lock=True)
+        return util.info_lock_required(func, 'Reading user calibration')
 
 
     def writeUserCal(self,
                      caldata: Union[None, bytearray, bytes]):
         """ Write user calibration to the device.
+
+            Currently does not support setting over serial!
 
             :param caldata: The raw binary of an EBML `<CalibrationList>`
                 element..
@@ -430,13 +430,8 @@ class MQTTDeviceInfo(SerialDeviceInfo):
             :param caldata: The raw binary of an EBML `<CalibrationList>`
                 element..
         """
-        caldata = caldata or b''
-
-        self.device.command.setLockID()
-        try:
-            self.device.command._setInfo(6, caldata)
-        finally:
-            self.device.command.clearLockID()
+        func = partial(self.device.command._setInfo, 6, caldata or b'')
+        util.info_lock_required(func, 'Writing user calibration')
 
 
 # ===========================================================================
