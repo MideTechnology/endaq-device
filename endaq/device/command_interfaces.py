@@ -1798,7 +1798,7 @@ class SerialCommandInterface(CommandInterface):
         try:
             self.getSerialPort()
             return True
-        except CommunicationError as err:
+        except DeviceError as err:
             if 'No serial port found' in str(err):
                 return False
             raise
@@ -1926,11 +1926,12 @@ class SerialCommandInterface(CommandInterface):
 
         self.port = None
 
+        # TODO: This should really raise CommunicationError. Fix here and what calls this.
         if sys.platform == 'linux':
-            raise CommunicationError('No serial port found for device '
-                              "('sudo' may be required to access serial ports)")
+            raise CommandError('No serial port found for device '
+                               "('sudo' may be required to access serial ports)")
         else:
-            raise CommunicationError('No serial port found for device')
+            raise CommandError('No serial port found for device')
 
 
     # =======================================================================
@@ -2032,8 +2033,8 @@ class SerialCommandInterface(CommandInterface):
             else:
                 errname = {0x01: "Corbus command failed",
                            0x07: "bad Corbus command"}.get(resultcode, "unknown error")
-                raise CommunicationError(f"Response header indicated an error "
-                                         f"(0x{resultcode:02x}: {errname})")
+                raise CommandError(f"Response header indicated an error "
+                                   f"(0x{resultcode:02x}: {errname})")
         else:
             raise CommunicationError('Response was corrupted or incomplete; '
                                      'did not have expected Corbus header')
@@ -2403,7 +2404,7 @@ class SerialCommandInterface(CommandInterface):
 
         try:
             port = self.getSerialPort()
-        except CommunicationError:
+        except CommandError:
             return True
 
         def disconnected():
@@ -2444,7 +2445,7 @@ class SerialCommandInterface(CommandInterface):
             try:
                 _ = self.getSerialPort()
                 return True
-            except CommunicationError:
+            except CommandError:
                 return False
 
         try:
@@ -2673,7 +2674,8 @@ class SerialCommandInterface(CommandInterface):
         if self._statusChanged.is_set():
             self._statusChanged.clear()
             return self.status
-        raise DeviceError('Device responded but did not report its status')
+        # TODO: This should really be a DeviceError
+        raise CommandError('Device responded but did not report its status')
 
 
     def _updateAll(self,

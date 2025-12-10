@@ -15,7 +15,7 @@ from typing import Any, ByteString, Callable, Dict, Optional, Tuple, Union
 import socket
 
 from .response_codes import CommandResponseCode
-from .exceptions import CommandError
+from .exceptions import DeviceError
 
 import logging
 logger = logging.getLogger(__name__)
@@ -332,7 +332,7 @@ def info_lock_required(func: Callable,
     """
     try:
         return func()
-    except CommandError as err:
+    except DeviceError as err:
         if err.errno == CommandResponseCode.ERR_BAD_LOCK_ID:
             err.args = (err.args[0],
                         f'{what} requires a matching lock ID '
