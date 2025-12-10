@@ -2,6 +2,8 @@
 Test various bits and bobs too small and random to merit their own scripts.
 """
 
+import sys
+
 import pytest
 from endaq.device.exceptions import DeviceError
 from endaq.device.response_codes import DeviceStatusCode
@@ -35,9 +37,20 @@ def test_DeviceError_instantiation(params, errno):
     ex = DeviceError(*params)
     if len(params) > 0:
         assert ex.errno == errno
-    if len(params) > 1:
-        assert isinstance(ex.args[1], str)
-    assert all(str(arg) in str(ex) for arg in ex.args)
+        if len(params) > 1:
+            assert isinstance(ex.args[1], str)
+
+    # Make sure the arguments end up in the exception's string.
+    # NOTE: The way enums cast to strings changed in Python 3.11.
+    #  Before 3.11, str(e) was the same as repr(e)
+    #  In 3.11+, str(e) is the same as repr(e.value)
+    if ex.args and isinstance(ex.args[0], DeviceStatusCode):
+        if sys.hexversion > 0x3100000:
+            assert all(str(arg) in str(ex) for arg in ex.args)
+        else:
+            assert repr(ex.args[0].value) in str(ex)
+            assert all(str(arg) in str(ex) for arg in ex.args[1:])
+
 
 
 def test_DeviceError_equivalents():
