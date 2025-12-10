@@ -33,7 +33,7 @@ class DeviceError(Exception):
 
     @property
     def errno(self):
-        if len(self.args) > 1 and isinstance(self.args[0], int):
+        if len(self.args) > 0 and isinstance(self.args[0], int):
             return self.args[0]
         return None
 
@@ -43,6 +43,8 @@ class DeviceError(Exception):
             return super().__str__()
 
         errno = self.errno
+        if errno is None:
+            return super().__str__()
 
         # Make a CommandResponseCode/DeviceStatusCode pretty
         if isinstance(errno, CommandResponseCode):
