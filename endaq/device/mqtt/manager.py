@@ -397,7 +397,8 @@ class MQTTDevice:
                 file, or `None` if no cached header is available.
         """
         header = self.manager.cache.get(self.sn, 'header')
-        logger.debug(f'Loaded cached header for {self.sn} ({len(header)} bytes)')
+        if header:
+            logger.debug(f'Loaded cached header for {self.sn} ({len(header)} bytes)')
         return header
 
 

@@ -2023,21 +2023,26 @@ class SerialCommandInterface(CommandInterface):
             :param packet: A packet of response data.
             :return: The response, as nested dictionaries.
         """
-        # Messages are Corbus packets:
-        # HDLC escaped short header, payload, crc16
-        packet = hdlc_decode(packet, ignore_crc=self.ignore_crc)
-        if packet.startswith(b'\x81\x00'):
-            resultcode = packet[2]
-            if resultcode == 0:
-                return super()._decode(packet[3:-2])
-            else:
-                errname = {0x01: "Corbus command failed",
-                           0x07: "bad Corbus command"}.get(resultcode, "unknown error")
-                raise CommandError(f"Response header indicated an error "
-                                   f"(0x{resultcode:02x}: {errname})")
-        else:
+        # Messages are HDLC escaped Corbus packets: header, payload, crc16
+        # It may end with an HDLC BREAK character, the data after which
+        # should be ignored.
+        try:
+            # Trim any junk at start and end of the packet (could occur in
+            # some environments, or if the port is used for other data)
+            packet = packet[packet.index(b'\x81\x00'):].partition(b'~')[0]
+            packet = hdlc_decode(packet, ignore_crc=self.ignore_crc)
+        except (ValueError, CRCError):
             raise CommunicationError('Response was corrupted or incomplete; '
                                      'did not have expected Corbus header')
+
+        resultcode = packet[2]
+        if resultcode == 0:
+            return super()._decode(packet[3:-2])
+        else:
+            errname = {0x01: "Corbus command failed",
+                       0x07: "bad Corbus command"}.get(resultcode, "unknown error")
+            raise CommandError(f"Response header indicated an error "
+                               f"(0x{resultcode:02x}: {errname})")
 
 
     def _decodeCommand(self, packet: Union[bytearray, bytes]) -> Dict[str, Any]:
@@ -2049,12 +2054,16 @@ class SerialCommandInterface(CommandInterface):
                 additional coding (varying by interface type).
             :return: The command, as nested dictionaries.
         """
-        packet = hdlc_decode(packet, ignore_crc=self.ignore_crc)
-        if packet.startswith(b'\x80\x26\x00\x0A'):
-            return super()._decodeCommand(packet[4:-2])
-        else:
+        try:
+            # Trim any junk at start and end of the packet (could occur in
+            # some environments, or if the port is used for other data)
+            packet = packet[packet.index(b'\x80\x26\x00\x0A'):].partition(b'~')[0]
+            packet = hdlc_decode(packet, ignore_crc=self.ignore_crc)
+        except (ValueError, CRCError):
             raise CommunicationError('Received command was corrupted or incomplete; '
                                      'did not have expected Corbus header')
+
+        return super()._decodeCommand(packet[4:-2])
 
 
     def _writeCommand(self,
