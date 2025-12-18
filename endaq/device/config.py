@@ -29,7 +29,7 @@ from .types import Epoch
 from . import legacy
 from . import ui_defaults
 from . import util
-from .util import device_synchronized
+from .util import decodeAttr, device_synchronized
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -191,6 +191,8 @@ class ConfigItem:
         # For future use (if any)
         self.label = self.tooltip = self.units = None
 
+        self.attributes = {}
+
         for k, v in data.items():
             if k in self.ARGS:
                 setattr(self, self.ARGS[k], v)
@@ -198,6 +200,8 @@ class ConfigItem:
                 # Config item type determined by *Value element type
                 # (if present; fallback behaviors below)
                 self.vtype, self._default = k, v
+            elif k == 'Attribute':
+                decodeAttr(v, self)
             else:
                 # Elements with data type as prefix
                 for attr in ("Min", "Max", "Gain", "Offset"):

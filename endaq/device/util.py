@@ -231,6 +231,25 @@ def waitfor(func: Callable,
     raise TimeoutError
 
 
+def decodeAttr(data, obj):
+    name = data.pop('AttributeName')
+
+    attrs = getattr(obj, 'attributes', None)
+    if attrs is None:
+        attrs = obj.attributes = {}
+
+    for k, v in data.items():
+        if k.name.endswith('Attribute'):
+            try:
+                attrs[name].append(v)
+            except KeyError:
+                attrs[name] = [v]
+
+
+# ===========================================================================
+# Decorators
+# ===========================================================================
+
 def synchronized(method):
     """ Decorator for making methods use a lock, modeled after the one in
         Java. It uses `threading.RLock`; synchronized methods called from
