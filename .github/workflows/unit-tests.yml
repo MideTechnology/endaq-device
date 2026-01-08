@@ -37,7 +37,8 @@ jobs:
     name: Run Automated Device Tests
 
     env:
-      APPROVED_USERS: '["eoneill-mide", "pscheidler", "StokesMIDE"]'
+      APPROVED_USERS: '["pscheidler", "StokesMIDE"]'
+      VENV_DIR: /opt/runner/venvs/endaq-device/
 
     runs-on: [self-hosted, device-library-tester]
     steps:
@@ -49,19 +50,37 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - name: Set up venv
-        run: source testing_venv/bin/activate
+      - name: Check or create virtual environment
+        run: |
+          if [ -d ${{ env.VENV_DIR }} ]; then
+            echo "Virtual environment exists in ${{ env.VENV_DIR }}"
+          else
+            echo "Creating virtual environment in ${{ env.VENV_DIR }}"
+            python -m venv ${{ env.VENV_DIR }}
+          fi
+          
+          echo "Activating virtual environment..."
+          source "${{ env.VENV_DIR }}/bin/activate"
         shell: bash
 
       - name: Set up libraries
         run: |
+          echo "::group::Install main requirements"
           python -m pip install -r requirements.txt
+          echo "::endgroup::"
+          echo "::group::Instal test_hw requirements"
           python -m pip install -r ./test_hardware/requirements.txt
+          echo "::endgroup::"
+          echo "::group::Install test specific libraries"
           python -m pip install pytest pytest-cov mock
+          echo "::endgroup::"
+          echo "::group::Full library list"
+          python -m pip list
+          echo "::endgroup::"
 
       - name: Run device tests if pusher is approved
         if: ${{ contains(fromJSON(env.APPROVED_USERS), github.event.pusher.name) }}
-        run: python -m pytest --random-order --device "S0654302" --raspi ./test_hardware/
+        run: python -m pytest --random-order --device "W0018491" --raspi ./test_hardware/
         env:
           GUEST_WIFI_PW: ${{ secrets.GUEST_WIFI_PW }}
 

@@ -5,13 +5,8 @@ import time
 import pytest
 from tests.fake_recorders import RECORDER_PATHS
 import endaq.device
-import sys
 
-try:
-    import RPi.GPIO as GPIO
-except ImportError:
-    print("Please install RPi.GPIO if planning to run on RasPi")
-
+from test_hardware.raspi_endaq_controller import set_button, set_usb, timed_button_press
 
 # Helper class:
 class Payload:
@@ -87,9 +82,7 @@ def stopRecOldFW(device, is_raspi):
         device.command.stopRecording()
 
     # Simulated button press to stop recording
-    GPIO.output(13, GPIO.LOW) # Button pressed
-    time.sleep(1)
-    GPIO.output(13, GPIO.HIGH) # Button unpressed
+    timed_button_press(1)
 
     # Check the device with old FW raised an exception
     assert (exc_info.type == endaq.device.exceptions.CommandError
@@ -106,17 +99,15 @@ def setupTeardownGPIO(is_raspi):
     """
     if is_raspi is True:
         print("\nSetting up RasPi...")
-        GPIO.setmode(GPIO.BOARD)
-        GPIO.setup(15, GPIO.OUT) # Pin 15 is GPIO22
-        GPIO.setup(13, GPIO.OUT) # Pin 13 is GPIO27
-        GPIO.setup(36, GPIO.OUT) # Pin 36 is GPIO16 -button press
-        GPIO.output(13, GPIO.HIGH) # Button unpressed
+        set_usb(True)
+        set_button(False)
 
     yield
 
     if is_raspi is True:
         print("\nTearing down RasPi setup...")
-        GPIO.cleanup()
+        set_usb(True)
+        set_button(False)
         print("\nDone with RasPi tear down.")
 
 
@@ -133,9 +124,12 @@ def setupTeardown(is_raspi, device_sn):
     # start up and connect
     print("\nSetting up...")
     if is_raspi is True:
-        GPIO.output(15, GPIO.LOW) # GPIO22 set Low
-        GPIO.output(13, GPIO.LOW) # GPIO27 set Low
+        set_usb(True)
+        # Hold the button down to reset the device
+        timed_button_press(20)
+        # Wait a bit for it to come back
         time.sleep(15)
+        # Make sure lines are in the right state
     device = assertSN(device_sn)
     device.command.ping()
     if device.command.status[1] == endaq.device.response_codes.DeviceStatusCode.RECORDING:
@@ -152,7 +146,7 @@ def setupTeardown(is_raspi, device_sn):
         commandWait(device, 10)
     # disconnect and shut down
     if is_raspi is True:
-        GPIO.output(13, GPIO.HIGH) # GPIO27 set High
+        set_button(False)
     time.sleep(10)
     print("\nTest complete.")
 
