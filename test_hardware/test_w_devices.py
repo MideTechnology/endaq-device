@@ -7,7 +7,8 @@ import pytest
 import os
 import endaq.device
 from endaq.device.response_codes import WiFiConnectionStatus, WiFiConnectionError
-
+from test_hardware.helper_functions.raspi_endaq_controller import timed_button_press, set_button, _connect_device
+from test_hardware.helper_functions.general_config import GeneralConfig
 
 # Helper Functions
 def commandWait(device, timeout):
@@ -40,8 +41,19 @@ def setupTeardown():
     """ Properly reset the enDAQ before and after every test.
     """
     # Setup
-    print("Setting up...")
-    device = endaq.device.getDevices()[0]
+    # Reset the device and reconnect
+    timed_button_press(18)
+    _connect_device(4)
+    device = endaq.device.getDevices(unmounted=False)[0]
+    # Make sure the Wifi is turned on
+    config_dict = {"WifiEnable": 1}
+    config = GeneralConfig(config_dict)
+    if config.set_configs(device):
+        device.config.applyConfig()
+        device.command.reset()      # Need to reset the device to turn the wifi on
+        _connect_device(4)
+        device = endaq.device.getDevices(unmounted=False)[0]
+
     device.command.ping()
     if (device.command.status[1] ==
         endaq.device.response_codes.DeviceStatusCode.RECORDING):

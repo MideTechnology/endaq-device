@@ -6,7 +6,7 @@ import pytest
 from tests.fake_recorders import RECORDER_PATHS
 import endaq.device
 from pathlib import Path
-from test_hardware.raspi_endaq_controller import set_button, set_usb, timed_button_press
+from test_hardware.raspi_endaq_controller import set_button, set_usb, timed_button_press, _connect_device
 
 # Helper class:
 class Payload:
