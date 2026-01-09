@@ -5,7 +5,7 @@ import time
 import pytest
 from tests.fake_recorders import RECORDER_PATHS
 import endaq.device
-
+from pathlib import Path
 from test_hardware.raspi_endaq_controller import set_button, set_usb, timed_button_press
 
 # Helper class:
@@ -39,7 +39,7 @@ def commandWait(device, timeout):
         time.sleep(1)
 
 
-def assertSN(device_sn):
+def assertSN(device_sn, timeout: int=0):
     """ Find the connected device that matches the inputted serial number and
         set it to the "device" variable. If there is no device with a matching
         SN, raise an exception.
@@ -48,7 +48,11 @@ def assertSN(device_sn):
             command line.
         :return: device matching the inputted SN.
     """
-    num_dev = len(endaq.device.getDevices())
+    start_time = time.time()
+    num_dev = len(endaq.device.getDevices(unmounted=False))
+
+    while num_dev == 0 and time.time() - start_time < timeout:
+        num_dev = len(endaq.device.getDevices(unmounted=False))
 
     if num_dev == 0:
         raise endaq.device.exceptions.DeviceError("No device found.")
@@ -131,6 +135,12 @@ def setupTeardown(is_raspi, device_sn):
         time.sleep(15)
         # Make sure lines are in the right state
     device = assertSN(device_sn)
+    # clear any config files off the device
+    conf = (Path(device.path)/"SYSTEM/config.cfg")
+    if conf.is_file():
+        conf.unlink()
+    
+    # Stop the device if it is recording
     device.command.ping()
     if device.command.status[1] == endaq.device.response_codes.DeviceStatusCode.RECORDING:
         device.command.stopRecording()
@@ -147,7 +157,6 @@ def setupTeardown(is_raspi, device_sn):
     # disconnect and shut down
     if is_raspi is True:
         set_button(False)
-    time.sleep(10)
     print("\nTest complete.")
 
 
