@@ -43,7 +43,7 @@ def setupTeardown():
     # Setup
     # Reset the device and reconnect
     timed_button_press(18)
-    _connect_device(4)
+    _connect_device(15)
     device = endaq.device.getDevices(unmounted=False)[0]
     # Make sure the Wifi is turned on
     config_dict = {"WifiEnable": 1}
