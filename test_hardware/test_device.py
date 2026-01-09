@@ -6,7 +6,7 @@ import pytest
 from tests.fake_recorders import RECORDER_PATHS
 import endaq.device
 from pathlib import Path
-from test_hardware.raspi_endaq_controller import set_button, set_usb, timed_button_press, _connect_device
+from test_hardware.helper_functions.raspi_endaq_controller import set_button, set_usb, timed_button_press, _connect_device
 
 # Helper class:
 class Payload:
@@ -132,7 +132,7 @@ def setupTeardown(is_raspi, device_sn):
         # Hold the button down to reset the device
         timed_button_press(20)
         # Wait a bit for it to come back
-        time.sleep(15)
+        _connect_device(15)
         # Make sure lines are in the right state
     device = assertSN(device_sn)
     # clear any config files off the device
@@ -193,7 +193,7 @@ def test_standard_run(device_sn, setupTeardown, is_raspi):
         # Clear cached device
         device.refresh()
         assert device.available == False, "Device is still cached"
-        device = assertSN(device_sn)
+        device = assertSN(device_sn, timeout=5)
         assert device.serial == serial_number, "Did not reconnect to the same device."
 
         # Confirm device stopped recording
