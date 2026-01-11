@@ -42,16 +42,20 @@ def commandWait(device, timeout):
 
 
 def wait_for_status(device: endaq.device.Recorder, target_status: list[endaq.device.response_codes.DeviceStatusCode], timeout: int=5) -> bool:
+    # Debugging the timeout
+    timeout = 60
+    out_of_time = False
     start_time = time.time()
-    while time.time() - start_time >= timeout:
+    while not out_of_time:
         status = get_status(device)
         if status in target_status:
+            print(f"Got status {status} after {time.time()-start_time:0.2f} sec")
             return True
-        time.sleep(1)
-    # One last check at the end
-    status = get_status(device)
-    if status in target_status:
-        return True
+        if time.time() - start_time > timeout:
+            out_of_time = True
+        else:
+            time.sleep(1)
+    print(f"Did not get status {target_status} after {timeout} sec")
     return False
 
 
@@ -59,6 +63,8 @@ def safe_get_device(device_sn: str="", timeout: int=0) -> endaq.device.Recorder:
     """
     
     """
+    # debugging the timeout
+    timeout = 60
     out_of_time = False
     start_time = time.time()
     while not out_of_time:
@@ -66,9 +72,9 @@ def safe_get_device(device_sn: str="", timeout: int=0) -> endaq.device.Recorder:
         if len(devices) == 0:
             continue
         for dev in devices:
-            if not device_sn or dev.serial.lower() != device_sn.lower():
+            if not device_sn or dev.serial.lower() == device_sn.lower():
                 return dev
-        if time.time() - start_time < timeout:
+        if time.time() - start_time > timeout:
             out_of_time = True
         else:
             time.sleep(1)

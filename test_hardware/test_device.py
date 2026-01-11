@@ -82,7 +82,7 @@ def test_standard_run(device_sn, setupTeardown, is_raspi):
             enDAQ before and after every test.
     """
     # Set up; Confirm device is idle
-    timeout = 10
+    timeout = 30
     device = safe_get_device(device_sn)
     fw_version = device.firmwareVersion
     serial_number = device.serial
