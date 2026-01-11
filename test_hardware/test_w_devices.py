@@ -7,8 +7,9 @@ import pytest
 import os
 import endaq.device
 from endaq.device.response_codes import WiFiConnectionStatus, WiFiConnectionError
-from test_hardware.helper_functions.raspi_endaq_controller import timed_button_press, set_button, _connect_device
+from test_hardware.helper_functions.raspi_endaq_controller import timed_button_press, set_button, set_usb
 from test_hardware.helper_functions.general_config import GeneralConfig
+from test_hardware.helper_functions.connection_helper import safe_get_device, wait_for_status, stopRecOldFW
 
 # Helper Functions
 def commandWait(device, timeout):
@@ -43,16 +44,14 @@ def setupTeardown():
     # Setup
     # Reset the device and reconnect
     timed_button_press(18)
-    _connect_device(15)
-    device = endaq.device.getDevices(unmounted=False)[0]
+    device = safe_get_device(timeout=15)
     # Make sure the Wifi is turned on, clear any pre-recording delay, and set a 2 minute time limit
     config_dict = {"WifiEnable": 1, "PreRecordingDelay": 0, "RecordingTimeLimit": 120}
     config = GeneralConfig(**config_dict)
-    if config.set_configs(device):
+    if config.set_configs(device, quick_config=True):
         device.config.applyConfig()
         device.command.reset()      # Need to reset the device to turn the wifi on
-        _connect_device(4)
-        device = endaq.device.getDevices(unmounted=False)[0]
+        device = safe_get_device(timeout=15)
 
     device.command.ping()
     if (device.command.status[1] ==
@@ -63,11 +62,10 @@ def setupTeardown():
 
     # Teardown
     print("Tearing down...")
-    commandWait(device, 10)
+    wait_for_status(device, [endaq.device.response_codes.DeviceStatusCode.IDLE], timeout=10)
     if (device.command.status[1] ==
         endaq.device.response_codes.DeviceStatusCode.RECORDING):
         device.command.stopRecording()
-        commandWait(device, 10)
 
     print("Test complete")
 
@@ -138,8 +136,6 @@ def test_get_network_status(device_sn, setupTeardown):
     ip_address = ".".join(str(b) for b in ip_byte_array)
     assert ip_address == disconnected_ip, "IP Address Found."
 
-    time.sleep(5)
-
 
 @pytest.mark.device_w
 def test_query_wifi(device_sn, setupTeardown):
@@ -175,8 +171,6 @@ def test_query_wifi(device_sn, setupTeardown):
     assert (disconnected_query["WiFiConnectionError"] ==
             WiFiConnectionError.ERR_NO_AP_FOUND), "Expected error not present"
 
-    time.sleep(5)
-
 
 @pytest.mark.device_w
 def test_scan_wifi(device_sn, setupTeardown):
@@ -210,8 +204,6 @@ def test_scan_wifi(device_sn, setupTeardown):
         network_dict = found_networks[index]
         if network_dict["RSSI"] <= STRENGTH_CUTOFF:
             warnings.warn(f"Weak connection to {network_dict["SSID"]}", Warning)
-
-    time.sleep(5)
 
 
 @pytest.mark.device_w
@@ -257,8 +249,6 @@ def test_set_AP(SSID, device_sn, setupTeardown):
             assert (query_wifi["WiFiConnectionStatus"] !=
                     WiFiConnectionStatus.CONNECTED
                     ), "Connected to Invalid Wifi."
-
-    time.sleep(5)
 
 
 @pytest.mark.skip

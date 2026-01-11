@@ -110,6 +110,7 @@ class GeneralConfig(BaseModel):
                 try:
                     config_changed = True
                     dev.config.items[GENERAL_CONFIG_IDS[key]].value = value
+                    print(f"Updating config {key} from {dev.config.items[GENERAL_CONFIG_IDS[key]].value=} to {value=}") 
                 except KeyError:
                     print(f"Could not set {key} ({GENERAL_CONFIG_IDS[key]}) to {value}. Probably fine")
                 except ValueError as ve:
