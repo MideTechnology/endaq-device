@@ -6,9 +6,10 @@ import pytest
 from tests.fake_recorders import RECORDER_PATHS
 import endaq.device
 from pathlib import Path
-from test_hardware.helper_functions.raspi_endaq_controller import set_button, set_usb, timed_button_press, _connect_device
+from test_hardware.helper_functions.hardware_interface import HardwareInterface, RaspiInterface, WindowsInterface, FakeInterface
 from test_hardware.helper_functions.general_config import GeneralConfig
 from test_hardware.helper_functions.connection_helper import safe_get_device, wait_for_status, stopRecOldFW
+import sys
 
 # Helper class:
 class Payload:
@@ -16,29 +17,70 @@ class Payload:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def setupTeardownGPIO(is_raspi):
+def hardware_creation(request):
+    is_raspi = request.config.getoption("--raspi")
+    if is_raspi:
+        hw = RaspiInterface()
+    else:
+        if not sys.stdin.isatty():
+            hw = FakeInterface()
+        else:
+            hw = WindowsInterface()
+    yield hw
+
+@pytest.fixture
+def hardware_interface(hardware_creation):
+    if isinstance(hardware_creation, FakeInterface):
+        pytest.skip("Skipping interactive test in non-interactive mode. Run pytest with -s option")
+    yield hardware_creation
+
+@pytest.fixture(scope="session")
+def no_skip_hardware_interface(hardware_creation):
+    yield hardware_creation
+
+@pytest.fixture(scope="session", autouse=True)
+def setupTeardownGPIO(no_skip_hardware_interface, fast_clean: bool):
     """ Set up and teardown GPIO RasPi controls at the beginning and end
         of a session.
 
         :param is_raspi: True if the tests are meant to run on a RaspberryPi,
             False otherwise. Set in command line.
     """
-    if is_raspi is True:
+    if fast_clean:
+        # Always update the device configuration
+        config_dict = {}
+        device = safe_get_device()
+        config = GeneralConfig(**config_dict)
+        if config.set_configs(device, quick_config=True):
+            print(f"Applying updated config")
+            device.config.applyConfig()
+            device.command.reset()      # Need to reset the device to turn the wifi on
+            device = safe_get_device()
+        yield
+    else:
+        # Always update the device configuration
+        config_dict = {}
+        device = safe_get_device()
+        config = GeneralConfig(**config_dict)
+        if config.set_configs(device, quick_config=True):
+            print(f"Applying updated config")
+            device.config.applyConfig()
+            device.command.reset()      # Need to reset the device to turn the wifi on
+            device = safe_get_device()
         print("\nSetting up RasPi...")
-        set_usb(True)
-        set_button(False)
+        no_skip_hardware_interface.set_usb(True)
+        no_skip_hardware_interface.set_button(False)
 
-    yield
+        yield
 
-    if is_raspi is True:
         print("\nTearing down RasPi setup...")
-        set_usb(True)
-        timed_button_press(20)
+        no_skip_hardware_interface.set_usb(True)
+        no_skip_hardware_interface.timed_button_press(20)
         print("\nDone with RasPi tear down.")
 
 
 @pytest.fixture # with a default scope of "function"
-def setupTeardown(is_raspi, device_sn):
+def setupTeardown(no_skip_hardware_interface, device_sn, fast_clean):
     """ HArd reset the enDAQ before and after every test, and load in the configuration.
 
         :param is_raspi: True if the tests are meant to run on a RaspberryPi,
@@ -46,34 +88,35 @@ def setupTeardown(is_raspi, device_sn):
         :param device_sn: the tested device's serial number collected from the 
             command line.
     """
-    # Setup
-    # start up and connect
-    print("\nSetting up...")
-    if is_raspi is True:
-        set_usb(True)
+    if fast_clean:
+        yield
+    else:
+        # Setup
+        # start up and connect
+        print("\nSetting up...")
+        no_skip_hardware_interface.set_usb(True)
         # Hold the button down to reset the device
-        timed_button_press(20)
-    # Connect to the device
-    device = safe_get_device(device_sn, timeout=20)
-    # Set it to standard configuration
-    config_dict = {"WifiEnable": 0, "PreRecordingDelay": 0, "RecordingTimeLimit": 120}
-    config = GeneralConfig(**config_dict)
-    if config.set_configs(device, quick_config=True):
-        device.config.applyConfig()
-        device.command.reset()      # Need to reset the device to turn the wifi on
-        device = safe_get_device(device_sn, timeout=20)
-    
-    yield # Runs test
+        no_skip_hardware_interface.timed_button_press(20)
+        # Connect to the device
+        device = safe_get_device(device_sn, timeout=60)
+        # Set it to standard configuration
+        config_dict = {"WifiEnable": 0, "PreRecordingDelay": 0, "RecordingTimeLimit": 120}
+        config = GeneralConfig(**config_dict)
+        if config.set_configs(device, quick_config=True):
+            device.config.applyConfig()
+            device.command.reset()      # Need to reset the device to turn the wifi on
+            device = safe_get_device(device_sn, timeout=60)
+        
+        yield # Runs test
 
-    # Teardown
-    if is_raspi is True:
-        set_usb(True)
-        set_button(False)
-    print("\nTest complete.")
+        # Teardown
+        no_skip_hardware_interface.set_usb(True)
+        no_skip_hardware_interface.timed_button_press(18) # We really should reset after each test, incase we exit early and get stuck recording
+        time.sleep(10)  # Let the device come back
 
 
 # Tests:
-def test_standard_run(device_sn, setupTeardown, is_raspi):
+def test_standard_run(device_sn, setupTeardown):
     """ Test a standard run of an enDAQ device.
 
         :param device_sn: the tested device's serial number collected from the 
@@ -82,14 +125,13 @@ def test_standard_run(device_sn, setupTeardown, is_raspi):
             enDAQ before and after every test.
     """
     # Set up; Confirm device is idle
-    timeout = 30
     device = safe_get_device(device_sn)
     fw_version = device.firmwareVersion
     serial_number = device.serial
 
     if 20000 <= fw_version <= 30100:
         device.command.startRecording()
-        stopRecOldFW(device, is_raspi)
+        stopRecOldFW(device, is_raspi)      # FIXME: Fix this later
     else:
         # Confirm device starts as idle
         assert (
@@ -98,20 +140,21 @@ def test_standard_run(device_sn, setupTeardown, is_raspi):
 
         # Confirm device is recording
         device.command.startRecording()
-        wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING], timeout=timeout)
+        wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
         assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
-                ), "Device is not recording. Status was not 10."
+                ), f"Device is not recording. Status was {device.command.status[1]} not 10."
 
         # Clear cached device
+        # TODO: Is this test still needed?
         device.refresh()
         assert device.available == False, "Device is still cached"
-        device = safe_get_device(device_sn, timeout=5)
+        # safe_get_device(device_sn, unmounted=True)
         assert device.serial == serial_number, "Did not reconnect to the same device."
 
         # Confirm device stopped recording
         assert device.command.stopRecording() is True, "Device did not stop recording."
         wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE,
-                endaq.device.DeviceStatusCode.IDLE_UNMOUNTED], timeout=timeout)
+                endaq.device.DeviceStatusCode.IDLE_UNMOUNTED])
         assert (device.command.status[1] is endaq.device.DeviceStatusCode.IDLE or
                 endaq.device.DeviceStatusCode.IDLE_UNMOUNTED), "Device is not idle."
 
@@ -133,7 +176,6 @@ def test_ping_status(command, status_code, device_sn, setupTeardown):
             enDAQ before and after every test.
     """
     # Set up
-    timeout = 5
     device = safe_get_device(device_sn)
     fw_version = device.firmwareVersion
 
@@ -146,15 +188,15 @@ def test_ping_status(command, status_code, device_sn, setupTeardown):
         match command:
             case "battery":
                 device.command.getBatteryStatus()
-                wait_for_status(device, [status_code], timeout=timeout)
+                wait_for_status(device, [status_code])
             case "startRecording":
                 device.command.startRecording()
-                wait_for_status(device, [status_code], timeout=timeout)
+                wait_for_status(device, [status_code])
             case "stopRecording":
                 device.command.startRecording()
-                wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING], timeout=timeout)
+                wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
                 device.command.stopRecording()
-                wait_for_status(device, [status_code], timeout=timeout)
+                wait_for_status(device, [status_code])
 
         # Verify the device has the correct status depending on what command was run
         device.command.ping()
@@ -201,7 +243,7 @@ def test_ping_payload(index, device_sn, setupTeardown):
 
 @pytest.mark.parametrize("params", ["default", "correct_path", "incorrect_path",
                                     "unmounted_default", "unmounted_recording"])
-def test_get_devices(params, device_sn, setupTeardown, is_raspi):
+def test_get_devices(params, device_sn, setupTeardown):
     """ Tests that 'getDevices()' works as intended.
 
         :param params: keywords representing a scenario to run in each of the 
@@ -212,13 +254,12 @@ def test_get_devices(params, device_sn, setupTeardown, is_raspi):
             enDAQ before and after every test.
     """
     # Set up
-    timeout = 5
 
     # Run different scenarios based on the "param" parameter
     match params:
         case "default":
             # Default parameters: Verify that expected device is returned
-            device = safe_get_device(device_sn)
+            device = endaq.device.getDevices()[0]
             assert device.serial == device_sn, "Incorrect device connected."
         case "correct_path":
             # Correct path specified: Verify that expected device is returned
@@ -228,7 +269,7 @@ def test_get_devices(params, device_sn, setupTeardown, is_raspi):
         case "incorrect_path":
             # Incorrect path specified: Verify that nothing is returned
             device = endaq.device.getDevices(
-                paths=(RECORDER_PATHS[0] + "abc"), unmounted=False, strict=False)
+                paths=("/abc/"), unmounted=False, strict=False)
             assert device == [], f"Device was returned: {device}"
         case "unmounted_default":
             # Unmounted = False: Verify that this normally returns the correct
@@ -242,7 +283,7 @@ def test_get_devices(params, device_sn, setupTeardown, is_raspi):
         case "unmounted_recording":
             # Unmounted = False: Verify that if the device is recording, it is
             # not returned
-            device = safe_get_device(device_sn)
+            device = endaq.device.getDevices()[0]
             fw_version = device.firmwareVersion
 
             if 20000 <= fw_version <= 30100:
@@ -256,10 +297,10 @@ def test_get_devices(params, device_sn, setupTeardown, is_raspi):
                     if curr_dev.serial == device_sn:
                         dev_list.append(curr_dev)
                 assert dev_list == [], "Device was returned while recording."
-                stopRecOldFW(device, is_raspi)
+                stopRecOldFW(device, is_raspi)      # FIXME: Fix this
             else:
                 device.command.startRecording()
-                wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING], timeout)
+                wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
                 assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
                         ), "Device is not recording."
                 new_device = endaq.device.getDevices(unmounted=False)
@@ -268,7 +309,7 @@ def test_get_devices(params, device_sn, setupTeardown, is_raspi):
                 device.command.stopRecording()
 
 
-def test_start_recording_default(device_sn, setupTeardown, is_raspi):
+def test_start_recording_default(device_sn, setupTeardown):
     """ Tests that 'startRecording()' works as expected in a default scenario.
 
         :param device_sn: the tested device's serial number collected from the 
@@ -277,14 +318,13 @@ def test_start_recording_default(device_sn, setupTeardown, is_raspi):
             enDAQ before and after every test.
     """
     # Set up
-    timeout = 10
     device = safe_get_device(device_sn)
     fw_version = device.firmwareVersion
 
     # Since startRecording's behavior is firmware specific, its tests are too!
     if 20000 <= fw_version <= 30100:
         device.command.startRecording()
-        stopRecOldFW(device, is_raspi)
+        stopRecOldFW(device, is_raspi)      # FIXME: Fix this
     else:
         # Verify the device starts with an idle status
         assert (device.command.status[1] ==
@@ -297,19 +337,19 @@ def test_start_recording_default(device_sn, setupTeardown, is_raspi):
 
         # Verify the device's status is recording and the drive is available
         # again now that we have waited
-        wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING], timeout)
+        wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
         assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
                 ), "Device is not recording."
         assert device.command.available == True, "Device drive is not available."
 
         # Stop recording and verify the device's status is now idle
         device.command.stopRecording()
-        wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE], timeout)
+        wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE])
         assert (device.command.status[1] == endaq.device.DeviceStatusCode.IDLE
                 ), f"Device is not idle. It is {device.command.status[1]}"
 
 
-def test_start_recording_wait(device_sn, setupTeardown, is_raspi):
+def test_start_recording_wait(device_sn, setupTeardown):
     """ Tests that 'startRecording()' returns faster than the default case when 
         'wait=False'. 
 
@@ -319,9 +359,7 @@ def test_start_recording_wait(device_sn, setupTeardown, is_raspi):
             enDAQ before and after every test.
     """
     # Set up
-    timeout = 10
     device = safe_get_device(device_sn)
-    device.refresh()  # remove this once endaq.device is fixed
     fw_version = device.firmwareVersion
 
     # Verify that the device's status begins as idle
@@ -335,18 +373,17 @@ def test_start_recording_wait(device_sn, setupTeardown, is_raspi):
     device.command.startRecording(wait=False)
     false_end_time = time.time()
     false_execution_time = false_end_time - false_start_time
-    wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING], timeout)
+    wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
     if 20000 <= fw_version <= 30100:
         stopRecOldFW(device, is_raspi)
-        wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE], timeout)
+        wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE])
     else:
         device.command.stopRecording()
-        wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE], timeout)
+        wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE])
         # Verify that the device's status is back to idle
     assert (device.command.status[1] ==
             endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
 
-    device.refresh()
     device = safe_get_device(device_sn)
 
     # Running SR with wait=True; recording how long it takes; stop rec.
@@ -355,13 +392,13 @@ def test_start_recording_wait(device_sn, setupTeardown, is_raspi):
     device.command.startRecording()
     default_end_time = time.time()
     default_execution_time = default_end_time - default_start_time
-    wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING], timeout)
+    wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
     if 20000 <= fw_version <= 30100:
         stopRecOldFW(device, is_raspi)
-        wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE], timeout)
+        wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE])
     else:
         device.command.stopRecording()
-        wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE], timeout)
+        wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE])
         # Verify that the device's status is back to idle
         assert (device.command.status[1] ==
                 endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
@@ -377,7 +414,7 @@ def test_start_recording_wait(device_sn, setupTeardown, is_raspi):
             ), "Default returned quicker than when wait=False."
 
 
-def test_start_recording_timeout(device_sn, setupTeardown, is_raspi):
+def test_start_recording_timeout(device_sn, setupTeardown):
     """ Tests that 'startRecording()' raises an Exception when 'timeout' is too low.
 
         :param device_sn: the tested device's serial number collected from the 
@@ -406,5 +443,5 @@ def test_start_recording_timeout(device_sn, setupTeardown, is_raspi):
                 ), "Wrong error message during timeout"
         
         # If the device doesn't go back to idle, send a stop command, but otherwise let setup handle it
-        if not wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE], timeout=10):
+        if not wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE]):
             device.command.stopRecording()

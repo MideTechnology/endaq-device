@@ -21,6 +21,7 @@ GENERAL_CONFIG_IDS = {
                 'WifiBrokerIPAddress': 2490239,
                 'WifimDNSInstanceName': 2883455,
                 'WifiStreamRecordingData': 2555775,
+                'WifiUploadFile': 1703807,
 
                 # Triggers
                 'TriggerMode': 1245055,
@@ -52,6 +53,7 @@ GENERAL_CONFIG_IDS = {
 class GeneralConfig(BaseModel):
     model_config = ConfigDict(extra='allow')
     WifiEnable: NonNegativeInt = 0
+    WifiUploadFile: NonNegativeInt = 0
     PlugInAction: NonNegativeInt = 0
     ButtonMode: NonNegativeInt = 0
     TriggerMode: NonNegativeInt = 0

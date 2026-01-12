@@ -1,7 +1,6 @@
 import endaq.device
 import time
 import pytest
-from test_hardware.helper_functions.raspi_endaq_controller import set_button, set_usb, timed_button_press, _connect_device
  
 
 def get_status(device) -> endaq.device.response_codes.DeviceStatusCode:
@@ -41,9 +40,8 @@ def commandWait(device, timeout):
         time.sleep(1)
 
 
-def wait_for_status(device: endaq.device.Recorder, target_status: list[endaq.device.response_codes.DeviceStatusCode], timeout: int=5) -> bool:
+def wait_for_status(device: endaq.device.Recorder, target_status: list[endaq.device.response_codes.DeviceStatusCode], timeout: int=15) -> bool:
     # Debugging the timeout
-    timeout = 60
     out_of_time = False
     start_time = time.time()
     while not out_of_time:
@@ -59,16 +57,15 @@ def wait_for_status(device: endaq.device.Recorder, target_status: list[endaq.dev
     return False
 
 
-def safe_get_device(device_sn: str="", timeout: int=0) -> endaq.device.Recorder:
+def safe_get_device(device_sn: str="", timeout: int=15, unmounted=False) -> endaq.device.Recorder:
     """
     
     """
     # debugging the timeout
-    timeout = 60
     out_of_time = False
     start_time = time.time()
     while not out_of_time:
-        devices = endaq.device.getDevices(unmounted=False)
+        devices = endaq.device.getDevices(unmounted=unmounted)
         if len(devices) == 0:
             continue
         for dev in devices:
@@ -78,7 +75,7 @@ def safe_get_device(device_sn: str="", timeout: int=0) -> endaq.device.Recorder:
             out_of_time = True
         else:
             time.sleep(1)
-    devices = endaq.device.getDevices(unmounted=False)
+    devices = endaq.device.getDevices(unmounted=unmounted)
     raise endaq.device.exceptions.DeviceError(f"Could not find device {device_sn} in {timeout} seconds. Attached Devices: {devices}")
 
 
