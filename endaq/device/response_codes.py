@@ -79,10 +79,11 @@ responsestrings = {
 class WiFiConnectionStatus(IntEnum):
     """ The status of the Wi-Fi connection, returned when querying Wi-Fi.
     """
-    IDLE = 0  #: Wi-Fi is inactive (and/or disconnected).
-    PENDING = 1  #: The device is in the process of connecting to the Wi-Fi AP.
-    CONNECTED = 2  #: The device is connected to the Wi-Fi AP.
-    AP_MODE = 10  #: For Cloud Gateway hardware: Gateway is acting as an access point.
+    IDLE = 0x00  #: Wi-Fi is inactive (and/or disconnected).
+    PENDING = 0x01  #: The device is in the process of connecting to the Wi-Fi AP.
+    CONNECTED = 0x02  #: The device is connected to the Wi-Fi AP.
+    AP_MODE = 0x10  #: For Gateway hardware: Gateway is in access point mode.
+    AP4G_MODE = 0x30  #: For Gateway hardware: Gateway is operating as AP and 4G bridge.
 
 
 class CurrentWiFiStatus(IntEnum):
@@ -93,6 +94,7 @@ class CurrentWiFiStatus(IntEnum):
     CONNECTING = 1  #: The device is currently trying to connect to the Wi-Fi AP.
     CONNECTED = 2  #: The device is connected to the Wi-Fi AP, but not yet to enDAQ Cloud (or cloud connection status unknown).
     CONNECTED_CLOUD = 3  #: Connected to Wi-Fi and to enDAQ Cloud.
+    # FUTURE: AP4G/HDS
 
 
 class WiFiConnectionError(IntEnum):
