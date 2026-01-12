@@ -21,6 +21,7 @@ GENERAL_CONFIG_IDS = {
                 'WifiBrokerIPAddress': 2490239,
                 'WifimDNSInstanceName': 2883455,
                 'WifiStreamRecordingData': 2555775,
+                'WifiUploadFile': 1703807,
 
                 # Triggers
                 'TriggerMode': 1245055,
@@ -52,6 +53,7 @@ GENERAL_CONFIG_IDS = {
 class GeneralConfig(BaseModel):
     model_config = ConfigDict(extra='allow')
     WifiEnable: NonNegativeInt = 0
+    WifiUploadFile: NonNegativeInt = 0
     PlugInAction: NonNegativeInt = 0
     ButtonMode: NonNegativeInt = 0
     TriggerMode: NonNegativeInt = 0
@@ -96,7 +98,7 @@ class GeneralConfig(BaseModel):
             self.MainAccelerationTriggerLow, self.MainAccelerationTriggerHigh = self.MainAccelerationTriggerHigh, self.MainAccelerationTriggerLow
         return self
 
-    def set_configs(self, dev: ed.Recorder, quick_config: bool=False) -> bool:
+    def set_configs(self, dev: ed.Recorder, quick_config: bool=False, verbose: bool=False) -> bool:
         item_dict = self.model_dump()
         config_changed = False
         for key, value in item_dict.items():
@@ -105,11 +107,14 @@ class GeneralConfig(BaseModel):
                     continue    # Setting does not exist for the device
                 if quick_config:
                     if dev.config.items[GENERAL_CONFIG_IDS[key]].value == value:
-                        print(f"{key} is already at the target value ({value})")
+                        if verbose:
+                            print(f"{key} is already at the target value ({value})")
                         continue
                 try:
                     config_changed = True
                     dev.config.items[GENERAL_CONFIG_IDS[key]].value = value
+                    if verbose:
+                        print(f"Updating config {key} from {dev.config.items[GENERAL_CONFIG_IDS[key]].value=} to {value=}") 
                 except KeyError:
                     print(f"Could not set {key} ({GENERAL_CONFIG_IDS[key]}) to {value}. Probably fine")
                 except ValueError as ve:

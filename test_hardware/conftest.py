@@ -17,12 +17,17 @@ def pytest_addoption(parser):
     parser.addoption(
         "-R", "--raspi", action="store_true", default=False, help="Include if running on a RasPi"
     )
-
+    parser.addoption(
+        "-F", "--fast_clean", action="store_true", default=False, help="Include to not reset the device on every setup"
+    )
 
 @pytest.fixture(scope="session")
-def is_raspi(request):
+def is_raspi(request) -> bool:
     return request.config.getoption("--raspi")
 
+@pytest.fixture(scope="session")
+def fast_clean(request) -> bool:
+    return request.config.getoption("--fast_clean")
 
 def pytest_configure(config):
     """
