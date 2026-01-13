@@ -6,8 +6,7 @@ import pytest
 def get_status(device) -> endaq.device.response_codes.DeviceStatusCode:
     try:
         resp = device.command.ping()
-        print(f"Status code: {device.command.status=}\t"
-                "message: {dev.command.status[1]}")
+        print(f"Status code: {device.command.status=}")
     except Exception as e:
         print(f"get_status got error {e}")
         return None
@@ -25,8 +24,7 @@ def commandWait(device, timeout):
     for _ in range(int(timeout)):
         try:
             resp = device.command.ping()
-            print(f"Status code: {device.command.status=}\t"
-                  "message: {dev.command.status[1]}")
+            print(f"Status code: {device.command.status=}\t")
             if device.command.status[1] == endaq.device.response_codes.DeviceStatusCode.RECORDING or \
                     device.command.status[1] == endaq.device.response_codes.DeviceStatusCode.IDLE_UNMOUNTED:
                 print(

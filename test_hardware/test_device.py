@@ -39,7 +39,7 @@ def no_skip_hardware_interface(hardware_creation):
     yield hardware_creation
 
 @pytest.fixture(scope="session", autouse=True)
-def setupTeardownGPIO(no_skip_hardware_interface, fast_clean: bool):
+def setupTeardownSession(no_skip_hardware_interface, fast_clean: bool):
     """ Set up and teardown GPIO RasPi controls at the beginning and end
         of a session.
 
@@ -115,7 +115,9 @@ def setupTeardown(no_skip_hardware_interface, device_sn, fast_clean):
         config_dict = {"WifiEnable": 0, "PreRecordingDelay": 0, "RecordingTimeLimit": 120}
         config = GeneralConfig(**config_dict)
         if config.set_configs(device, quick_config=True):
+            print(f"Applying config")
             device.config.applyConfig()
+            time.sleep(5)               # Is the config not written fast enough or something?
             device.command.reset()      # Need to reset the device to turn the wifi on
             device = safe_get_device(device_sn, timeout=30, unmounted=False)
 

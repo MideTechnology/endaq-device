@@ -52,6 +52,7 @@ def setupTeardown(no_skip_hardware_interface, fast_clean):
     if config.set_configs(device, quick_config=True):
         print(f"Applying updated config")
         device.config.applyConfig()
+        time.sleep(4)               # Is the config not written fast enough or something?
         device.command.reset()      # Need to reset the device to turn the wifi on
         device = safe_get_device(unmounted=False)
 

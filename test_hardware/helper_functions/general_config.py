@@ -101,6 +101,7 @@ class GeneralConfig(BaseModel):
     def set_configs(self, dev: ed.Recorder, quick_config: bool=False, verbose: bool=False) -> bool:
         item_dict = self.model_dump()
         config_changed = False
+        dev.config.revert()     # Remove any unsaved changes
         for key, value in item_dict.items():
             if key in GENERAL_CONFIG_IDS:
                 if GENERAL_CONFIG_IDS[key] not in dev.config.items:
