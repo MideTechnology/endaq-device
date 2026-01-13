@@ -167,6 +167,7 @@ def test_standard_run(device_sn, setupTeardown):
 
         # Confirm device is recording
         device.command.startRecording()
+        device = safe_get_device(device_sn, timeout=30)
         wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
         assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
                 ), f"Device is not recording. Status was {device.command.status[1]} not 10."
@@ -180,6 +181,7 @@ def test_standard_run(device_sn, setupTeardown):
 
         # Confirm device stopped recording
         assert device.command.stopRecording() is True, "Device did not stop recording."
+        device = safe_get_device(device_sn, timeout=30)
         wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE,
                 endaq.device.DeviceStatusCode.IDLE_UNMOUNTED])
         assert (device.command.status[1] == endaq.device.DeviceStatusCode.IDLE or
@@ -218,11 +220,14 @@ def test_ping_status(command, status_code, device_sn, setupTeardown):
                 wait_for_status(device, [status_code])
             case "startRecording":
                 device.command.startRecording()
+                device = safe_get_device(device_sn, timeout=30)
                 wait_for_status(device, [status_code])
             case "stopRecording":
                 device.command.startRecording()
+                device = safe_get_device(device_sn, timeout=30)
                 wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
                 device.command.stopRecording()
+                device = safe_get_device(device_sn, timeout=30)
                 wait_for_status(device, [status_code])
 
         # Verify the device has the correct status depending on what command was run
