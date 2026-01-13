@@ -1365,8 +1365,8 @@ class FileConfigInterface(ConfigInterface):
         """ Open and write to the device's config file. """
         with open(self.device.configFile, 'wb') as f:
             write_data = f.write(data)
-            # f.flush()
-            # os.fsync(f.fileno())
+            f.flush()
+            os.fsync(f.fileno())
             return write_data
 
 

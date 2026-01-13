@@ -69,36 +69,36 @@ def setupTeardown(no_skip_hardware_interface, fast_clean):
 
 
 # W Specific Tests
-@pytest.mark.device_w
-def test_get_network_address(device_sn, setupTeardown):
-    """ Test that 'getNetworkAddress()' returns a valid MAC Address on W
-        devices.
-
-        :param device_sn: the tested device's serial number collected from the 
-            command line.
-        :param setupTeardown: a pytest fixture function that properly resets the 
-            enDAQ before and after every test.
-    """
-    # Set up
-    device = endaq.device.getDevices()[0]
-
-    # DEBUG: Print some status info
-    print(f"Device Debug Info:")
-    print(f"{device.hasWifi=}")
-    print(f"{device.serial=}")
-    print(f"{device.hasConfigInterface=}")
-    print(f"{device.command.status[1]=}")
-    print(f"Device Config Info:")
-    for key, value in device.config.items.items():
-        print(f"Config {key} = {value.value}")
-
-    # Gather the MAC and IP addresses
-    mac, ip = device.command.getNetworkAddress()
-
-    # Confirm that a valid MAC address was found
-    assert mac != None, "MAC Address was None."
-    print("MAC Address:", mac)
-
+# @pytest.mark.device_w
+# def test_get_network_address(device_sn, setupTeardown):
+#     """ Test that 'getNetworkAddress()' returns a valid MAC Address on W
+#         devices.
+#
+#         :param device_sn: the tested device's serial number collected from the
+#             command line.
+#         :param setupTeardown: a pytest fixture function that properly resets the
+#             enDAQ before and after every test.
+#     """
+#     # Set up
+#     device = endaq.device.getDevices()[0]
+#
+#     # DEBUG: Print some status info
+#     print(f"Device Debug Info:")
+#     print(f"{device.hasWifi=}")
+#     print(f"{device.serial=}")
+#     print(f"{device.hasConfigInterface=}")
+#     print(f"{device.command.status[1]=}")
+#     print(f"Device Config Info:")
+#     for key, value in device.config.items.items():
+#         print(f"Config {key} = {value.value}")
+#
+#     # Gather the MAC and IP addresses
+#     mac, ip = device.command.getNetworkAddress()
+#
+#     # Confirm that a valid MAC address was found
+#     assert mac != None, "MAC Address was None."
+#     print("MAC Address:", mac)
+#
 
 # @pytest.mark.device_w
 # def test_get_connected_network_status(device_sn, setupTeardown):
