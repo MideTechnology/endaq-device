@@ -1364,10 +1364,7 @@ class FileConfigInterface(ConfigInterface):
     def _writeConfig(self, data: bytes) -> int:
         """ Open and write to the device's config file. """
         with open(self.device.configFile, 'wb') as f:
-            write_data = f.write(data)
-            f.flush()
-            os.fsync(f.fileno())
-            return write_data
+            return  f.write(data)
 
 
     @device_synchronized
