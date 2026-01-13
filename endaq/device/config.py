@@ -12,6 +12,7 @@ also takes effect immediately.
 from datetime import datetime
 import errno
 import logging
+import os
 import os.path
 from pathlib import Path
 from time import struct_time
@@ -1363,7 +1364,10 @@ class FileConfigInterface(ConfigInterface):
     def _writeConfig(self, data: bytes) -> int:
         """ Open and write to the device's config file. """
         with open(self.device.configFile, 'wb') as f:
-            return f.write(data)
+            write_data = f.write(data)
+            # f.flush()
+            # os.fsync(f.fileno())
+            return write_data
 
 
     @device_synchronized
