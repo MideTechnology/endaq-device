@@ -132,16 +132,19 @@ def setupTeardown(no_skip_hardware_interface, device_sn, fast_clean):
 
 
 # # Tests:
-#
-# def test_set_config(device_sn, setupTeardown):
-#     dev = safe_get_device(device_sn)
-#     current_name = dev.config.items[589695].value
-#     new_name = f"Config_Tested: {int(time.time())}"
-#     dev.config.items[589695].value = new_name
-#     dev.config.applyConfig()
-#     dev.command.reset()
-#     dev = safe_get_device(device_sn)
-#     assert dev.config.items[589695].value == new_name, f"Got wrong name: Got {dev.config.items[589695].value}, expected {new_name}. Old Name = {current_name}"
+
+def test_set_config(device_sn, setupTeardown):
+    print(f'{sys.version=}')
+    dev = safe_get_device()
+    dev.config.items[1638271].value = 0
+    dev.command.reset()
+    dev = safe_get_device()
+    dev.config.items[1638271].value = 1
+    dev.command.reset()
+    dev = safe_get_device()
+    print(f'{dev.config.items[1638271]=}')
+    mac, ip = dev.command.getNetworkAddress()
+    assert ip == '11.11.11.11', f"got {mac=}, {ip=}"
 
 def test_standard_run(device_sn, setupTeardown):
     """ Test a standard run of an enDAQ device.
@@ -167,7 +170,7 @@ def test_standard_run(device_sn, setupTeardown):
 
         # Confirm device is recording
         device.command.startRecording()
-        device = safe_get_device(device_sn, timeout=30)
+        device = safe_get_device(device_sn, timeout=30, unmounted=True)
         wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
         assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
                 ), f"Device is not recording. Status was {device.command.status[1]} not 10."
@@ -220,11 +223,11 @@ def test_ping_status(command, status_code, device_sn, setupTeardown):
                 wait_for_status(device, [status_code])
             case "startRecording":
                 device.command.startRecording()
-                device = safe_get_device(device_sn, timeout=30)
+                device = safe_get_device(device_sn, timeout=30, unmounted=True)
                 wait_for_status(device, [status_code])
             case "stopRecording":
                 device.command.startRecording()
-                device = safe_get_device(device_sn, timeout=30)
+                device = safe_get_device(device_sn, timeout=30, unmounted=True)
                 wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
                 device.command.stopRecording()
                 device = safe_get_device(device_sn, timeout=30)

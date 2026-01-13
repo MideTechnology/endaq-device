@@ -89,10 +89,10 @@ jobs:
           echo "::group::Full library list"
           python -m pip list
           echo "::endgroup::"
-
-      - name: Config issue example
-        shell: bash
-        run: python ./test_hardware/config_test.py
+#
+#      - name: Config issue example
+#        shell: bash
+#        run: python ./test_hardware/config_test.py
 
       - name: Run device tests if pusher is approved
         if: ${{ contains(fromJSON(env.APPROVED_USERS), github.event.pusher.name) }}
