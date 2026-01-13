@@ -63,6 +63,8 @@ def safe_get_device(device_sn: str="", timeout: int=15, unmounted=False) -> enda
     out_of_time = False
     start_time = time.time()
     while not out_of_time:
+        if time.time() - start_time > timeout:
+            out_of_time = True
         devices = endaq.device.getDevices(unmounted=unmounted)
         if len(devices) == 0:
             continue
@@ -70,11 +72,9 @@ def safe_get_device(device_sn: str="", timeout: int=15, unmounted=False) -> enda
             if not device_sn or dev.serial.lower() == device_sn.lower():
                 print(f"Connected after {time.time() - start_time}")
                 return dev
-        if time.time() - start_time > timeout:
-            out_of_time = True
-        else:
+        if not out_of_time:
             time.sleep(1)
-    devices = endaq.device.getDevices(unmounted=unmounted)
+    devices = endaq.device.getDevices()
     raise endaq.device.exceptions.DeviceError(f"Could not find device {device_sn} in {timeout} seconds. Attached Devices: {devices}")
 
 

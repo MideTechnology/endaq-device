@@ -40,7 +40,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.12', '3.13']
+        python-version: ['3.12']
 
     env:
       APPROVED_USERS: '["pscheidler", "StokesMIDE"]'
@@ -65,7 +65,7 @@ jobs:
             echo "Creating virtual environment in ${{ env.FULL_VENV_PATH }}"
             python -m venv ${{ env.FULL_VENV_PATH }}
           fi
-          
+
           echo "Activating virtual environment $FULL_VENV_PATH ..."
           source "${{ env.FULL_VENV_PATH }}/bin/activate"
         env:
@@ -74,10 +74,13 @@ jobs:
 
       - name: Set up libraries
         run: |
+          echo "::group::Initial library list"
+          python -m pip list
+          echo "::endgroup::"
           echo "::group::Install main requirements"
           python -m pip install -r requirements.txt
           echo "::endgroup::"
-          echo "::group::Instal test_hw requirements"
+          echo "::group::Install test_hw requirements"
           python -m pip install -r ./test_hardware/requirements.txt
           echo "::endgroup::"
           echo "::group::Install test specific libraries"
@@ -86,10 +89,10 @@ jobs:
           echo "::group::Full library list"
           python -m pip list
           echo "::endgroup::"
-          echo "event = ${{ github.event }}"
-          echo "pusher2 = ${{ github.event.pusher }}"
-          echo "pusher name = ${{ github.event.pusher.name }}"
-          echo "pusher username = ${{ github.event.pusher.username }}"
+
+      - name: Config issue example
+        shell: bash
+        run: python ./test_hardware/config_test.py
 
       - name: Run device tests if pusher is approved
         if: ${{ contains(fromJSON(env.APPROVED_USERS), github.event.pusher.name) }}
