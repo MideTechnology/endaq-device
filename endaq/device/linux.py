@@ -155,23 +155,24 @@ def readRecorderClock(clockFile: Filename,
 def getDeviceList(types: dict, strict: bool = True) -> list:
     """ Get a list of data recorders, as their respective mount points.
     """
-
     result = set()
-
-    for device, mountpoint, fstype, opts, maxfile, maxpath in psutil.disk_partitions():
+    for device in psutil.disk_partitions():
         try:
-            if not os.path.exists(device):
+            if not os.path.exists(device.mountpoint):
+                continue
+            # Skip devices we've already found (Linux oddity workaround)
+            if device.mountpoint in result:
                 continue
             for t in types:
-                if t.isRecorder(mountpoint, strict=strict):
-                    result.add(mountpoint)
+                if t.isRecorder(device.mountpoint, strict=strict):
+                    result.add(device.mountpoint)
+                    break
         except IOError as err:
             # Rare error, may be caused by flaky device or USB.
-            msg = ("getDeviceList(): Could not access {} ({}); "
-                   "ignoring error and continuing".format(device, err))
+            msg = (f"getDeviceList(): Could not access {device=} ({err}); "
+                   "ignoring error and continuing")
             warnings.warn(msg)
             logger.error(msg)
-
     return sorted(result)
 
 

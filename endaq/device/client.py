@@ -7,61 +7,22 @@ software in the enDAQ ecosystem.
 """
 
 from functools import wraps
-from threading import RLock, get_native_id
 from time import time
 from typing import Any, ByteString, Dict, Optional, Tuple, Union
 
 import logging
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
 from .command_interfaces import SerialCommandInterface, CommandError, CRCError, CommandInterface
 from .response_codes import DeviceStatusCode
-from .util import dump
+from .util import dump, synchronized
 
 
 # ===========================================================================
 #
 # ===========================================================================
-
-def synchronized(method):
-    """ Decorator for making methods use a lock, modeled after the one in
-        Java. It uses `threading.RLock`; synchronized methods called from
-        the same thread that has claimed the lock are not blocked.
-    """
-    @wraps(method)
-    def wrapped(instance, *args, **kwargs):
-        try:
-            lock = instance._synchronized_lock
-        except AttributeError:
-            lock = instance._synchronized_lock = RLock()
-        with lock:
-            return method(instance, *args, **kwargs)
-    return wrapped
-
-
-def _synchronized(method):
-    """ Decorator for making methods use a lock, modeled after the one in
-        Java. This version does some debug logging.
-    """
-    @wraps(method)
-    def wrapped(instance, *args, **kwargs):
-        try:
-            lock = instance._synchronized_lock
-        except AttributeError:
-            lock = instance._synchronized_lock = RLock()
-        with lock:
-            # Don't log the `in_waiting` property checks (too many calls)
-            if 'waiting' not in str(method):
-                logger.debug(f'>>> calling synchronized method {method} (thread {get_native_id()})')
-            try:
-                return method(instance, *args, **kwargs)
-            finally:
-                if 'waiting' not in str(method):
-                    logger.debug(f'<<< exiting synchronized method {method} (thread {get_native_id()})')
-    return wrapped
-
 
 def requires_lock(method):
     """ Decorator for command methods that require a `LockID`. It is
@@ -329,7 +290,7 @@ class CommandClient:
     # overwritten; subclasses will probably just add command methods.
     #
     # Methods should be named `command_` plus the name of the command's
-    # EBML element, (e.g., `command_sendPing()`). `GetInfo` and `SetInfo`
+    # EBML element, (e.g., `command_SendPing()`). `GetInfo` and `SetInfo`
     # have separate methods for each index, and have the index as a suffix
     # (e.g., `command_GetInfo_0`). The base `command_GetInfo()` and
     # `command_SetInfo()` probably won't need to be overridden.

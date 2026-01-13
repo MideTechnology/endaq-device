@@ -13,7 +13,6 @@ import os
 from pathlib import Path
 import re
 import sys
-from threading import RLock
 from time import struct_time
 from typing import Any, AnyStr, Callable, Dict, List, Optional, Tuple, Union
 import warnings
@@ -43,6 +42,8 @@ from . import command_interfaces
 from .command_interfaces import CommandInterface
 from .exceptions import *
 from .types import Drive, Filename, Epoch
+from . import util
+from .util import synchronized
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +117,6 @@ class Recorder:
             :param virtual: `True` if the device is not actual hardware
                 (e.g., constructed from data in a recording).
         """
-        self._busy = RLock()
         self.strict: bool = strict
 
         self._virtual: bool = virtual
@@ -160,14 +160,20 @@ class Recorder:
         # For remote devices: timestamps of the device's last communication,
         # last block of streamed data, last header update, and last command
         # sent to the device (which may not have been processed if the device
-        # was asleep at the time). Initially set after instantiation, and not
-        # automatically updated.
-        self._lastContact: int = 0
-        self._lastMeasurement: int = 0
-        self._lastHeader: int = 0
-        self._lastCommand: int = 0
+        # was asleep at the time). Initially set after instantiation, and
+        # automatically updated by the MQTTConnector with data from the
+        # Device Manager.
+        self._lastContact: float = 0.
+        self._lastMeasurement: float = 0.
+        self._lastHeader: float = 0.
+        self._lastCommand: float = 0.
+
+        # Also for remote devices: the EBML ID of the last command received,
+        # updated by the MQTTConnector using data from the Device Manager.
+        self._lastCommandID: int = None
 
 
+    @synchronized
     def _getDevinfo(self) -> DeviceInfo:
         """ Retrieve the appropriate `DeviceInfo` for the `Recorder`.
         """
@@ -188,6 +194,7 @@ class Recorder:
 
 
     @property
+    @synchronized
     def command(self) -> Union[None, command_interfaces.CommandInterface]:
         """ The device's "command interface," the means through which to
             directly control the device. Only applicable to non-virtual
@@ -200,29 +207,27 @@ class Recorder:
         if self.isVirtual:
             raise UnsupportedFeature("Virtual devices cannot execute commands")
 
-        with self._busy:
+        if self._command is None:
+            for interface in command_interfaces.INTERFACES:
+                if interface.hasInterface(self):
+                    # logger.debug('Instantiating command interface: {!r}'.format(interface))
+                    self._command = interface(self)
+                    break
+
             if self._command is None:
-                for interface in command_interfaces.INTERFACES:
-                    if interface.hasInterface(self):
-                        # logger.debug('Instantiating command interface: {!r}'.format(interface))
-                        self._command = interface(self)
-                        break
+                raise UnsupportedFeature("Device has no command interface")
 
-                if self._command is None:
-                    raise UnsupportedFeature("Device has no command interface")
-
-            return self._command
+        return self._command
 
 
     @command.setter
+    @synchronized
     def command(self, interface: Optional[command_interfaces.CommandInterface]):
-        with self._busy:
-            if interface == self._command:
-                return
-            if self._command is not None:
-                with self._busy:
-                    self._command.close()
-            self._command = interface
+        if interface == self._command:
+            return
+        elif self._command is not None:
+            self._command.close()
+        self._command = interface
 
 
     @property
@@ -231,13 +236,14 @@ class Recorder:
         """
         if self.isVirtual:
             return False
-        try:
-            return bool(self.command)
-        except UnsupportedFeature:
-            return False
+        elif self._command:
+            return True
+
+        return any(ci.hasInterface(self) for ci in command_interfaces.INTERFACES)
 
 
     @property
+    @synchronized
     def available(self) -> bool:
         """ Is the device mounted and available as a drive? Note: if the
             device's path or drive letter changed (e.g., after being rebooted
@@ -245,26 +251,36 @@ class Recorder:
             manifest was updated, you may need to call
             :meth:`~.endaq.device.Recorder.update` first.
         """
-        if self.isVirtual or not self.path:
+        if self.isVirtual or self.isRemote:
             return False
 
         # Two checks, since former is a property that sets latter
         # and path itself isn't a reliable test in Linux
-        if (os.path.exists(self.path) and os.path.isfile(self.infoFile)):
-            # See if the device is mounted in the same place and is unchanged.
-            try:
+        try:
+            if (os.path.exists(self.path) and os.path.isfile(self.infoFile)):
+                # See if the device is mounted in the same place and is unchanged.
                 return self._getHash(self.path) == hash(self)
-            except IOError as err:
-                if err.errno == errno.EINVAL:
-                    # Possible race condition: device dismounts after test.
-                    logger.debug('Ignoring expected IOError (EINVAL) getting hash '
-                                 '(device dismounting?)')
-                    return False
+
+        except IOError as err:
+            if err.errno == errno.EINVAL:
+                # Possible race condition: device dismounts after test.
+                logger.debug('Ignoring expected IOError (EINVAL) getting hash '
+                             '(device dismounting?)')
+            else:
+                raise
+
+        except TypeError as err:
+            if not self.path:
+                logger.debug('Recorder.available: no device path (race condition?), ignoring')
+            elif 'None' in str(err):
+                logger.debug('Recorder.available: no device infoFile (race condition?), ignoring')
+            else:
                 raise
 
         return False
 
 
+    @synchronized
     def update(self,
                virtual: bool = False,
                paths: Optional[List[Filename]] = None,
@@ -320,19 +336,27 @@ class Recorder:
         return path != self.path
 
 
+    @synchronized
     def __repr__(self) -> str:
         """ Return repr(self). """
-        if self.isVirtual:
-            path = "virtual"
-        else:
-            # FUTURE: Show appropriate message for remote devices
-            path = self._path or "unmounted"
-
-        if self.name:
-            name = '{} "{}"'.format(self.partNumber, self.name)
-        else:
+        try:
+            path = 'virtual' if self.isVirtual else (self._path or 'unmounted')
             name = self.partNumber
-        return '<{} {} SN:{} ({})>'.format(type(self).__name__, name, self.serial, path)
+
+            try:
+                # Some debugging tools and messages can indirectly call __repr__
+                # and get stuck in a recursive loop trying to resolve `name`
+                if self.name:
+                    name = f'{self.partNumber} "{self.name}"'
+            except RecursionError:
+                logger.warning('RecursionError getting name in __repr__()!', exc_info=True)
+
+            return f'<{type(self).__name__} {name} SN:{self.serial} ({path})>'
+
+        except Exception as err:
+            # repr should never completely fail; use default object repr.
+            logger.warning(f'Error in {type(self).__name__}.__repr__(): {err!r}', exc_info=True)
+            return object.__repr__(self)
 
 
     @classmethod
@@ -351,117 +375,118 @@ class Recorder:
         return hash(info)
 
 
+    @synchronized
     def __hash__(self) -> int:
         """ Return hash(self). """
-        with self._busy:
-            if self._hash is None:
-                self.getInfo()
-            return self._hash
+        if self._hash is None:
+            self.getInfo()
+        return self._hash
 
 
+    @synchronized
     def refresh(self, force: bool = False):
         """ Clear cached device information, ensuring the data is up-to-date.
 
             :param force: If `True`, reread information from the device,
                 rather than use cached data.
         """
-        with self._busy:
-            # Data derived from DEVINFO
-            self._devinfo = None
-            self._info = None
-            self._hash = None
+        # Data derived from DEVINFO
+        self._devinfo = None
+        self._info = None
+        self._hash = None
 
-            if not self.isRemote:
-                # Also from DEVINFO, but required for finding remote devices.
-                # Outside of manufacturing, the device SN shouldn't change.
-                self._sn = None
-                self._snInt = None
-                self._chipId = None
+        if not self.isRemote:
+            # Also from DEVINFO, but required for finding remote devices.
+            # Outside of manufacturing, the device SN shouldn't change.
+            self._sn = None
+            self._snInt = None
+            self._chipId = None
 
-            if not self.isVirtual:
-                # Data derived from things virtual devices can't read; virtual
-                # devices only get a subset of this data upon instantiation
-                if force:
-                    self._rawinfo = None
+        if not self.isVirtual:
+            # Data derived from things virtual devices can't read; virtual
+            # devices only get a subset of this data upon instantiation
+            if force:
+                self._rawinfo = None
 
-                self._sensors = None
-                self._channels = None
-                self._channelRanges.clear()
-                self._configData = None
-                self._propData = None
-                self._manifest = None
-                self._calibration = None
-                self._calData = None
-                self._calPolys = None
-                self._userCalPolys = None
-                self._userCalDict = None
-                self._factoryCalPolys = None
-                self._factoryCalDict = None
-                self._properties = None
-                self._volumeName = None
-                self._wifi = None
-            else:
-                self.getInfo()
+            self._sensors = None
+            self._channels = None
+            self._channelRanges.clear()
+            self._configData = None
+            self._propData = None
+            self._manifest = None
+            self._calibration = None
+            self._calData = None
+            self._calPolys = None
+            self._userCalPolys = None
+            self._userCalDict = None
+            self._factoryCalPolys = None
+            self._factoryCalDict = None
+            self._properties = None
+            self._volumeName = None
+            self._wifi = None
+        else:
+            self.getInfo()
 
-            if self._command:
-                try:
-                    self._command.close()
-                except (AttributeError, IOError) as err:
-                    logger.debug('Ignoring exception closing {}: '
-                                 '{!r}'.format(self._command, err))
-                self._command = None
+        if self._command:
+            try:
+                self._command.close()
+            except (AttributeError, IOError) as err:
+                logger.debug('Ignoring exception closing {}: '
+                             '{!r}'.format(self._command, err))
+            self._command = None
 
-            if self._config:
-                try:
-                    self._config.close()
-                except (AttributeError, IOError) as err:
-                    logger.debug('Ignoring exception closing {}: '
-                                 '{!r}'.format(self._config, err))
-                self._config = None
+        if self._config:
+            try:
+                self._config.close()
+            except (AttributeError, IOError) as err:
+                logger.debug('Ignoring exception closing {}: '
+                             '{!r}'.format(self._config, err))
+            self._config = None
 
 
     @property
+    @synchronized
     def path(self) -> Union[str, None]:
         """ The recorder's filesystem path (e.g., drive letter or mount point).
         """
-        with self._busy:
-            return self._path
+        return self._path
 
 
     @path.setter
+    @synchronized
     def path(self, newpath: Union[Filename, None]):
         """ The recorder's filesystem path (e.g., drive letter or mount point).
         """
-        with self._busy:
-            path = None
-            self._volumeName = ''
-            self.configFile = self.infoFile = None
-            self.clockFile = self.userCalFile = self.configUIFile = None
-            self.recpropFile = self.commandFile = None
+        path = None
+        self._volumeName = ''
+        self.configFile = self.infoFile = None
+        self.clockFile = self.userCalFile = self.configUIFile = None
+        self.recpropFile = self.commandFile = None
 
-            if str(newpath).lower().startswith(('mqtt', 'remote')):
-                path = newpath
+        if str(newpath).lower().startswith(('mqtt', 'remote')):
+            path = newpath
 
-            elif newpath is not None:
-                newpath = newpath.path if isinstance(newpath, Drive) else newpath
-                if self.strict and not self.isRecorder(newpath):
-                    raise IOError("Specified path isn't a %s: %r" %
-                                  (self.__class__.__name__, newpath))
+        elif newpath is not None:
+            newpath = newpath.path if isinstance(newpath, Drive) else newpath
+            if self.strict and not self.isRecorder(newpath):
+                raise IOError("Specified path isn't a %s: %r" %
+                              (self.__class__.__name__, newpath))
 
-                path = os.path.realpath(newpath)
-                self.configFile = os.path.join(path, self._CONFIG_FILE)
-                self.infoFile = os.path.join(path, self._INFO_FILE)
-                self.clockFile = os.path.join(path, self._CLOCK_FILE)
-                self.userCalFile = os.path.join(path, self._USERCAL_FILE)
-                self.configUIFile = os.path.join(path, self._CONFIG_UI_FILE)
-                self.recpropFile = os.path.join(path, self._RECPROP_FILE)
-                self.commandFile = os.path.join(path, self._COMMAND_FILE)
-                self._volumeName = None
+            path = os.path.realpath(newpath)
+            self.configFile = os.path.join(path, self._CONFIG_FILE)
+            self.infoFile = os.path.join(path, self._INFO_FILE)
+            self.clockFile = os.path.join(path, self._CLOCK_FILE)
+            self.userCalFile = os.path.join(path, self._USERCAL_FILE)
+            self.configUIFile = os.path.join(path, self._CONFIG_UI_FILE)
+            self.recpropFile = os.path.join(path, self._RECPROP_FILE)
+            self.commandFile = os.path.join(path, self._COMMAND_FILE)
+            self._volumeName = None
 
-            self._path = path
+        self._path = path
 
 
     @property
+    @synchronized
     def volumeName(self) -> Union[str, bool]:
         """ The recorder's user-specified filesystem label. """
         if self.isVirtual or self.isRemote:
@@ -573,6 +598,7 @@ class Recorder:
             return False
 
 
+    @synchronized
     def getInfo(self,
                 name: Optional[str] = None,
                 default=None) -> Any:
@@ -588,49 +614,47 @@ class Recorder:
                 device data. If a `name` is specified, the type returned will
                 vary.
         """
-        mideSchema = loadSchema("mide_ide.xml")
-        with self._busy:
-            if not self._info:
-                if not self._rawinfo:
-                    try:
-                        self._rawinfo = self._getDevinfo().readDevinfo(self.path)
-                    except DeviceError:
-                        # Serial/MQTT _getInfo() command failed
-                        # TODO: This may not be necessary, depending on how remote devices are handled (in progress)
-                        pass
-                if self._rawinfo:
-                    self._hash = hash(self._rawinfo)
-                    infoFile = mideSchema.loads(self._rawinfo)
-                    try:
-                        props = infoFile.dump().get('RecordingProperties', {})
-                        self._info = props.get('RecorderInfo', {})
-                        for k, v in self._info.items():
-                            if isinstance(v, bytes):
-                                # Nothing in the device info should be binary,
-                                # but as of ebmlite 3.0.1, StringElements are
-                                # read as bytes. Convert.
-                                self._info[k] = str(v, 'utf8')
-                    except (IOError, KeyError) as err:
-                        logger.debug("getInfo() raised a possibly-allowed exception: %r" % err)
-                        pass
-                    finally:
-                        infoFile.close()
+        if not self._info:
+            if not self._rawinfo:
+                try:
+                    self._rawinfo = self._getDevinfo().readDevinfo(self.path)
+                except DeviceError:
+                    # Serial/MQTT _getInfo() command failed
+                    # TODO: This may not be necessary, depending on how remote devices are handled (in progress)
+                    pass
+            if self._rawinfo:
+                self._hash = hash(self._rawinfo)
+                infoFile = loadSchema("mide_ide.xml").loads(self._rawinfo)
+                try:
+                    props = infoFile.dump().get('RecordingProperties', {})
+                    self._info = props.get('RecorderInfo', {})
+                    for k, v in self._info.items():
+                        if isinstance(v, bytes):
+                            # Nothing in the device info should be binary,
+                            # but as of ebmlite 3.0.1, StringElements are
+                            # read as bytes. Convert.
+                            self._info[k] = str(v, 'utf8')
+                except (IOError, KeyError) as err:
+                    logger.debug("getInfo() raised a possibly-allowed exception: %r" % err)
+                    pass
+                finally:
+                    infoFile.close()
 
-            if not self._hash:
-                # Probably a virtual device (from IDE file); use _info dict.
-                # FUTURE: base hash on IDE?
-                self._hash = hash(repr(self._info))
+        if not self._hash:
+            # Probably a virtual device (from IDE file); use _info dict.
+            # FUTURE: base hash on IDE?
+            self._hash = hash(repr(self._info))
 
-            if not self._info:
-                if name is None:
-                    return {}
-                return default
-
+        if not self._info:
             if name is None:
-                # Whole dict requested: return a copy (prevents accidental edits)
-                return self._info.copy()
-            else:
-                return self._info.get(name, default)
+                return {}
+            return default
+
+        if name is None:
+            # Whole dict requested: return a copy (prevents accidental edits)
+            return self._info.copy()
+        else:
+            return self._info.get(name, default)
 
 
     @property
@@ -640,6 +664,7 @@ class Recorder:
 
 
     @property
+    @synchronized
     def isRemote(self) -> bool:
         """ Is this device not directly connected to this computer? """
         if self.isVirtual:
@@ -650,6 +675,7 @@ class Recorder:
 
 
     @property
+    @synchronized
     def name(self) -> str:
         """ The recording device's (user-assigned) name. """
         if self._name:
@@ -661,6 +687,7 @@ class Recorder:
 
 
     @property
+    @synchronized
     def notes(self) -> str:
         """ The recording device's (user-assigned) description. """
         try:
@@ -736,24 +763,7 @@ class Recorder:
             (optionally) a `BOM version` letter. Older versions will be
             a single number.
         """
-        rev = self.hardwareVersionInt
-        try:
-            if rev > 99:
-                # New structure of HwRev, which includes version, revision,
-                # and BOM version.
-                major = int(rev/10000)
-                minor = int((rev % 10000) / 100)
-                bom = rev % 100
-                if bom == 0:
-                    bom = ""
-                elif bom < 26:
-                    bom = chr(bom+65)
-                else:
-                    bom = chr((bom % 25) + 64) * int((bom // 25 + 1))
-                rev = f"v{major}r{minor}{bom}"
-        except TypeError:
-            pass
-        return str(rev)
+        return util.formatHwRev(self.hardwareVersionInt)
 
 
     @property
@@ -776,7 +786,7 @@ class Recorder:
         fw = self.getInfo('FwRevStr', None)
         if not fw:
             # Older FW did not write FwRevStr
-            fw = "1.%s" % self.firmwareVersion
+            fw = util.formatFwRev(self.firmwareVersion)
         return fw
 
 
@@ -791,7 +801,8 @@ class Recorder:
         """ The recorder's date of manufacture. """
         bd = self.getInfo('DateOfManufacture')
         if bd is not None:
-            return datetime.utcfromtimestamp(bd)
+            return util.utcfromtimestamp(bd)
+        return None
 
     
     @property
@@ -821,6 +832,7 @@ class Recorder:
 
 
     @property
+    @synchronized
     def hasWifi(self) -> Union[str, bool]:
         """ The name of the Wi-Fi hardware type, or `False` if none. The name
             will not be blank, so expressions like `if dev.hasWifi:` will work.
@@ -981,6 +993,7 @@ class Recorder:
                 for chId, subChs in channels.items()}
 
 
+    @synchronized
     def getTime(self,
                 epoch=True,
                 timeout: Union[int, float] = 3) -> Union[Tuple[datetime, datetime], Tuple[Epoch, Epoch]]:
@@ -1005,6 +1018,7 @@ class Recorder:
         return ci.getTime(epoch=epoch, timeout=timeout)
 
 
+    @synchronized
     def setTime(self,
                 t: Union[Epoch, datetime, struct_time, tuple, None] = None,
                 pause: bool = True,
@@ -1040,6 +1054,7 @@ class Recorder:
         return ci.setTime(t=t, pause=pause, retries=retries, timeout=timeout)
 
 
+    @synchronized
     def getClockDrift(self,
                       pause: bool = True,
                       retries: int = 1,
@@ -1081,52 +1096,35 @@ class Recorder:
             return calPolys
         except (KeyError, IndexError, ValueError) as err:
             logger.debug("_parsePolynomials() raised a possibly-allowed exception: %r" % err)
-            pass
+            return {}
 
 
+    @synchronized
     def getManifest(self) -> Union[Dict[str, Any], None]:
         """ Read the device's manifest data. The data is a superset of the
             information returned by `getInfo()`.
         """
-        # Note: This method sets `Recorder._propData`, `Recorder._manData`,
-        # `Recorder._calData`, `Recorder._manifest`, and `Recorder._calibration`.
-
-        with self._busy:
-            if self._manifest is not None or self.isVirtual:
-                return self._manifest
-
-            manSchema = loadSchema('mide_manifest.xml')
-            calSchema = loadSchema('mide_ide.xml')
-            manData, calData, propData = self._getDevinfo().readManifest()
-
-            if manData:
-                self._manData = manData
-                try:
-                    self._manifest = manSchema.loads(manData)[0].dump()
-                except IndexError:
-                    logger.warning(f'No manifest data for {self}!')
-                    self._manifest = None
-            else:
-                logger.warning(f'No manifest data for {self}!')
-                self._manData = self._manifest = None
-
-            if calData:
-                self._calData = calSchema.loads(calData)
-                try:
-                    self._calibration = self._calData[0].dump()
-                except IndexError:
-                    logger.warning(f'No system calibration for {self}!')
-                    self._calibration = None
-            else:
-                logger.warning(f'No system calibration for {self}!')
-                self._calData = self._calibration = None
-
-            if propData:
-                self._propData = propData
-
+        if self._manifest is not None or self.isVirtual:
             return self._manifest
 
+        manSchema = loadSchema('mide_manifest.xml')
+        manData = self._getDevinfo().readManifest()
 
+        if manData:
+            self._manData = manData
+            try:
+                self._manifest = manSchema.loads(manData)[0].dump()
+            except IndexError:
+                logger.warning(f'No manifest data for {self}!')
+                self._manifest = None
+        else:
+            logger.warning(f'No manifest data for {self}!')
+            self._manData = self._manifest = None
+
+        return self._manifest
+
+
+    @synchronized
     def _readCalFile(self,
                      filename: Optional[Filename] = None) -> Optional[MasterElement]:
         """ Read a file of calibration data.
@@ -1192,7 +1190,24 @@ class Recorder:
             if c is not None:
                 return c
 
-        self.getManifest()
+        if self._calibration is not None:
+            # Already read, or a virtual device
+            return self._calibration
+
+        calSchema = loadSchema('mide_ide.xml')
+        calData = self._getDevinfo().readCalibration()
+
+        if calData:
+            self._calData = calSchema.loads(calData)
+            try:
+                self._calibration = self._calData[0].dump()
+            except IndexError:
+                logger.warning(f'No system calibration for {self}!')
+                self._calibration = None
+        else:
+            logger.warning(f'No system calibration for {self}!')
+            self._calData = self._calibration = None
+
         return self._calibration
 
 
@@ -1237,7 +1252,7 @@ class Recorder:
         if data:
             cd = data.get('CalibrationDate', None)
             if cd is not None and not epoch:
-                return datetime.utcfromtimestamp(cd)
+                return util.utcfromtimestamp(cd)
             return cd
         return None
 
@@ -1274,7 +1289,7 @@ class Recorder:
         """
         ce = self._getCalExpiration(self.getCalibration(user=user))
         if ce is not None and not epoch:
-            return datetime.utcfromtimestamp(ce)
+            return util.utcfromtimestamp(ce)
         return ce
 
 
@@ -1310,17 +1325,19 @@ class Recorder:
         if self.isVirtual or self._properties is not None:
             return self._properties
 
-        self.getManifest()
-        props = loadSchema("mide_ide.xml").loads(self._propData).dump()
+        self._propData = self._getDevinfo().readProperties()
+        if self._propData:
+            props = loadSchema("mide_ide.xml").loads(self._propData).dump()
+            self._properties = props.get('RecordingProperties', {})
 
-        self._properties = props.get('RecordingProperties', {})
         return self._properties
 
 
+    @synchronized
     def getSensors(self) -> Dict[int, Sensor]:
         """ Get the recorder sensor description data.
         """
-        self.getManifest()
+        self.getProperties()
 
         if self._sensors is not None:
             return self._sensors
@@ -1494,38 +1511,37 @@ class Recorder:
     # ===========================================================================
 
     @property
+    @synchronized
     def config(self) -> ConfigInterface:
         """ The device's "configuration interface," the means through which to
             read and/or write device config.
         """
-        with self._busy:
+        if self._config is None:
+            for interface in config.INTERFACES:
+                if interface.hasInterface(self):
+                    # logger.debug('Instantiating config interface: {!r}'.format(interface))
+                    self._config = interface(self)
+                    break
+
             if self._config is None:
-                for interface in config.INTERFACES:
-                    if interface.hasInterface(self):
-                        # logger.debug('Instantiating config interface: {!r}'.format(interface))
-                        self._config = interface(self)
-                        break
+                raise UnsupportedFeature("Device has no configuration interface")
 
-                if self._config is None:
-                    raise UnsupportedFeature("Device has no configuration interface")
-
-            return self._config
+        return self._config
 
 
     @config.setter
+    @synchronized
     def config(self, interface: ConfigInterface):
-        with self._busy:
-            self._config = interface
+        self._config = interface
 
 
     @property
     def hasConfigInterface(self) -> bool:
         """ Can this device be configured?
         """
-        try:
-            return bool(self.config)
-        except UnsupportedFeature:
-            return False
+        if self._config:
+            return True
+        return any(ci.hasInterface(self) for ci in config.INTERFACES)
 
 
     # ===========================================================================

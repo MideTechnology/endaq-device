@@ -4,18 +4,20 @@ data-logging devices.
 """
 
 __author__ = "David Stokes"
-__copyright__ = "Copyright 2024 Mide Technology Corporation"
+__copyright__ = "Copyright 2025 Mide Technology Corporation"
 
 import os
 from pathlib import Path
 import string
 from threading import RLock
 from typing import Dict, List, Optional, Union
+import warnings
 from weakref import WeakValueDictionary
 
 import logging
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
+if 'ENDAQ_LOGLEVEL' in os.environ:
+    logger.setLevel(int(os.environ.get('ENDAQ_LOGLEVEL', logging.ERROR)))
 
 import ebmlite.core
 from idelib.dataset import Dataset
@@ -33,7 +35,7 @@ from .types import Drive, Filename, Epoch
 #
 # ============================================================================
 
-__version__ = "1.4.0"
+__version__ = "1.4.1b4"
 
 __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'DeviceError', 'DeviceTimeout', 'UnsupportedFeature',
@@ -84,6 +86,10 @@ RECORDER_CACHE_SIZE = 100
 # Lock to prevent contention (primarily with the recorder cache). Several
 # classes have their own 'busy' locks as well.
 _module_busy = RLock()
+
+# The set of serial ports found in the last check, for detecting changes in
+# connected devices. See similar variables in the OS-specific modules.
+_LAST_PORTS = set()
 
 
 # ============================================================================
@@ -143,23 +149,51 @@ def getRecorder(path: Filename,
 
 
 def deviceChanged(recordersOnly: bool = True,
-                  clear: bool = False) -> bool:
-    """ Returns `True` if a drive has been connected or disconnected since
-        the last call to :meth:`~.endaq.device.deviceChanged`.
+                  clear: bool = False,
+                  drives: bool = True,
+                  serial: bool = True) -> bool:
+    """ Returns `True` if a drive and/or serial device has been connected or
+        disconnected since the last call to :meth:`~.endaq.device.deviceChanged`.
+        For quick checks.
         
         :param recordersOnly: If `False`, any change to the mounted drives
-            is reported as a change. If `True`, the mounted drives are checked
-            and `True` is only returned if the change occurred to a recorder.
-            Checking for recorders only takes marginally more time.
+            and/or USB serial devices is reported as a change. If `True`, a
+            basic test is done to filter non-recorders out of the check,
+            reducing false positives but taking marginally longer in
+            certain cases.
         :param clear: If `True`, clear the cache of previously-detected
             drives and devices.
+        :param drives: If `False`, exclude devices mounted as drives.
+        :param serial: If `False`, exclude devices connected via USB serial.
     """
-    return os_specific.deviceChanged(recordersOnly, RECORDER_TYPES, clear=clear)
+    if clear:
+        # `clear=False` is no longer used anywhere in our various codebases
+        warnings.warn("The deviceChanged 'clear' option is deprecated and "
+                      "will be removed in the future",
+                      DeprecationWarning)
+
+    if drives:
+        changed = os_specific.deviceChanged(recordersOnly, RECORDER_TYPES,
+                                            clear=clear)
+    else:
+        changed = False
+
+    if serial:
+        ports = set(SerialCommandInterface._possibleRecorders(recordersOnly))
+        with _module_busy:
+            global _LAST_PORTS
+            changed = changed or ports != _LAST_PORTS
+            if clear:
+                _LAST_PORTS.clear()
+            _LAST_PORTS.update(ports)
+            _LAST_PORTS = ports
+
+    return changed
 
 
 def getDeviceList(strict: bool = True) -> List[Drive]:
-    """ Get a list of local data recorders, as their respective path (or the
-        drive letter under Windows).
+    """ Get a list of local data recorders mounted as drives, as their
+        respective path (or the drive letter under Windows).
 
         :param strict: If `False`, only the directory structure is used
             to identify a recorder. If `True`, non-FAT file systems will
@@ -192,30 +226,30 @@ def getDevices(paths: Optional[List[Filename]] = None,
     """
     global RECORDERS, RECORDERS_BY_SN
 
-    with _module_busy:
-        if paths is None:
-            paths = getDeviceList(strict=strict)
-        else:
-            if isinstance(paths, (str, bytes, bytearray, Path)):
-                paths = [paths]
+    if paths is None:
+        paths = getDeviceList(strict=strict)
+    else:
+        if isinstance(paths, (str, bytes, bytearray, Path)):
+            paths = [paths]
 
-        result = set()
+    result = set()
 
-        for path in paths:
-            dev = getRecorder(path, update=update, strict=strict)
-            if dev is not None:
-                result.add(dev)
+    for path in paths:
+        dev = getRecorder(path, update=update, strict=strict)
+        if dev is not None:
+            result.add(dev)
 
-        if unmounted:
-            for dev in getSerialDevices(known=RECORDERS_BY_SN):
-                if not dev.available:
-                    dev.path = None
-                result.add(dev)
+    if unmounted:
+        for dev in getSerialDevices(known=RECORDERS_BY_SN):
+            if not dev.available:
+                dev.path = None
+            result.add(dev)
+            with _module_busy:
                 RECORDERS.pop(hash(dev), None)
                 RECORDERS[hash(dev)] = dev
                 RECORDERS_BY_SN[dev.serialInt] = dev
 
-        return sorted(result, key=lambda x: x.path or '\uffff')
+    return sorted(result, key=lambda x: x.path or '\uffff')
 
 
 def findDevice(sn: Optional[Union[str, int]] = None,
@@ -252,28 +286,27 @@ def findDevice(sn: Optional[Union[str, int]] = None,
             representing the device with the specified serial number or chip
             ID, or `None` if it cannot be found.
     """
-    with _module_busy:
-        if sn and chipId:
-            raise ValueError('Either a serial number or chip ID is required, not both')
-        elif sn is None and chipId is None:
-            raise ValueError('Either a serial number or chip ID is required')
+    if sn and chipId:
+        raise ValueError('Either a serial number or chip ID is required, not both')
+    elif sn is None and chipId is None:
+        raise ValueError('Either a serial number or chip ID is required')
 
-        if isinstance(sn, str):
-            sn = sn.lstrip(string.ascii_letters+"0")
-            if not sn:
-                sn = 0
-            sn = int(sn)
+    if isinstance(sn, str):
+        sn = sn.lstrip(string.ascii_letters+"0")
+        if not sn:
+            sn = 0
+        sn = int(sn)
 
-        if isinstance(chipId, str):
-            chipId = int(chipId, 16)
+    if isinstance(chipId, str):
+        chipId = int(chipId, 16)
 
-        for d in getDevices(paths, update=update, strict=strict, unmounted=unmounted):
-            if sn is not None and d.serialInt == sn:
-                return d
-            elif chipId is not None and d.chipId == chipId:
-                return d
+    for d in getDevices(paths, update=update, strict=strict, unmounted=unmounted):
+        if sn is not None and d.serialInt == sn:
+            return d
+        elif chipId is not None and d.chipId == chipId:
+            return d
 
-        return None
+    return None
 
 
 # ============================================================================

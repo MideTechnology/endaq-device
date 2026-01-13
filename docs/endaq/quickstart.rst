@@ -13,7 +13,7 @@ Basic usage
 Finding attached devices
 ------------------------
 
-A ``endaq.device`` "Hello World":
+An ``endaq.device`` "Hello World":
 
 .. code-block:: python
 
@@ -24,7 +24,9 @@ A ``endaq.device`` "Hello World":
 Accessing basic recorder properties
 -----------------------------------
 
-Most common properties are read-only attributes of :py:class:`endaq.device.Recorder`.
+Most common properties are read-only attributes of :py:class:`endaq.device.Recorder`. ``getDevices()`` returns a list of
+:py:class:`endaq.device.Recorder` objects, each of which represents a connected device. 
+To access information about a single device, use indexing.
 
 .. code-block:: python
 
@@ -72,11 +74,106 @@ Virtual devices
 ===============
 An enDAQ ``.IDE`` recording file can be used to create a 'virtual' version
 of the recorder that created it. This provides an easy way to retrieve
-information about the device and how it was configured.
+information about the device and how it was configured. Virtual devices can not
+be commanded.
 
 .. code-block:: python
 
   >>> from idelib.importer import openFile
   >>> with openFile('test.ide') as doc:
   ...     virtual_dev = endaq.device.fromRecording(doc)
+
+Quick Start Example Code
+========================
+Here is some starter code for introducing yourself to the endaq.device library. 
+Use it to familiarize yourself with with how to use endaq.device and learn 
+about some of its basic applications. Make sure to follow the 
+`installation <index.html#installation>`_ instructions found on the homepage 
+first. 
+
+.. code-block:: python
+   :linenos:
+   
+   """ 
+   Quick Start example code for using the endaq.device library.
+
+   CONNECTING:
+   This code will find all connected devices and print their serial numbers. It
+   will then select the first connected device and assign it to the 'dev'
+   variable so we can interface with that device.
+   
+   CONFIGURING:
+   Next, the device is configured to have the sample rate of the 40g
+   accelerometer (Channel 80) set to 4kHz. Retrigger is then turned off. For the
+   final bit of configuration, if the device's firmware is older than version
+   3.01.06, the recording time limit is set to 30 seconds, since those firmware
+   versions do not support the 'stopRecording()' function.
+
+   STARTING THE RECORDING:
+   Now the `startRecording()` command is sent and the device's green light
+   should begin blinking to indicate that it is recording. If the device is old
+   enough that it does not have a serial command interface, a message will be
+   printed asking for the recording to be started manually, and then the code
+   will wait until the device disappears, indicating that the recording has
+   started.
+
+   STOPPING THE RECORDING:
+   If the device's FW is new enough, it will be told to stop recording after 30
+   seconds. If the FW is old enough that there was a recording time limit set
+   earlier, then the code will wait for the device to reappear after the
+   recording automatically stops. If the device fails to reappear within 60
+   seconds, an error will be raised.
+
+   COPYING THE RECORDING FILE:
+   When the device reconnects, the most recent recording on the enDAQ will be
+   copied to a local directory of your choosing. REPLACE THE 'destination'
+   VARIABLE WITH YOUR DESIRED FILE PATH. The name of this recording file
+   will then be printed.
+   """
+   # Import endaq.device and other useful libraries.
+   import time
+   import os.path
+   import shutil
+   import endaq.device
+   from endaq.device.exceptions import CommandError, DeviceTimeout
+
+   # Find all connected devices and print their serial numbers
+   device_list = endaq.device.getDevices()
+   print("Connected Device Serial Number(s):")
+   for device in device_list:
+      print(device.serial)
+
+   # Select the first device from the list of available devices
+   dev = endaq.device.getDevices()[0]
+
+   # Update configuration
+   dev.config.setSampleRate(dev.channels[80], 4000)  # Set Ch 80 SR to 4000 Hz
+   dev.config.retrigger = False # Turn off retrigger
+   if dev.firmwareVersion < 30106: # Since stopRecording doesn't work on old FW...
+      dev.config.recordingTimeLimit = 30 # Set recording limit to 30 secs
+
+   # Start Recording
+   dev.command.startRecording()
+
+   # For older devices without a SerialCommandInterface
+   if not isinstance(dev.command, endaq.device.SerialCommandInterface):
+         print("Start command failed, please push the button to start a recording.")
+         dev.command.awaitDisconnect() # Wait for the device to disconnect
+
+   # Stop Recording
+   if dev.firmwareVersion >= 30106:
+      time.sleep(30)
+      dev.command.stopRecording()
+   else:
+      if dev.command.awaitReconnect(timeout=60) is False:
+         raise DeviceTimeout("Device did not reconnect in 60 seconds after recording.")
+
+   # Copy the most recent recording on the enDAQ to your local directory
+   destination = "/destination/" # Replace with desired destination path
+
+   path = os.path.join(dev.path, 'DATA', 'RECORD')
+   newest = sorted(os.listdir(path))[-1]
+   shutil.copy2(os.path.join(path, newest), os.path.join(destination, newest))
+   # Print the copied file's name
+   print(f"Name of the most recent recording: {newest}")
 

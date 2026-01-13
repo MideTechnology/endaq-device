@@ -13,18 +13,34 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 
-import pkg_resources
+import codecs
+import os.path
+import sys
 
-import endaq
+# go up a dir and include that guy =
+p = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, p)
+
 
 # -- Project information -----------------------------------------------------
 
+def get_version(rel_path):
+    """ Read the version number directly from the source. """
+    with codecs.open(rel_path, 'r') as fp:
+        for line in fp:
+            if line.startswith('__version__'):
+                delim = '"' if '"' in line else "'"
+                return line.split(delim)[1]
+        else:
+            raise RuntimeError("Unable to find version string.")
+
+
 project = 'endaq.device'
-copyright = '2023, Mide Technology Corp.'
+copyright = '2025, Mide Technology Corp.'
 author = ''
 
 # The full version, including alpha/beta/rc tags
-release = pkg_resources.get_distribution("endaq-device").version
+release = get_version(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'endaq', 'device', '__init__.py')))
 # The short X.Y version
 version = '.'.join(release.split(".")[:2])
 
@@ -99,10 +115,12 @@ html_favicon = '_static/endaq-favicon.ico'
 #
 html_theme_options = {
     "logo_link": "index",
-    "github_url": "https://github.com/MideTechnology/endaq-python",
+    "github_url": "https://github.com/MideTechnology/endaq-device",
     "twitter_url": "https://twitter.com/enDAQ_sensors",
     "collapse_navigation": True,
-    "google_analytics_id": "G-E9QXH4H5LP",
+    "analytics": {
+        "google_analytics_id": "G-E9QXH4H5LP",
+    }
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,
@@ -206,7 +224,7 @@ epub_exclude_files = ['search.html']
 # -- Options for intersphinx extension ---------------------------------------
 
 # Example configuration for intersphinx: refer to the Python standard library.
-intersphinx_mapping = {'python': ('https://docs.python.org/2', None)}
+intersphinx_mapping = {'python': ('https://docs.python.org/3', None)}
 
 # -- Options for spellchecker ------------------------------------------------
 

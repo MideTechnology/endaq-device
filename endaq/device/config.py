@@ -9,21 +9,26 @@ device's realtime clock is also done through the command interface, as it
 also takes effect immediately.
 """
 
+from datetime import datetime
 import errno
 import logging
 import os.path
 from pathlib import Path
+from time import struct_time
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import warnings
 
 from ebmlite.core import loadSchema, Schema
-from ebmlite.core import Document, MasterElement, UnknownElement
+from ebmlite.core import Document, Element, MasterElement, UnknownElement
 from idelib.dataset import Channel, SubChannel
 
+from .command_interfaces import SerialCommandInterface
 from .exceptions import ConfigError, DeviceError, UnsupportedFeature
+from .types import Epoch
 from . import legacy
 from . import ui_defaults
 from . import util
+from .util import device_synchronized
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -46,6 +51,7 @@ _POST_CONFIG_MSG = ("When ready...\n"
                     "    1. Disconnect the recorder\n"
                     "    2. Mount to surface\n"
                     "    3. Press the recorder's primary button ")
+
 
 # ===========================================================================
 #
@@ -275,7 +281,7 @@ class ConfigItem:
         if not isinstance(exp, str):
             # Probably won't occur, but just in case...
             logger.debug("Ignoring bad value for {}: {!r} ({})".format(idstr, exp, type(exp)))
-            return
+            return None
 
         try:
             return compile(exp, "<{}>".format(msg), "eval")
@@ -372,6 +378,7 @@ class ConfigItem:
         """ The configuration item's default value. """
         if self._default:
             return eval(self._valueFormat, {'x': self._default})
+        return None
 
 
     @property
@@ -426,6 +433,11 @@ class ConfigInterface:
     """
     Base class for mechanisms to access/modify device configuration.
 
+    Note: for subclasses communicating with remote devices (serial, MQTT,
+    etc.), the device's 'lock ID' should be set with
+    `CommandInterface.setLockID()` before accessing/using the config
+    interface.
+
     :ivar config: Device configuration data (e.g., data read from the config
         file). This may be set manually to override defaults and/or existing
         configuration data. Manual setting must be done after instantiation
@@ -451,7 +463,7 @@ class ConfigInterface:
             :param device: The Recorder to configure.
         """
         self._schema = loadSchema('mide_config_ui.xml')
-        self._schema.UNKNOWN = self._handleUnknownField
+        self._schema.UNKNOWN = ConfigInterface._handleUnknownField
 
         self.device: Optional["Recorder"] = device
         self.configUi: Optional[MasterElement] = None
@@ -479,7 +491,7 @@ class ConfigInterface:
 
     @classmethod
     def _handleUnknownField(cls, stream, offset: int, size: int,
-                            payloadOffset: int, eid: int, schema: Schema):
+                            payloadOffset: int, eid: int, schema: Schema) -> Element:
         """ Handler for unknown special-case field subclasses. For forwards
             compatibility, special-case fields fall back to their base type.
             See `ebmlite.UnknownElement` for argument info.
@@ -566,7 +578,7 @@ class ConfigInterface:
         # For now, this is basically the same as the device availability,
         # but allows for future config interfaces (e.g., remote and/or
         # wireless, etc.)
-        return self.device.available
+        return self.device and self.device.available
 
 
     def parseConfigUI(self,
@@ -681,7 +693,14 @@ class ConfigInterface:
     def getConfigUI(self) -> Union[Document, MasterElement]:
         """ Get the device's ``ConfigUI`` data.
         """
-        raise NotImplementedError("getConfigUI() not implemented")
+        if not self.configUi:
+            ebml = ui_defaults.getDefaultConfigUI(self.device)
+            if not ebml:
+                raise IOError(errno.ENOENT,
+                              f"No default ConfigUI found for {self.device!r}")
+            self.configUi = self._schema.loads(ebml)
+
+        return self.configUi
 
 
     def getConfig(self) -> Union[None, Document, MasterElement]:
@@ -927,7 +946,8 @@ class ConfigInterface:
 
     @property
     def recordingDir(self) -> Union[str, None]:
-        """ The name of the directory (on the device) where recordings are saved. """
+        """ The name of the directory (on the device) where recordings are saved.
+        """
         return self._getitem(0x14ff7f).value
 
     @recordingDir.setter
@@ -944,6 +964,27 @@ class ConfigInterface:
         self._setitem(0x15ff7f, prefix)
 
     @property
+    def recordingStartTime(self) -> Union[datetime, None]:
+        """ Date/time at which the recording will start. If trigger
+            conditions have been set, this determines when they will start
+            being checked.
+        """
+        t = self._getitem(0x0fff7f).value
+        if t is None:
+            return None
+        return datetime.utcfromtimestamp(t)
+
+    @recordingStartTime.setter
+    def recordingStartTime(self, t: Union[Epoch, datetime, struct_time, tuple, None]):
+        """ Delay before starting a recording, including between recordings
+            if 'Retrigger' is checked.
+        """
+        if t is not None:
+            t = util.time2epoch(t)
+
+        self._setitem(0x0fff7f, t)
+
+    @property
     def recordingTimeLimit(self) -> Union[int, None]:
         return self._getitem(0x0dff7f).value
 
@@ -953,11 +994,23 @@ class ConfigInterface:
 
     @property
     def recordingSizeLimit(self) -> Union[int, None]:
+        """ The maximum size of a single recording file (in bytes). """
         return self._getitem(0x11ff7f).value
 
     @recordingSizeLimit.setter
     def recordingSizeLimit(self, t: Optional[int]):
         self._setitem(0x11ff7f, t)
+
+    @property
+    def retrigger(self) -> bool:
+        """ When set, enDAQ will re-arm after recording time or size limit is reached. """
+        return bool(self._getitem(0x0eff7f).value)
+
+    @retrigger.setter
+    def retrigger(self, retrigger: bool):
+        # Retrigger is only written to config if True. Default is None.
+        retrigger = None if retrigger is False else retrigger
+        self._setitem(0x0eff7f, retrigger)
 
 
     # =======================================================================
@@ -1081,6 +1134,11 @@ class ConfigInterface:
     def _getChannel(self, configId: int) -> Union[Channel, SubChannel, None]:
         """ Get the Channel/SubChannel corresponding to a configuration ID.
         """
+        if not self.device:
+            # Should never happen in normal use, and special cases that use
+            # config interfaces without a device shouldn't be calling this.
+            raise ValueError(f'Config Interface has no device')
+
         ch = configId & 0xFF
         subCh = configId >> 8 & 0xFF
 
@@ -1244,17 +1302,7 @@ class VirtualConfigInterface(ConfigInterface):
         """
         # Use existing data, or data taken from source file
         self.configUi = self.configUi or getattr(self.device, '_configUi', None)
-        if self.configUi:
-            return self.configUi
-        else:
-            ebml = ui_defaults.getDefaultConfigUI(self.device)
-            self.configUi = self._schema.loads(ebml)
-
-        if not self.configUi:
-            raise IOError(errno.ENOENT, "No default ConfigUI found for {}"
-                          .format(self.device.partNumber))
-
-        return self.configUi
+        return super().getConfigUI()
 
 
     def getConfig(self) -> Union[None, Document, MasterElement]:
@@ -1311,18 +1359,21 @@ class FileConfigInterface(ConfigInterface):
     # objects.
     # =======================================================================
 
+    @device_synchronized
     def _writeConfig(self, data: bytes) -> int:
         """ Open and write to the device's config file. """
         with open(self.device.configFile, 'wb') as f:
             return f.write(data)
 
 
+    @device_synchronized
     def _readConfig(self) -> bytes:
         """ Open and read the device's config file. """
         with open(self.device.configFile, 'rb') as f:
             return f.read()
 
 
+    @device_synchronized
     def _readUi(self):
         """ Open and read the device's `CONFIG.UI` file. """
         with open(self.device.configUIFile, 'rb') as f:
@@ -1335,11 +1386,13 @@ class FileConfigInterface(ConfigInterface):
         return os.path.isfile(filename)
 
 
+    @device_synchronized
     def _backupConfig(self) -> bool:
         """ Create a backup copy of the device's config file. """
         return util.makeBackup(self.device.configFile)
 
 
+    @device_synchronized
     def _restoreConfig(self,
                        remove: bool = False) -> bool:
         """ Restore a backup copy of the device's config file. """
@@ -1429,22 +1482,22 @@ class FileConfigInterface(ConfigInterface):
         return legacy.generateLegacyConfig(vals, self.device)
 
 
+    @device_synchronized
     def getConfigUI(self) -> Union[Document, MasterElement]:
         """ Load the device's ``ConfigUI`` data.
         """
-        if not self.configUi:
-            if self._isfile(self.device.configUIFile):
-                self.configUi = self._schema.loads(self._readUi())
-            else:
-                ebml = ui_defaults.getDefaultConfigUI(self.device)
-                if not ebml:
-                    raise IOError(errno.ENOENT, "No default ConfigUI found for {}"
-                                  .format(self.device))
-                self.configUi = self._schema.loads(ebml)
+        if self.configUi:
+            return self.configUi
 
-        return self.configUi
+        elif self._isfile(self.device.configUIFile):
+            ui = self._schema.loads(self._readUi())
+            if ui:
+                self.configUi = ui
+
+        return super().getConfigUI()
 
 
+    @device_synchronized
     def getConfig(self) -> Union[None, Document, MasterElement]:
         """ Low-level method that retrieves the device's config EBML (e.g.,
             the contents of a real device's `config.cfg` file), if any.
@@ -1466,6 +1519,7 @@ class FileConfigInterface(ConfigInterface):
         return None
 
 
+    @device_synchronized
     def loadConfig(self, config: Optional[MasterElement] = None):
         """ Process a device's configuration data.
 
@@ -1491,6 +1545,7 @@ class FileConfigInterface(ConfigInterface):
         self.configVersionRead = versionRead
 
 
+    @device_synchronized
     def applyConfig(self,
                     unknown: bool = True,
                     clear: bool = True,
@@ -1536,31 +1591,60 @@ class RemoteConfigInterface(FileConfigInterface):
     """
     A configuration interface for remote devices (serial without MSD, MQTT,
     etc.), using the device's `CommandInterface` to read and write data.
+
+    The device's 'lock ID' should be set with `CommandInterface.setLockID()`
+    before accessing/using the config interface, as it is required to read
+    or write configuration data.
     """
 
-    #: A command callback function, used when reading and writing data.
-    #  The same one is used for all reads/writes, but you may change the
-    #  value of `callback` before calling `loadConfig()` or `applyConfig()`,
-    #  or before modifying any configuration item values if the operations
-    #  need their own callbacks.
-    callback: Optional[Callable] = None
+    def __init__(self,
+                 device: "Recorder",
+                 timeout: float = 5.,
+                 callback: Optional[Callable] = None):
+        """ `ConfigInterface` instances are rarely (if ever) explicitly
+            created; the parent `Recorder` object will create the
+            appropriate `ConfigInterface` when its `config` property is
+            first accessed.
+
+            :param device: The Recorder to configure.
+            :param timeout: The timeout (in seconds) for data reading and
+                writing function calls.
+            :param callback: A command callback function, used when reading
+                and writing data. The same one is used for all reads/writes,
+                but you may change the value of an instance's `callback`
+                attribute before calling `loadConfig()` or `applyConfig()`,
+                or before modifying any configuration item values if the
+                operations need their own callbacks.
+        """
+        super().__init__(device)
+
+        #: A command callback function, used when reading and writing data.
+        #  The same one is used for all reads/writes, but you may change the
+        #  value of `callback` before calling `loadConfig()` or `applyConfig()`,
+        #  or before modifying any configuration item values if the operations
+        #  need their own callbacks.
+        self.callback = callback
+
+        #: The timeout for all `GetInfo` and `SetInfo` commands.
+        self.timeout = timeout
 
 
     def _writeConfig(self, data: bytes) -> int:
-        """ Open and write to the device's config file. """
-        self.device.command.setLockID()
+        """ Open and write to the device's config file.
+        """
         self.device.command._setInfo(5, data, callback=self.callback)
 
 
     def _readConfig(self) -> bytes:
-        """ Open and read the device's config file. """
-        self.device.command.setLockID()
+        """ Open and read the device's config file.
+        """
         return self.device.command._getInfo(5, lock=True,
                                             callback=self.callback)
 
 
     def _readUi(self):
-        """ Open and read the device's `CONFIG.UI` file. """
+        """ Open and read the device's `CONFIG.UI` file.
+        """
         return self.device.command._getInfo(2, callback=self.callback)
 
 
@@ -1574,7 +1658,8 @@ class RemoteConfigInterface(FileConfigInterface):
 
     def _backupConfig(self) -> bool:
         """ Create a backup copy of the device's config file. For
-            compatibility; does nothing for `RemoteConfigInterface`."""
+            compatibility; does nothing for `RemoteConfigInterface`.
+        """
         return True
 
 
@@ -1602,7 +1687,7 @@ class RemoteConfigInterface(FileConfigInterface):
             return False
 
         # TODO: FW version check?
-        return True
+        return isinstance(device.command, SerialCommandInterface)
 
 
     @property

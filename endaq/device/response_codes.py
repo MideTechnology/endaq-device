@@ -39,7 +39,7 @@ class DeviceStatusCode(IntEnum):
 
     ERR_BUSY = -10  #: Communication channel is busy
     ERR_INVALID_COMMAND = -20  #: Badly formed command
-    ERR_BAD_LOCK_ID = -21 #: Command Lock ID invalid
+    ERR_BAD_LOCK_ID = -21  #: Command Lock ID invalid
     ERR_BAD_INFO_INDEX = -22  #: Unknown GetInfo/SetInfo index, or info is read or write only.
     ERR_BAD_PARAMETER = -29  #: One or more command parameters are invalid in some way.
     ERR_UNKNOWN_COMMAND = -30  #: Command not recognized
@@ -57,12 +57,32 @@ class DeviceStatusCode(IntEnum):
 CommandResponseCode = DeviceStatusCode
 
 
+responsestrings = {
+    CommandResponseCode.ERR_BUSY: "Communication channel is busy",
+    CommandResponseCode.ERR_INVALID_COMMAND: "Badly formed command",
+    CommandResponseCode.ERR_BAD_LOCK_ID: "Command Lock ID invalid or already set",
+    CommandResponseCode.ERR_BAD_INFO_INDEX: "Unknown info index, or info is read or write only",
+    CommandResponseCode.ERR_BAD_PARAMETER: "One or more command parameters are invalid in some way",
+    CommandResponseCode.ERR_UNKNOWN_COMMAND: "Command not recognized by device",
+    CommandResponseCode.ERR_BAD_PAYLOAD: "Bad command parameters/payload",
+    CommandResponseCode.ERR_BAD_EBML: "Command EBML is malformed",
+    CommandResponseCode.ERR_RESPONSE_TOO_LARGE: "EBML command response too large for device",
+    CommandResponseCode.ERR_BAD_CHECKSUM: "Command checksum failed (error transmitting packet)",
+    CommandResponseCode.ERR_BAD_PACKET: "Content of command packet bad/damaged",
+    CommandResponseCode.ERR_DISCONNECTED: "The device has gone offline unexpectedly",
+    CommandResponseCode.ERR_INTERNAL_ERROR: "MQTT Device Manager internal error",
+    CommandResponseCode.ERR_UNKNOWN_DEVICE: "Device/serial number unknown to MQTT Device Manager"
+}
+""" Default message strings for `DeviceStatusCode`/`CommandResponseCode` errors """
+
+
 class WiFiConnectionStatus(IntEnum):
     """ The status of the Wi-Fi connection, returned when querying Wi-Fi.
     """
     IDLE = 0  #: Wi-Fi is inactive (and/or disconnected).
     PENDING = 1  #: The device is in the process of connecting to the Wi-Fi AP.
     CONNECTED = 2  #: The device is connected to the Wi-Fi AP.
+    AP_MODE = 10  #: For Cloud Gateway hardware: Gateway is acting as an access point.
 
 
 class CurrentWiFiStatus(IntEnum):

@@ -3,7 +3,7 @@ Classes representing older Mide SlamStick data recorders.
 """
 
 __author__ = "dstokes"
-__copyright__ = "Copyright 2023 Mide Technology Corporation"
+__copyright__ = "Copyright 2025 Mide Technology Corporation"
 
 import os.path
 import re
@@ -12,6 +12,7 @@ from typing import Union
 from .base import Recorder
 from .endaq import EndaqS
 from .types import Filename
+from .util import synchronized
 
 #===============================================================================
 #
@@ -30,6 +31,13 @@ class SlamStickX(Recorder):
 
     manufacturer = "Midé Technology Corporation"
     homepage = "https://endaq.com/collections/endaq-shock-recorders-vibration-data-logger-sensors"
+
+
+    @property
+    def mcuType(self) -> Union[str, None]:
+        """ The recorder's CPU/MCU type. """
+        # Old devices didn't report MCU, but it is known
+        return self.getInfo('McuType', "EFM32GG330")
 
 
 #===============================================================================
@@ -59,18 +67,18 @@ class SlamStickC(SlamStickX):
 
 
     @path.setter
+    @synchronized
     def path(self, dev: Union[Filename, None]):
         """ The recorder's filesystem path (e.g., drive letter or mount point).
         """
-        with self._busy:
-            Recorder.path.fset(self, dev)
-            if self._path:
-                if self.getInfo('McuType', '').startswith("STM32"):
-                    # HACK: New STM32-based Sx-D16 devices mostly emulate the
-                    #  earlier EFM32 series 0 SlamStick C, but update with
-                    #  the new firmware packages (i.e., `update.pkg`). This
-                    #  is a convenient place to set it.
-                    self._FW_UPDATE_FILE = Recorder._FW_UPDATE_FILE
+        Recorder.path.fset(self, dev)
+        if self._path:
+            if self.getInfo('McuType', '').startswith("STM32"):
+                # HACK: New STM32-based Sx-D16 devices mostly emulate the
+                #  earlier EFM32 series 0 SlamStick C, but update with
+                #  the new firmware packages (i.e., `update.pkg`). This
+                #  is a convenient place to set it.
+                self._FW_UPDATE_FILE = Recorder._FW_UPDATE_FILE
 
 
 # ===============================================================================

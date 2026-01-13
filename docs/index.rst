@@ -3,14 +3,14 @@
 ================
 
 .. note::
-  This documentation is in very early development.
+  This documentation is still in development.
 
 ``endaq.device`` provides a means of representing, accessing, configuring and controlling
 `enDAQ™ data recorders <https://endaq.com/collections/endaq-shock-recorders-vibration-data-logger-sensors>`_. It
 also supports legacy SlamStick™ devices (X, C, and S).
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
    :caption: Contents:
 
    endaq/quickstart
@@ -18,6 +18,7 @@ also supports legacy SlamStick™ devices (X, C, and S).
    endaq/Recorder
    endaq/config_control
    endaq/special_topics
+   endaq/mqtt_basics
    api_ref
 
 
@@ -29,7 +30,7 @@ The ``endaq-device`` package is `available on PyPI <https://pypi.org/project/end
 
 For the most recent features that are still under development, you can also use `pip` to install endaq directly from `the GitHub repository <https://github.com/MideTechnology/endaq-device/>`_::
 
-    pip install git+https://github.com/MideTechnology/endaq-device.git@development
+    pip install git+https://github.com/MideTechnology/endaq-device.git@develop
 
 Note: While ``endaq-device`` installs into the same ``endaq`` 'namespace' as `endaq-python <https://docs.endaq.com/en/latest/index.html>`_,
 it is otherwise separate; the two packages are not interdependent, and one can be installed without the other.

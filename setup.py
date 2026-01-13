@@ -20,11 +20,14 @@ def get_version(rel_path):
 
 INSTALL_REQUIRES = [
     'ebmlite>=3.3.0',
-    'idelib>=3.2.9',
+    # 'idelib>=3.2.9',
+    'idelib @ git+https://github.com/MideTechnology/idelib.git@develop',
     'numpy>=1.19.4',
-    'psutil >=5.5.0, <6.0.0; sys_platform == "linux" or sys_platform=="darwin"',
+    'paho-mqtt>=2.1.0',
+    'psutil >=5.5.0; sys_platform == "linux" or sys_platform=="darwin"',
     'pyserial>=3.5',
-    'pywin32>=228; sys_platform == "win32"'
+    'pywin32>=228; sys_platform == "win32"',
+    'zeroconf'
 ]
 
 TEST_REQUIRES = [
@@ -57,11 +60,12 @@ setuptools.setup(
         classifiers=['Development Status :: 5 - Production/Stable',
                      'License :: OSI Approved :: MIT License',
                      'Natural Language :: English',
-                     'Programming Language :: Python :: 3.8',
                      'Programming Language :: Python :: 3.9',
                      'Programming Language :: Python :: 3.10',
                      'Programming Language :: Python :: 3.11',
                      'Programming Language :: Python :: 3.12',
+                     'Programming Language :: Python :: 3.13',
+                     'Programming Language :: Python :: 3.14',
                      ],
         keywords='endaq configure recorder hardware',
         project_urls={
@@ -73,6 +77,7 @@ setuptools.setup(
             'endaq.device',
             'endaq.device.ui_defaults',
             'endaq.device.schemata',
+            'endaq.device.mqtt'
             ],
         package_dir={
             'endaq.device': './endaq/device',
@@ -81,14 +86,7 @@ setuptools.setup(
             '': ['schemata/*.xml'],
         },
         test_suite='tests',
-        install_requires=[
-            'idelib>=3.2',
-            'numpy>=1.19.4',
-            'ebmlite>=3.1.0',
-            'psutil>=5.5.0, <6.0.0; sys_platform == "linux" or sys_platform=="darwin"',
-            'pyserial>=3.5',
-            'pywin32>=228; sys_platform == "win32"'
-            ],
+        install_requires=INSTALL_REQUIRES,
         extras_require={
             'test': INSTALL_REQUIRES + TEST_REQUIRES,
             'docs': INSTALL_REQUIRES + DOCS_REQUIRES,
