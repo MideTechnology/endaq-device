@@ -17,9 +17,9 @@ class Payload:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def hardware_creation(request):
-    is_raspi = request.config.getoption("--raspi")
+def hardware_creation(is_raspi):
     if is_raspi:
+        print(f"Setting Raspi interface")
         hw = RaspiInterface()
     else:
         if not sys.stdin.isatty():
@@ -47,6 +47,7 @@ def setupTeardownGPIO(no_skip_hardware_interface, fast_clean: bool):
             False otherwise. Set in command line.
     """
     # Put the device in default configuration
+    print(f"Setting up session")
     config_dict = {}
     device = safe_get_device(unmounted=False, timeout=30)
     config = GeneralConfig(**config_dict)
@@ -83,8 +84,9 @@ def setupTeardownGPIO(no_skip_hardware_interface, fast_clean: bool):
             # if device is not connected, reset it
             no_skip_hardware_interface.set_usb(True)
             no_skip_hardware_interface.timed_button_press(20)
-
         print("\nDone with RasPi tear down.")
+
+    print(f"Finished session")
 
 
 @pytest.fixture # with a default scope of "function"
@@ -96,6 +98,7 @@ def setupTeardown(no_skip_hardware_interface, device_sn, fast_clean):
         :param device_sn: the tested device's serial number collected from the 
             command line.
     """
+    print(f"Setting up test")
     if fast_clean:
         yield
     else:
@@ -123,6 +126,7 @@ def setupTeardown(no_skip_hardware_interface, device_sn, fast_clean):
         no_skip_hardware_interface.set_button(False)
 
         print(f"Test completed after {time.time() - start_time} seconds.")
+    print(f"Test Done")
 
 
 # Tests:

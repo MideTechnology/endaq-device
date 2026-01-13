@@ -70,6 +70,7 @@ def safe_get_device(device_sn: str="", timeout: int=15, unmounted=False) -> enda
             continue
         for dev in devices:
             if not device_sn or dev.serial.lower() == device_sn.lower():
+                print(f"Connected after {time.time() - start_time}")
                 return dev
         if time.time() - start_time > timeout:
             out_of_time = True
