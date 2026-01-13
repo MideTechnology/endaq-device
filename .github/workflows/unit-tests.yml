@@ -36,6 +36,11 @@ jobs:
   automated-tests:
     name: Run Automated Device Tests
 
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+
     env:
       APPROVED_USERS: '["pscheidler", "StokesMIDE"]'
       VENV_DIR: /opt/runner/venvs/endaq-device/
@@ -45,7 +50,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: ${{ matrix.python-version }}
       - run: python -m pip install --upgrade pip
 
       - uses: actions/checkout@v4

@@ -132,108 +132,108 @@ def setupTeardown(no_skip_hardware_interface, device_sn, fast_clean):
 
 
 # # Tests:
+#
+# def test_set_config(device_sn, setupTeardown):
+#     dev = safe_get_device(device_sn)
+#     current_name = dev.config.items[589695].value
+#     new_name = f"Config_Tested: {int(time.time())}"
+#     dev.config.items[589695].value = new_name
+#     dev.config.applyConfig()
+#     dev.command.reset()
+#     dev = safe_get_device(device_sn)
+#     assert dev.config.items[589695].value == new_name, f"Got wrong name: Got {dev.config.items[589695].value}, expected {new_name}. Old Name = {current_name}"
 
-def test_set_config(device_sn, setupTeardown):
-    dev = safe_get_device(device_sn)
-    current_name = dev.config.items[589695].value
-    new_name = f"Config_Tested: {int(time.time())}"
-    dev.config.items[589695].value = new_name
-    dev.config.applyConfig()
-    dev.command.reset()
-    dev = safe_get_device(device_sn)
-    assert dev.config.items[589695].value == new_name, f"Got wrong name: Got {dev.config.items[589695].value}, expected {new_name}. Old Name = {current_name}"
+def test_standard_run(device_sn, setupTeardown):
+    """ Test a standard run of an enDAQ device.
 
-# def test_standard_run(device_sn, setupTeardown):
-#     """ Test a standard run of an enDAQ device.
+        :param device_sn: the tested device's serial number collected from the
+            command line.
+        :param setupTeardown: a pytest fixture function that properly resets the
+            enDAQ before and after every test.
+    """
+    # Set up; Confirm device is idle
+    device = safe_get_device(device_sn)
+    fw_version = device.firmwareVersion
+    serial_number = device.serial
 
-#         :param device_sn: the tested device's serial number collected from the 
-#             command line.
-#         :param setupTeardown: a pytest fixture function that properly resets the
-#             enDAQ before and after every test.
-#     """
-#     # Set up; Confirm device is idle
-#     device = safe_get_device(device_sn)
-#     fw_version = device.firmwareVersion
-#     serial_number = device.serial
+    if 20000 <= fw_version <= 30100:
+        device.command.startRecording()
+        stopRecOldFW(device, is_raspi)      # FIXME: Fix this later
+    else:
+        # Confirm device starts as idle
+        assert (
+            device.command.status[1] == endaq.device.DeviceStatusCode.IDLE or
+            device.command.status[1] == endaq.device.DeviceStatusCode.IDLE_UNMOUNTED), "Device is not idle."
 
-#     if 20000 <= fw_version <= 30100:
-#         device.command.startRecording()
-#         stopRecOldFW(device, is_raspi)      # FIXME: Fix this later
-#     else:
-#         # Confirm device starts as idle
-#         assert (
-#             device.command.status[1] == endaq.device.DeviceStatusCode.IDLE or
-#             device.command.status[1] == endaq.device.DeviceStatusCode.IDLE_UNMOUNTED), "Device is not idle."
+        # Confirm device is recording
+        device.command.startRecording()
+        wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
+        assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
+                ), f"Device is not recording. Status was {device.command.status[1]} not 10."
 
-#         # Confirm device is recording
-#         device.command.startRecording()
-#         wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
-#         assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
-#                 ), f"Device is not recording. Status was {device.command.status[1]} not 10."
+        # Clear cached device
+        # TODO: Is this test still needed?
+        device.refresh()
+        assert device.available == False, "Device is still cached"
+        # safe_get_device(device_sn, unmounted=True)
+        assert device.serial == serial_number, "Did not reconnect to the same device."
 
-#         # Clear cached device
-#         # TODO: Is this test still needed?
-#         device.refresh()
-#         assert device.available == False, "Device is still cached"
-#         # safe_get_device(device_sn, unmounted=True)
-#         assert device.serial == serial_number, "Did not reconnect to the same device."
-
-#         # Confirm device stopped recording
-#         assert device.command.stopRecording() is True, "Device did not stop recording."
-#         wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE,
-#                 endaq.device.DeviceStatusCode.IDLE_UNMOUNTED])
-#         assert (device.command.status[1] == endaq.device.DeviceStatusCode.IDLE or
-#             device.command.status[1] == endaq.device.DeviceStatusCode.IDLE_UNMOUNTED), "Device is not idle."
+        # Confirm device stopped recording
+        assert device.command.stopRecording() is True, "Device did not stop recording."
+        wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE,
+                endaq.device.DeviceStatusCode.IDLE_UNMOUNTED])
+        assert (device.command.status[1] == endaq.device.DeviceStatusCode.IDLE or
+            device.command.status[1] == endaq.device.DeviceStatusCode.IDLE_UNMOUNTED), "Device is not idle."
 
 
-# @pytest.mark.parametrize("command, status_code",
-#                          [("battery", endaq.device.DeviceStatusCode.IDLE),
-#                           ("startRecording", endaq.device.DeviceStatusCode.RECORDING),
-#                           ("stopRecording", endaq.device.DeviceStatusCode.IDLE),
-#                           ])
-# def test_ping_status(command, status_code, device_sn, setupTeardown):
-#     """ Tests that 'ping()' accurately updates the device's status.
+@pytest.mark.parametrize("command, status_code",
+                         [("battery", endaq.device.DeviceStatusCode.IDLE),
+                          ("startRecording", endaq.device.DeviceStatusCode.RECORDING),
+                          ("stopRecording", endaq.device.DeviceStatusCode.IDLE),
+                          ])
+def test_ping_status(command, status_code, device_sn, setupTeardown):
+    """ Tests that 'ping()' accurately updates the device's status.
 
-#         :param command: The device command that impacts the status code.
-#         :param status_code: The device status returned in the response to a 
-#             command.
-#         :param device_sn: the tested device's serial number collected from the 
-#             command line.
-#         :param setupTeardown: a pytest fixture function that properly resets the
-#             enDAQ before and after every test.
-#     """
-#     # Set up
-#     device = safe_get_device(device_sn)
-#     fw_version = device.firmwareVersion
+        :param command: The device command that impacts the status code.
+        :param status_code: The device status returned in the response to a
+            command.
+        :param device_sn: the tested device's serial number collected from the
+            command line.
+        :param setupTeardown: a pytest fixture function that properly resets the
+            enDAQ before and after every test.
+    """
+    # Set up
+    device = safe_get_device(device_sn)
+    fw_version = device.firmwareVersion
 
-#     if 20000 <= fw_version <= 30100:
-#         # Old FW does not support updating the device's status so this test
-#         # does not apply
-#         assert True
-#     else:
-#         # Run different scenarios based on the command parameter
-#         match command:
-#             case "battery":
-#                 device.command.getBatteryStatus()
-#                 wait_for_status(device, [status_code])
-#             case "startRecording":
-#                 device.command.startRecording()
-#                 wait_for_status(device, [status_code])
-#             case "stopRecording":
-#                 device.command.startRecording()
-#                 wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
-#                 device.command.stopRecording()
-#                 wait_for_status(device, [status_code])
+    if 20000 <= fw_version <= 30100:
+        # Old FW does not support updating the device's status so this test
+        # does not apply
+        assert True
+    else:
+        # Run different scenarios based on the command parameter
+        match command:
+            case "battery":
+                device.command.getBatteryStatus()
+                wait_for_status(device, [status_code])
+            case "startRecording":
+                device.command.startRecording()
+                wait_for_status(device, [status_code])
+            case "stopRecording":
+                device.command.startRecording()
+                wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
+                device.command.stopRecording()
+                wait_for_status(device, [status_code])
 
-#         # Verify the device has the correct status depending on what command was run
-#         device.command.ping()
-#         assert (device.command.status[1] == status_code
-#                 ), f"Status was {device.command.status[1]} instead of {status_code}."
+        # Verify the device has the correct status depending on what command was run
+        device.command.ping()
+        assert (device.command.status[1] == status_code
+                ), f"Status was {device.command.status[1]} instead of {status_code}."
 
-#         # If the device is recording, stop it
-#         if device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING:
-#             device.command.stopRecording()
-#             # Don't need to wait for the stop to complete, teardown/cleanup should handle it
+        # If the device is recording, stop it
+        if device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING:
+            device.command.stopRecording()
+            # Don't need to wait for the stop to complete, teardown/cleanup should handle it
 
 
 # # This test only works if looped in sequential order. Random order is disabled
