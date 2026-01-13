@@ -44,6 +44,7 @@ jobs:
     env:
       APPROVED_USERS: '["pscheidler", "StokesMIDE"]'
       VENV_DIR: /opt/runner/venvs/endaq-device/
+      PYTHON_VERSION: ${{ matrix.python-version }}
 
     runs-on: [self-hosted, device-library-tester]
     steps:
@@ -57,15 +58,17 @@ jobs:
 
       - name: Check or create virtual environment
         run: |
-          if [ -d ${{ env.VENV_DIR }} ]; then
-            echo "Virtual environment exists in ${{ env.VENV_DIR }}"
+          if [ -d ${{ env.FULL_VENV_PATH }} ]; then
+            echo "Virtual environment exists in ${{ env.FULL_VENV_PATH }}"
           else
-            echo "Creating virtual environment in ${{ env.VENV_DIR }}"
-            python -m venv ${{ env.VENV_DIR }}
+            echo "Creating virtual environment in ${{ env.FULL_VENV_PATH }}"
+            python -m venv ${{ env.FULL_VENV_PATH }}
           fi
           
-          echo "Activating virtual environment..."
-          source "${{ env.VENV_DIR }}/bin/activate"
+          echo "Activating virtual environment $FULL_VENV_PATH ..."
+          source "${{ env.FULL_VENV_PATH }}/bin/activate"
+        env:
+          FULL_VENV_PATH: ${{ format('{0}_{1}', env.VENV_DIR, env.PYTHON_VERSION) }}
         shell: bash
 
       - name: Set up libraries
