@@ -42,6 +42,7 @@ def wait_for_status(device: endaq.device.Recorder, target_status: list[endaq.dev
     # Debugging the timeout
     out_of_time = False
     start_time = time.time()
+    status = "Not Yet Set"
     while not out_of_time:
         status = get_status(device)
         if status in target_status:
@@ -51,7 +52,7 @@ def wait_for_status(device: endaq.device.Recorder, target_status: list[endaq.dev
             out_of_time = True
         else:
             time.sleep(1)
-    print(f"Did not get status {target_status} after {timeout} sec")
+    print(f"Did not get status {target_status} after {timeout} sec. Stuck in {status}")
     return False
 
 

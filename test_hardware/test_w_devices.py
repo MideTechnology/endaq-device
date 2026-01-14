@@ -44,7 +44,7 @@ def setupTeardown(no_skip_hardware_interface, fast_clean):
     # Reset the device and reconnect
     if not fast_clean:
         no_skip_hardware_interface.timed_button_press(18)
-    device = safe_get_device(unmounted=False)
+    device = safe_get_device(unmounted=False, timeout=30)
     # Make sure the Wifi is turned on, clear any pre-recording delay, and set a 2 minute time limit
     config_dict = {"WifiEnable": 1, "PreRecordingDelay": 0, "RecordingTimeLimit": 60}
     config = GeneralConfig(**config_dict)

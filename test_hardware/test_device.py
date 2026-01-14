@@ -47,7 +47,7 @@ def setupTeardownSession(no_skip_hardware_interface, fast_clean: bool):
     """
     # Put the device in default configuration
     print(f"Setting up session")
-    config_dict = {}
+    config_dict = {"RecordingTimeLimit": 180}
     device = safe_get_device(unmounted=False, timeout=30)
     config = GeneralConfig(**config_dict)
     if config.set_configs(device, quick_config=True):
@@ -491,6 +491,7 @@ def test_start_recording_timeout(device_sn, setupTeardown):
         assert (str(exc_info.value) == "Timed out waiting for recording to start"
                 ), "Wrong error message during timeout"
 
+        device = safe_get_device(device_sn, timeout=30)
         # If the device doesn't go back to idle, send a stop command, but otherwise let setup handle it
         if not wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE]):
             device.command.stopRecording()
