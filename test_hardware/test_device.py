@@ -6,8 +6,9 @@ import pytest
 import endaq.device
 from test_hardware.helper_functions.hardware_interface import HardwareInterface, RaspiInterface, WindowsInterface, FakeInterface
 from test_hardware.helper_functions.general_config import GeneralConfig
-from test_hardware.helper_functions.connection_helper import safe_get_device, wait_for_status, stopRecOldFW
+from test_hardware.helper_functions.connection_helper import safe_get_device, wait_for_status, stopRecOldFW, get_status
 import sys
+from tests.fake_recorders import RECORDER_PATHS
 
 # Helper class:
 class Payload:
@@ -74,6 +75,7 @@ def setupTeardownSession(no_skip_hardware_interface, fast_clean: bool):
         reset_device = False
         try:
             device = safe_get_device(unmounted=False)
+            get_status(device)
             if device.command.status[1] != endaq.device.DeviceStatusCode.IDLE:
                 reset_device = True
         except endaq.device.exceptions.DeviceError as e:
@@ -132,6 +134,9 @@ def setupTeardown(no_skip_hardware_interface, device_sn, fast_clean):
 # # Tests:
 
 def test_set_config(device_sn, setupTeardown):
+    """
+    Test that we can set the device configuration and it will actually get written to the file and be retrievable
+    """
     dev = safe_get_device(device_sn)
     old_name = dev.name
     test_name = f"T{time.time()}"
@@ -155,6 +160,7 @@ def test_set_config(device_sn, setupTeardown):
                           f"{reload_dev_name}, initial name was {old_name}")
     assert len(error_list) == 0, "\n".join(error_list)
 
+
 def test_standard_run(device_sn, setupTeardown):
     """ Test a standard run of an enDAQ device.
 
@@ -173,6 +179,7 @@ def test_standard_run(device_sn, setupTeardown):
         stopRecOldFW(device, is_raspi)      # FIXME: Fix this later
     else:
         # Confirm device starts as idle
+        get_status(device)       # Refresh the device status
         assert (
             device.command.status[1] == endaq.device.DeviceStatusCode.IDLE or
             device.command.status[1] == endaq.device.DeviceStatusCode.IDLE_UNMOUNTED), "Device is not idle."
@@ -243,7 +250,7 @@ def test_ping_status(command, status_code, device_sn, setupTeardown):
                 wait_for_status(device, [status_code])
 
         # Verify the device has the correct status depending on what command was run
-        device.command.ping()
+        get_status(device)
         assert (device.command.status[1] == status_code
                 ), f"Status was {device.command.status[1]} instead of {status_code}."
 
@@ -253,239 +260,237 @@ def test_ping_status(command, status_code, device_sn, setupTeardown):
             # Don't need to wait for the stop to complete, teardown/cleanup should handle it
 
 
-# # This test only works if looped in sequential order. Random order is disabled
-# # for this reason.
-# @pytest.mark.random_order(disabled=True)
-# @pytest.mark.parametrize("index", range(1, 31))
-# def test_ping_payload(index, device_sn, setupTeardown):
-#     """ Tests that 'ping()' returns the input payload for a range of bytearray 
-#         sizes.
+# This test only works if looped in sequential order. Random order is disabled
+# for this reason.
+@pytest.mark.random_order(disabled=True)
+@pytest.mark.parametrize("index", range(1, 31))
+def test_ping_payload(index, device_sn, setupTeardown):
+    """ Tests that 'ping()' returns the input payload for a range of bytearray
+        sizes.
 
-#         :param index: parameterized index of payload bitarray length.
-#         :param device_sn: the tested device's serial number collected from the 
-#             command line.
-#         :param setupTeardown: a pytest fixture function that properly resets the
-#             enDAQ before and after every test.
-#     """
-#     # Connect to device
-#     device = safe_get_device(device_sn)
+        :param index: parameterized index of payload bitarray length.
+        :param device_sn: the tested device's serial number collected from the
+            command line.
+        :param setupTeardown: a pytest fixture function that properly resets the
+            enDAQ before and after every test.
+    """
+    # Connect to device
+    device = safe_get_device(device_sn)
 
-#     # Ensure the payload begins empty at start of loop
-#     if index == 1:
-#         Payload.payload == ''
+    # Ensure the payload begins empty at start of loop
+    if index == 1:
+        Payload.payload == ''
 
-#     # Increase the length of the payload and send it to ping()
-#     Payload.payload += chr(index)
-#     returned_payload = device.command.ping(bytearray(Payload.payload, 'utf-8'))
-#     print(f"\n{bytearray(Payload.payload, 'utf-8')} <-- Payload size {index}"
-#           f"\n{returned_payload} <-- Returned Payload")
+    # Increase the length of the payload and send it to ping()
+    Payload.payload += chr(index)
+    returned_payload = device.command.ping(bytearray(Payload.payload, 'utf-8'))
+    print(f"\n{bytearray(Payload.payload, 'utf-8')} <-- Payload size {index}"
+          f"\n{returned_payload} <-- Returned Payload")
 
-#     # Confirm that ping() returns the same thing it was sent
-#     assert returned_payload == bytearray(
-#         Payload.payload, 'utf-8'), f"ping() failed on size {index}."
+    # Confirm that ping() returns the same thing it was sent
+    assert returned_payload == bytearray(
+        Payload.payload, 'utf-8'), f"ping() failed on size {index}."
 
 
-# @pytest.mark.parametrize("params", ["default", "correct_path", "incorrect_path",
-#                                     "unmounted_default", "unmounted_recording"])
-# def test_get_devices(params, device_sn, setupTeardown):
-#     """ Tests that 'getDevices()' works as intended.
-#
-#         :param params: keywords representing a scenario to run in each of the
-#             parameterized tests.
-#         :param device_sn: the tested device's serial number collected from the
-#             command line.
-#         :param setupTeardown: a pytest fixture function that properly resets the
-#             enDAQ before and after every test.
-#     """
-#     # Set up
-#
-#     # Run different scenarios based on the "param" parameter
-#     match params:
-#         case "default":
-#             # Default parameters: Verify that expected device is returned
-#             device = endaq.device.getDevices()[0]
-#             assert device.serial == device_sn, "Incorrect device connected."
-#         case "correct_path":
-#             # Correct path specified: Verify that expected device is returned
-#             device = endaq.device.getDevices(
-#                 paths=RECORDER_PATHS, unmounted=False, strict=False)
-#             assert device != [], f"Specified device was not returned: {device}"
-#         case "incorrect_path":
-#             # Incorrect path specified: Verify that nothing is returned
-#             device = endaq.device.getDevices(
-#                 paths=("/abc/"), unmounted=False, strict=False)
-#             assert device == [], f"Device was returned: {device}"
-#         case "unmounted_default":
-#             # Unmounted = False: Verify that this normally returns the correct
-#             # device
-#             device = []
-#             device_list = endaq.device.getDevices(unmounted=False)
-#             for dev in device_list:
-#                 if dev.serial == device_sn:
-#                     device.append(dev)
-#             assert device, "Incorrect device or no device connected."
-#         case "unmounted_recording":
-#             # Unmounted = False: Verify that if the device is recording, it is
-#             # not returned
-#             device = endaq.device.getDevices()[0]
-#             fw_version = device.firmwareVersion
-#
-#             if 20000 <= fw_version <= 30100:
-#                 device.command.startRecording()
-#                 # Just delay for a bit to let the device start record
-#                 time.sleep(15)
-#                 new_device = endaq.device.getDevices(unmounted=False)
-#                 dev_list = []
-#                 for i in new_device:
-#                     curr_dev = i
-#                     if curr_dev.serial == device_sn:
-#                         dev_list.append(curr_dev)
-#                 assert dev_list == [], "Device was returned while recording."
-#                 stopRecOldFW(device, is_raspi)      # FIXME: Fix this
-#             else:
-#                 device.command.startRecording()
-#                 wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
-#                 assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
-#                         ), "Device is not recording."
-#                 new_device = endaq.device.getDevices(unmounted=False)
-#                 dev_sn_list = [dev.serial for dev in new_device]
-#                 assert device_sn not in dev_sn_list, "Device was returned while recording."
-#                 device.command.stopRecording()
-#
-#
-# def test_start_recording_default(device_sn, setupTeardown):
-#     """ Tests that 'startRecording()' works as expected in a default scenario.
-#
-#         :param device_sn: the tested device's serial number collected from the
-#             command line.
-#         :param setupTeardown: a pytest fixture function that properly resets the
-#             enDAQ before and after every test.
-#     """
-#     # Set up
-#     device = safe_get_device(device_sn)
-#     fw_version = device.firmwareVersion
-#
-#     # Since startRecording's behavior is firmware specific, its tests are too!
-#     if 20000 <= fw_version <= 30100:
-#         device.command.startRecording()
-#         stopRecOldFW(device, is_raspi)      # FIXME: Fix this
-#     else:
-#         # Verify the device starts with an idle status
-#         assert (device.command.status[1] ==
-#                 endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
-#
-#         # Start recording and next verify that the drive is absent at first
-#         device.command.startRecording()
-#         device.refresh()
-#         assert device.command.available == False, "Device drive is not absent."
-#
-#         # Verify the device's status is recording and the drive is available
-#         # again now that we have waited
-#         wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
-#         assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
-#                 ), "Device is not recording."
-#         assert device.command.available == True, "Device drive is not available."
-#
-#         # Stop recording and verify the device's status is now idle
-#         device.command.stopRecording()
-#         wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE])
-#         assert (device.command.status[1] == endaq.device.DeviceStatusCode.IDLE
-#                 ), f"Device is not idle. It is {device.command.status[1]}"
-#
-#
-# def test_start_recording_wait(device_sn, setupTeardown):
-#     """ Tests that 'startRecording()' returns faster than the default case when
-#         'wait=False'.
-#
-#         :param device_sn: the tested device's serial number collected from the
-#             command line.
-#         :param setupTeardown: a pytest fixture function that properly resets the
-#             enDAQ before and after every test.
-#     """
-#     # Set up
-#     device = safe_get_device(device_sn)
-#     fw_version = device.firmwareVersion
-#
-#     # Verify that the device's status begins as idle
-#     if fw_version > 30100:
-#         assert (device.command.status[1] ==
-#                 endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
-#
-#     # Running SR with wait=False; recording how long it takes; stop rec.
-#     time.sleep(5)
-#     false_start_time = time.time()
-#     device.command.startRecording(wait=False)
-#     false_end_time = time.time()
-#     false_execution_time = false_end_time - false_start_time
-#     wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
-#     if 20000 <= fw_version <= 30100:
-#         stopRecOldFW(device, is_raspi)
-#         wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE])
-#     else:
-#         device.command.stopRecording()
-#         wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE])
-#         # Verify that the device's status is back to idle
-#     assert (device.command.status[1] ==
-#             endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
-#
-#     device = safe_get_device(device_sn)
-#
-#     # Running SR with wait=True; recording how long it takes; stop rec.
-#     time.sleep(5)
-#     default_start_time = time.time()
-#     device.command.startRecording()
-#     default_end_time = time.time()
-#     default_execution_time = default_end_time - default_start_time
-#     wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
-#     if 20000 <= fw_version <= 30100:
-#         stopRecOldFW(device, is_raspi)
-#         wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE])
-#     else:
-#         device.command.stopRecording()
-#         wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE])
-#         # Verify that the device's status is back to idle
-#         assert (device.command.status[1] ==
-#                 endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
-#
-#     # Verify that the device's status is back to idle.
-#     assert (device.command.status[1] ==
-#             endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
-#
-#     # Verify the wait=False case ran quicker than the wait=True case.
-#     print("wait=False:", false_execution_time,
-#             "wait=True:", default_execution_time)
-#     assert (false_execution_time < default_execution_time
-#             ), "Default returned quicker than when wait=False."
-#
-#
-# def test_start_recording_timeout(device_sn, setupTeardown):
-#     """ Tests that 'startRecording()' raises an Exception when 'timeout' is too low.
-#
-#         :param device_sn: the tested device's serial number collected from the
-#             command line.
-#         :param setupTeardown: a pytest fixture function that properly resets the
-#             enDAQ before and after every test.
-#     """
-#     # Set up
-#     device = safe_get_device(device_sn)
-#     device.refresh()
-#     fw_version = device.firmwareVersion
-#
-#     # Since startRecording's behavior is firmware specific, its tests are too!
-#     if 20000 <= fw_version <= 30100:
-#         # Old FW doesn't seem to support the timeout param
-#         device.command.startRecording()
-#         stopRecOldFW(device, is_raspi)
-#     else:
-#         # Verify that if the timeout value is low enough, a DeviceTimeout
-#         # exception will be raised
-#         with pytest.raises(endaq.device.exceptions.DeviceTimeout) as exc_info:
-#             device.command.startRecording(wait=True, timeout=0.1)
-#         assert (exc_info.type == endaq.device.exceptions.DeviceTimeout
-#                 ), "Didn't time out during startRecording."
-#         assert (str(exc_info.value) == "Timed out waiting for recording to start"
-#                 ), "Wrong error message during timeout"
-#
-#         # If the device doesn't go back to idle, send a stop command, but otherwise let setup handle it
-#         if not wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE]):
-#             device.command.stopRecording()
+@pytest.mark.parametrize("params", ["default", "correct_path", "incorrect_path",
+                                    "unmounted_default", "unmounted_recording"])
+def test_get_devices(params, device_sn, setupTeardown):
+    """ Tests that 'getDevices()' works as intended.
+
+        :param params: keywords representing a scenario to run in each of the
+            parameterized tests.
+        :param device_sn: the tested device's serial number collected from the
+            command line.
+        :param setupTeardown: a pytest fixture function that properly resets the
+            enDAQ before and after every test.
+    """
+    # Set up
+
+    # Run different scenarios based on the "param" parameter
+    match params:
+        case "default":
+            # Default parameters: Verify that expected device is returned
+            device = endaq.device.getDevices()[0]
+            assert device.serial == device_sn, "Incorrect device connected."
+        case "correct_path":
+            # Correct path specified: Verify that expected device is returned
+            device = endaq.device.getDevices(
+                paths=RECORDER_PATHS, unmounted=False, strict=False)
+            assert device != [], f"Specified device was not returned: {device}"
+        case "incorrect_path":
+            # Incorrect path specified: Verify that nothing is returned
+            device = endaq.device.getDevices(
+                paths=("/abc/"), unmounted=False, strict=False)
+            assert device == [], f"Device was returned: {device}"
+        case "unmounted_default":
+            # Unmounted = False: Verify that this normally returns the correct
+            # device
+            device = []
+            device_list = endaq.device.getDevices(unmounted=False)
+            for dev in device_list:
+                if dev.serial == device_sn:
+                    device.append(dev)
+            assert device, "Incorrect device or no device connected."
+        case "unmounted_recording":
+            # Unmounted = False: Verify that if the device is recording, it is
+            # not returned
+            device = endaq.device.getDevices()[0]
+            fw_version = device.firmwareVersion
+
+            if 20000 <= fw_version <= 30100:
+                device.command.startRecording()
+                # Just delay for a bit to let the device start record
+                time.sleep(15)
+                new_device = endaq.device.getDevices(unmounted=False)
+                dev_list = []
+                for i in new_device:
+                    curr_dev = i
+                    if curr_dev.serial == device_sn:
+                        dev_list.append(curr_dev)
+                assert dev_list == [], "Device was returned while recording."
+                stopRecOldFW(device, is_raspi)      # FIXME: Fix this
+            else:
+                device.command.startRecording()
+                wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
+                assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
+                        ), "Device did not enter recording state."
+                new_devices = endaq.device.getDevices(unmounted=False)
+                dev_sn_list = [dev.serial for dev in new_devices]
+                assert device_sn not in dev_sn_list, "Device was returned while recording."
+                device.command.stopRecording()
+
+
+def test_start_recording_default(device_sn, setupTeardown):
+    """ Tests that 'startRecording()' works as expected in a default scenario.
+
+        :param device_sn: the tested device's serial number collected from the
+            command line.
+        :param setupTeardown: a pytest fixture function that properly resets the
+            enDAQ before and after every test.
+    """
+    # Set up
+    device = safe_get_device(device_sn)
+    fw_version = device.firmwareVersion
+
+    # Since startRecording's behavior is firmware specific, its tests are too!
+    if 20000 <= fw_version <= 30100:
+        device.command.startRecording()
+        stopRecOldFW(device, is_raspi)      # FIXME: Fix this
+    else:
+        # Verify the device starts with an idle status
+        assert (device.command.status[1] ==
+                endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
+
+        # Start recording and next verify that the drive is absent at first
+        device.command.startRecording()
+        device.refresh()
+        assert device.command.available == False, "Device drive is not absent."
+
+        # Verify the device's status is recording and the drive is available
+        # again now that we have waited
+        wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
+        assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
+                ), "Device is not recording."
+        assert device.command.available == True, "Device drive is not available."
+
+        # Stop recording and verify the device's status is now idle
+        device.command.stopRecording()
+        wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE])
+        assert (device.command.status[1] == endaq.device.DeviceStatusCode.IDLE
+                ), f"Device is not idle. It is {device.command.status[1]}"
+
+
+def test_start_recording_wait(device_sn, setupTeardown):
+    """ Tests that 'startRecording()' returns faster than the default case when
+        'wait=False'.
+
+        :param device_sn: the tested device's serial number collected from the
+            command line.
+        :param setupTeardown: a pytest fixture function that properly resets the
+            enDAQ before and after every test.
+    """
+    # Set up
+    device = safe_get_device(device_sn)
+    fw_version = device.firmwareVersion
+
+    # Verify that the device's status begins as idle
+    if fw_version > 30100:
+        assert (device.command.status[1] ==
+                endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
+
+    # Running SR with wait=False; recording how long it takes; stop rec.
+    false_start_time = time.time()
+    device.command.startRecording(wait=False)
+    false_end_time = time.time()
+    false_execution_time = false_end_time - false_start_time
+    wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
+    if 20000 <= fw_version <= 30100:
+        stopRecOldFW(device, is_raspi)
+        wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE])
+    else:
+        device.command.stopRecording()
+        wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE])
+        # Verify that the device's status is back to idle
+    assert (device.command.status[1] ==
+            endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
+
+    device = safe_get_device(device_sn)
+
+    # Running SR with wait=True; recording how long it takes; stop rec.
+    default_start_time = time.time()
+    device.command.startRecording()
+    default_end_time = time.time()
+    default_execution_time = default_end_time - default_start_time
+    wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
+    if 20000 <= fw_version <= 30100:
+        stopRecOldFW(device, is_raspi)
+        wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE])
+    else:
+        device.command.stopRecording()
+        wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE])
+        # Verify that the device's status is back to idle
+        assert (device.command.status[1] ==
+                endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
+
+    # Verify that the device's status is back to idle.
+    assert (device.command.status[1] ==
+            endaq.device.DeviceStatusCode.IDLE), "Device is not idle."
+
+    # Verify the wait=False case ran quicker than the wait=True case.
+    print("wait=False:", false_execution_time,
+            "wait=True:", default_execution_time)
+    assert (false_execution_time < default_execution_time
+            ), "Default returned quicker than when wait=False."
+
+
+def test_start_recording_timeout(device_sn, setupTeardown):
+    """ Tests that 'startRecording()' raises an Exception when 'timeout' is too low.
+
+        :param device_sn: the tested device's serial number collected from the
+            command line.
+        :param setupTeardown: a pytest fixture function that properly resets the
+            enDAQ before and after every test.
+    """
+    # Set up
+    device = safe_get_device(device_sn)
+    device.refresh()
+    fw_version = device.firmwareVersion
+
+    # Since startRecording's behavior is firmware specific, its tests are too!
+    if 20000 <= fw_version <= 30100:
+        # Old FW doesn't seem to support the timeout param
+        device.command.startRecording()
+        stopRecOldFW(device, is_raspi)
+    else:
+        # Verify that if the timeout value is low enough, a DeviceTimeout
+        # exception will be raised
+        with pytest.raises(endaq.device.exceptions.DeviceTimeout) as exc_info:
+            device.command.startRecording(wait=True, timeout=0.1)
+        assert (exc_info.type == endaq.device.exceptions.DeviceTimeout
+                ), "Didn't time out during startRecording."
+        assert (str(exc_info.value) == "Timed out waiting for recording to start"
+                ), "Wrong error message during timeout"
+
+        # If the device doesn't go back to idle, send a stop command, but otherwise let setup handle it
+        if not wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE]):
+            device.command.stopRecording()
