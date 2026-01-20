@@ -6,7 +6,7 @@ eliminate circular dependencies.
 __author__ = "dstokes"
 
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import errno
 import logging
 import os
@@ -801,7 +801,7 @@ class Recorder:
         """ The recorder's date of manufacture. """
         bd = self.getInfo('DateOfManufacture')
         if bd is not None:
-            return util.utcfromtimestamp(bd)
+            return datetime.fromtimestamp(bd, timezone.utc)
         return None
 
     
@@ -1252,7 +1252,7 @@ class Recorder:
         if data:
             cd = data.get('CalibrationDate', None)
             if cd is not None and not epoch:
-                return util.utcfromtimestamp(cd)
+                return datetime.fromtimestamp(cd, timezone.utc)
             return cd
         return None
 
@@ -1289,7 +1289,7 @@ class Recorder:
         """
         ce = self._getCalExpiration(self.getCalibration(user=user))
         if ce is not None and not epoch:
-            return util.utcfromtimestamp(ce)
+            return datetime.fromtimestamp(ce, timezone.utc)
         return ce
 
 

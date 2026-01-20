@@ -9,7 +9,7 @@ device's realtime clock is also done through the command interface, as it
 also takes effect immediately.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 import errno
 from functools import partial
 import logging
@@ -978,7 +978,7 @@ class ConfigInterface:
         t = self._getitem(0x0fff7f).value
         if t is None:
             return None
-        return datetime.utcfromtimestamp(t)
+        return datetime.fromtimestamp(t, timezone.utc)
 
     @recordingStartTime.setter
     def recordingStartTime(self, t: Union[Epoch, datetime, struct_time, tuple, None]):

@@ -142,18 +142,6 @@ def formatFwRev(rev: int) -> str:
         return str(rev)
 
 
-# noinspection PyDeprecation
-def utcfromtimestamp(timestamp: int) -> datetime.datetime:
-    """ Convert an Epoch timestamp to a UTC datetime, getting around
-        deprecated `datetime.datetime.utcfromtimestamp` needed for
-        Python 3.9. To be removed once Python 3.9 is sunsetted.
-    """
-    try:
-        return datetime.datetime.fromtimestamp(timestamp, datetime.UTC)
-    except AttributeError:
-        return datetime.datetime.utcfromtimestamp(timestamp)
-
-
 def levenshtein(a: str, b: str) -> int:
     """Calculates the Levenshtein distance between a and b.
     """

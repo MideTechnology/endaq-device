@@ -4,7 +4,7 @@ and control the recording device.
 """
 
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timezone
 import errno
 import os.path
 from pathlib import Path
@@ -381,8 +381,8 @@ class CommandInterface:
         if epoch:
             return sysTime, devTime
 
-        return (util.utcfromtimestamp(sysTime),
-                util.utcfromtimestamp(devTime))
+        return (datetime.fromtimestamp(sysTime, timezone.utc),
+                datetime.fromtimestamp(devTime, timezone.utc))
 
 
     @device_synchronized
