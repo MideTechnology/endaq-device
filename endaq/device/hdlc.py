@@ -102,11 +102,14 @@ HDLC_ESCAPE_CHAR = b"\x7d"
 
 
 def hdlc_encode(in_payload: Union[bytearray, bytes, str],
-                crc: bool = True) -> bytearray:
+                crc: bool = True,
+                escaped: bytes = b'') -> bytearray:
     """ Encode a raw packet into HDLC escaped format with (optional) CRC.
 
         :param in_payload: The raw packet payload.
         :param crc: If `True`, generate the packet's CRC16.
+        :param escaped: Bytes to escape when encoding (in addition to
+            `HDLC_BREAK` and `HDLC_ESCAPE`).
         :return: A `bytearray` with the encoded payload (and, optionally,
             CRC)
     """
@@ -131,8 +134,9 @@ def hdlc_encode(in_payload: Union[bytearray, bytes, str],
 
     # Finally, HDLC-escape the payload.
     # There is definitely a better way to do this...
+    escaped = set(b'\x7d\x7e' + escaped) if escaped else b'\x7d\x7e'
     for i in in_payload:
-        if i == 0x7E or i == 0x7D:
+        if i in escaped:
             out_payload.append(0x7D)
             out_payload.append(i ^ 0x20)
         else:

@@ -752,7 +752,8 @@ def start(host: Optional[str] = MQTT_BROKER,
           connectArgs: Dict[str, Any] = None,
           advertArgs: Dict[str, Any] = None,
           managerArgs: Dict[str, Any] = None,
-          clean: Optional[int] = None):
+          clean: Optional[int] = None,
+          **_kwargs):
     """
     Start the Device Manager and (optionally) the mDNS advertiser.
     This is a temporary implementation and will be refactored.

@@ -1759,7 +1759,13 @@ class SerialCommandInterface(CommandInterface):
 
         self.make_crc = make_crc
         self.ignore_crc = ignore_crc
+        self.escaped = b''
         self.port = None
+
+        try:
+            self.escaped = self.device.getInfo('SerialCommandInterface')['EscapedCharacters']
+        except (AttributeError, KeyError, TypeError):
+            pass
 
         serial_kwargs.pop('port', None)
         self.portArgs = self.SERIAL_PARAMS.copy()
@@ -1985,7 +1991,7 @@ class SerialCommandInterface(CommandInterface):
         # Header: address 0 (broadcast), EBML data, immediate write.
         packet = bytearray([0x80, 0x26, 0x00, 0x0A])
         packet.extend(ebml)
-        packet = hdlc_encode(packet, crc=self.make_crc)
+        packet = hdlc_encode(packet, crc=self.make_crc, escaped=self.escaped)
         return packet
 
 
@@ -2010,7 +2016,7 @@ class SerialCommandInterface(CommandInterface):
         # Header: address 1 (host), EBML data, immediate write.
         packet = bytearray([0x81, 0x00, responseCode])
         packet.extend(ebml)
-        packet = hdlc_encode(packet, crc=self.make_crc)
+        packet = hdlc_encode(packet, crc=self.make_crc, escaped=self.escaped)
         return packet
 
 
