@@ -1762,10 +1762,13 @@ class SerialCommandInterface(CommandInterface):
         self.escaped = b''
         self.port = None
 
-        try:
-            self.escaped = self.device.getInfo('SerialCommandInterface')['EscapedCharacters']
-        except (AttributeError, KeyError, TypeError):
-            pass
+        # Do additional setup based on device DEVINFO.
+        # `NonRecorder` fixture instances have no DEVINFO; skip
+        if type(device).__name__ != 'NonRecorder':
+            try:
+                self.escaped = self.device.getInfo('SerialCommandInterface')['EscapedCharacters']
+            except (AttributeError, KeyError, TypeError):
+                pass
 
         serial_kwargs.pop('port', None)
         self.portArgs = self.SERIAL_PARAMS.copy()

@@ -400,7 +400,7 @@ def getSerialDevices(known: Optional[Dict[int, Recorder]] = None,
     devices = []
 
     # Dummy recorder and command interface to retrieve DEVINFO
-    fake = NonRecorder()
+    fake = NonRecorder(name='getSerialDevices')
     fake.command = SerialCommandInterface(fake)
 
     for port, sn in SerialCommandInterface._possibleRecorders(strict=strict):
