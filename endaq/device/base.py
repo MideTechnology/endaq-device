@@ -678,12 +678,19 @@ class Recorder:
     @synchronized
     def name(self) -> str:
         """ The recording device's (user-assigned) name. """
-        if self._name:
-            return self._name
-        try:
-            return self.getInfo('UserDeviceName', '') or self.config.name
-        except (AttributeError, KeyError, UnsupportedFeature):
-            return ''
+        if self._name is None:
+            try:
+                # If name isn't in DEVINFO, get it from config
+                name = self.getInfo('UserDeviceName', None)
+                if name is None:
+                    name = self.config.name
+                self._name = name
+            except (AttributeError, KeyError, UnsupportedFeature):
+                return ''
+            except TimeoutError:
+                logger.debug('Timed out getting name from config')
+                return ''
+        return self._name
 
 
     @property
