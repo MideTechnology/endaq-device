@@ -1591,61 +1591,46 @@ class CommandInterface:
 
 
     def startStream(self,
-                    filename: Union[str, Path],
-                    wait: bool = True,
-                    timeout: Union[int, float] = 10,
-                    callback: Optional[Callable] = None,
+                    path: Union[str, Path],
                     streamCallback: Optional[Callable] = None) -> bool:
-        """ Start a device recording/streaming and save the data it sends
-            to a file.
+        """ Start receiving and writing data streamed from the device. Note
+            that this does not send the start command to the device; that
+            `startRecording()` must be done explicitly before calling
+            `startStream()`.
 
             This command is only applicable to wireless devices (i.e., the
             enDAQ W-series) on an MQTT network running an enDAQ MQTT
             Device Manager.
 
-            :param filename: The name of the file to which to write the
-                streamed data (e.g., an ``.IDE``).
-            :param wait: If `True`, wait for the recorer to respond and/or
-                disconnect, indicating the streaming has started.
-            :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately; `None` or -1 will wait
-                indefinitely.
-            :param callback: A function to call each response-checking
-                cycle. If the callback returns `True`, the wait for a
-                response will be cancelled. The callback function should
-                require no arguments. Note that this only applies while
-                starting the stream; use :meth:`stopStreaming()` to
-                stop an active stream.
+            :param path: The name of the directory to which to save the
+                streamed data. The names of the individual ``.IDE``
+                filenames will consist of the device serial number and
+                the date/time (e.g., ``SERIALNO_yyyymmdd_HHMMSS.IDE``).
             :param streamCallback: A function to call each time a 'chunk'
                 of streamed data arrives. It should take two parameters:
                 the `Recorder` instance, and the number of bytes in the
                 chunk. Note: Unlike other callback functions, its return
                 value is ignored, so returning `False` does not cancel
                 the operation.
-            :returns: `True` if the command was successful.
+            :returns: `True` if opening the file and subscribing to the
+                stream was successful, `False` if streamed data is already
+                being received.
         """
         raise UnsupportedFeature(self, self.startStream)
 
 
-    def stopStream(self,
-                   wait: bool = True,
-                   timeout: Union[int, float] = 5,
-                   callback: Optional[Callable] = None) -> bool:
-        """ Stop a device that is streaming data.
+    def stopStream(self) -> bool:
+        """ Stop receiving and writing data streamed from the device. Note
+            that this does not send the stop command to the device; that
+            must be done explicitly, either before or after calling
+            `stopStream()`.
 
             This command is only applicable to wireless devices (i.e., the
             enDAQ W-series) on an MQTT network running an enDAQ MQTT
             Device Manager.
 
-            :param wait: If `True`, wait for the recorer to respond
-                indicating the streaming has stopped.
-            :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
-            :param callback: A function to call each response-checking
-                cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should require no
-                arguments.
-            :returns: `True` if the command was successful.
+            :returns: `True` if the command was successful, `False` if
+                not already receiving/saving streamed data.
         """
         raise UnsupportedFeature(self, self.stopStream)
 
