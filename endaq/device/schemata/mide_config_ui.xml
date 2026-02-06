@@ -64,8 +64,8 @@
                 <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
                 <UnicodeElement name="Units" id="0x5025" multiple="0" />
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
-                <UIntegerElement name="UIntMin" id="0x5111" multiple="0" />
-                <UIntegerElement name="UIntMax" id="0x5121" multiple="0" />
+                <UIntegerElement name="UIntMin" id="0x5111" multiple="0">Minimum value in display scale/units</UIntegerElement>
+                <UIntegerElement name="UIntMax" id="0x5121" multiple="0">Maximum value in display scale/units</UIntegerElement>
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
                 <StringElement name="Validator" id="0x5044" multiple="1" />
@@ -83,8 +83,8 @@
                 <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
                 <UnicodeElement name="Units" id="0x5025" multiple="0" />
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
-                <IntegerElement name="IntMin" id="0x5112" multiple="0" />
-                <IntegerElement name="IntMax" id="0x5122" type="integer" multiple="0" />
+                <IntegerElement name="IntMin" id="0x5112" multiple="0">Minimum value in display scale/units</IntegerElement>
+                <IntegerElement name="IntMax" id="0x5122" multiple="0">Maximum value in display scale/units</IntegerElement>
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <UIntegerElement name="IntIncrement" id="0x5131" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
@@ -103,8 +103,8 @@
                 <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
                 <UnicodeElement name="Units" id="0x5025" multiple="0" />
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
-                <FloatElement name="FloatMin" id="0x5113" multiple="0" />
-                <FloatElement name="FloatMax" id="0x5123" multiple="0" />
+                <FloatElement name="FloatMin" id="0x5113" multiple="0">Minimum value in display scale/units</FloatElement>
+                <FloatElement name="FloatMax" id="0x5123" multiple="0">Minimum value in display scale/units</FloatElement>
                 <FloatElement name="FloatIncrement" id="0x5133" multiple="0" />
                 <UIntegerElement name="FloatDigits" id="0x5141" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
@@ -225,6 +225,7 @@
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -248,6 +249,7 @@
                 <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
@@ -267,6 +269,7 @@
                 <FloatElement name="FloatValue" />
                 <FloatElement name="FloatGain" />
                 <FloatElement name="FloatOffset" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
@@ -278,10 +281,11 @@
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
                 <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
                 <IntegerElement name="IntMin" id="0x5112" multiple="0" />
-                <IntegerElement name="IntMax" id="0x5122" type="integer" multiple="0" />
+                <IntegerElement name="IntMax" id="0x5122" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <UIntegerElement name="IntIncrement" id="0x5131" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -305,6 +309,7 @@
                 <UIntegerElement name="FloatDigits" id="0x5141" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -326,6 +331,7 @@
                 <UIntegerElement name="TextLines" id="0x5134" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -345,6 +351,7 @@
                 <UIntegerElement name="TextLines" id="0x5134" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UIntegerElement name="UIntValue" id="0x5101" multiple="0" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
@@ -368,6 +375,7 @@
                 <FloatElement name="FloatValue" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <MasterElement name="EnumOption" global="1" id="0x4107" multiple="1">
                     <UnicodeElement name="Label" id="0x5005" multiple="0" />
                     <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
@@ -390,6 +398,7 @@
                 <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UIntegerElement name="UIntValue" />
                 <MasterElement name="EnumOption" />
                 <UIntegerElement name="IsAdvancedFeature" />
@@ -403,6 +412,7 @@
                 <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -421,6 +431,7 @@
                 <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -439,6 +450,9 @@
                 <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
+                <IntegerElement name="IntMin" id="0x5112" multiple="0" />
+                <IntegerElement name="IntMax" id="0x5122" multiple="0" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -457,6 +471,9 @@
                 <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
+                <IntegerElement name="IntMin" id="0x5112" multiple="0" />
+                <IntegerElement name="IntMax" id="0x5122" multiple="0" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -476,6 +493,8 @@
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
                 <FloatElement name="FloatIncrement" id="0x5133" multiple="0" />
                 <UIntegerElement name="FloatDigits" id="0x5141" multiple="0" />
+                <FloatElement name="FloatMin" id="0x5113" multiple="0" />
+                <FloatElement name="FloatMax" id="0x5123" multiple="0" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -494,6 +513,9 @@
                 <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
+                <FloatElement name="FloatMin" id="0x5113" multiple="0" />
+                <FloatElement name="FloatMax" id="0x5123" multiple="0" />
                 <FloatElement name="FloatIncrement" id="0x5133" multiple="0" />
                 <UIntegerElement name="FloatDigits" id="0x5141" multiple="0" />
                 <UnicodeElement name="TextValue" />
@@ -513,6 +535,9 @@
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
+                <IntegerElement name="IntMin" id="0x5112" multiple="0" />
+                <IntegerElement name="IntMax" id="0x5122" multiple="0" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -531,6 +556,7 @@
                 <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -548,6 +574,9 @@
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
+                <FloatElement name="FloatMin" id="0x5113" multiple="0" />
+                <FloatElement name="FloatMax" id="0x5123" multiple="0" />
                 <FloatElement name="FloatIncrement" id="0x5133" multiple="0" />
                 <UIntegerElement name="FloatDigits" id="0x5141" multiple="0" />
                 <UnicodeElement name="TextValue" />
@@ -568,6 +597,9 @@
                 <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
+                <FloatElement name="FloatMin" id="0x5113" multiple="0" />
+                <FloatElement name="FloatMax" id="0x5123" multiple="0" />
                 <FloatElement name="FloatIncrement" id="0x5133" multiple="0" />
                 <UIntegerElement name="FloatDigits" id="0x5141" multiple="0" />
                 <UnicodeElement name="TextValue" />
@@ -586,6 +618,9 @@
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
+                <IntegerElement name="IntMin" id="0x5112" multiple="0" />
+                <IntegerElement name="IntMax" id="0x5122" multiple="0" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -604,6 +639,9 @@
                 <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
+                <IntegerElement name="IntMin" id="0x5112" multiple="0" />
+                <IntegerElement name="IntMax" id="0x5122" multiple="0" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -621,6 +659,9 @@
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
+                <FloatElement name="FloatMin" id="0x5113" multiple="0" />
+                <FloatElement name="FloatMax" id="0x5123" multiple="0" />
                 <FloatElement name="FloatIncrement" id="0x5133" multiple="0" />
                 <UIntegerElement name="FloatDigits" id="0x5141" multiple="0" />
                 <UnicodeElement name="TextValue" />
@@ -641,6 +682,9 @@
                 <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
+                <FloatElement name="FloatMin" id="0x5113" multiple="0" />
+                <FloatElement name="FloatMax" id="0x5123" multiple="0" />
                 <FloatElement name="FloatIncrement" id="0x5133" multiple="0" />
                 <UIntegerElement name="FloatDigits" id="0x5141" multiple="0" />
                 <UnicodeElement name="TextValue" />
@@ -693,6 +737,7 @@
                 <UIntegerElement name="ExcludeID" />
                 <StringElement name="ValueFormat" />
                 <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
@@ -706,6 +751,7 @@
                 <UIntegerElement name="ExcludeID" />
                 <StringElement name="ValueFormat" />
                 <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
@@ -719,6 +765,9 @@
                 <UIntegerElement name="ExcludeID" />
                 <StringElement name="ValueFormat" />
                 <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
+                <UIntegerElement name="MaxLength" id="0x5124" multiple="0" />
+                <UIntegerElement name="MinLength" id="0x5144" multiple="0" />
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
@@ -732,6 +781,7 @@
                 <UIntegerElement name="ExcludeID" />
                 <StringElement name="ValueFormat" />
                 <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
@@ -745,6 +795,7 @@
                 <UIntegerElement name="ExcludeID" />
                 <StringElement name="ValueFormat" />
                 <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
@@ -758,6 +809,9 @@
                 <UIntegerElement name="ExcludeID" />
                 <StringElement name="ValueFormat" />
                 <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
+                <UIntegerElement name="MaxLength" id="0x5124" multiple="0" />
+                <UIntegerElement name="MinLength" id="0x5144" multiple="0" />
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 

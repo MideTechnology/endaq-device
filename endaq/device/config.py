@@ -882,6 +882,8 @@ class ConfigInterface:
     @name.setter
     def name(self, n: Optional[str]):
         self._setitem(0x08ff7f, n)
+        if self.device:
+            self.device._name = n
 
     @property
     def notes(self) -> Union[str, None]:
