@@ -1590,13 +1590,13 @@ class CommandInterface:
         return False
 
 
-    def startStream(self,
-                    path: Union[str, Path],
-                    streamCallback: Optional[Callable] = None) -> bool:
+    def saveStream(self,
+                   path: Union[str, Path],
+                   streamCallback: Optional[Callable] = None) -> bool:
         """ Start receiving and writing data streamed from the device. Note
             that this does not send the start command to the device; that
             `startRecording()` must be done explicitly before calling
-            `startStream()`.
+            `saveStream()`.
 
             This command is only applicable to wireless devices (i.e., the
             enDAQ W-series) on an MQTT network running an enDAQ MQTT
@@ -1619,11 +1619,11 @@ class CommandInterface:
         raise UnsupportedFeature(self, self.startStream)
 
 
-    def stopStream(self) -> bool:
+    def closeStream(self) -> bool:
         """ Stop receiving and writing data streamed from the device. Note
             that this does not send the stop command to the device; that
             must be done explicitly, either before or after calling
-            `stopStream()`.
+            `closeStream()`.
 
             This command is only applicable to wireless devices (i.e., the
             enDAQ W-series) on an MQTT network running an enDAQ MQTT

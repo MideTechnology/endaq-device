@@ -1201,13 +1201,13 @@ class MQTTCommandInterface(SerialCommandInterface):
 
 
     @synchronized
-    def startStream(self,
-                    path: Union[str, Path],
-                    streamCallback: Optional[Callable] = None) -> bool:
+    def openStream(self,
+                   path: Union[str, Path],
+                   streamCallback: Optional[Callable] = None) -> bool:
         """ Start receiving and writing data streamed from the device. Note
             that this does not send the start command to the device; that
             `startRecording()` must be done explicitly before calling
-            `startStream()`.
+            `openStream()`.
 
             :param path: The name of the directory to which to save the
                 streamed data. The names of the individual ``.IDE``
@@ -1254,11 +1254,11 @@ class MQTTCommandInterface(SerialCommandInterface):
 
 
     @synchronized
-    def stopStream(self) -> bool:
+    def closeStream(self) -> bool:
         """ Stop receiving and writing data streamed from the device. Note
             that this does not send the stop command to the device; that
             must be done explicitly, either before or after calling
-            `stopStream()`.
+            `synchronized()`.
 
             :returns: `True` if the command was successful, `False` if
                 not already receiving/saving streamed data.
