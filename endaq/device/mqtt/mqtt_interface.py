@@ -1243,8 +1243,11 @@ class MQTTCommandInterface(SerialCommandInterface):
     def _createStreamFile(self):
         """ Start a new IDE file.
         """
-        if self._stream and not self._stream.closed and self._streamedBytes > 0:
+        if self._stream and not self._stream.closed:
+            if self._streamedBytes == 0:
+                return
             self._stream.close()
+
         filename = f"{self.device.serial}_{datetime.now().strftime('%y%m%d_%H%M%S')}.IDE"
         self._stream = open(os.path.join(self._streamPath, filename), 'wb')
         logger.debug(f"Saving stream to {self._stream}")
