@@ -2392,7 +2392,7 @@ class SerialCommandInterface(CommandInterface):
                 t0 = time()
 
         self._sendCommand({'EBMLCommand': {'SetClock': payload}},
-                          response=False, timeout=timeout)
+                          response=False, timeout=timeout, lock=True)
 
         return t0, t
 
