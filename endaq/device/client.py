@@ -423,7 +423,8 @@ class CommandClient:
             logger.warning(f'No SetInfo for idx {idx!r}')
             return {}, DeviceStatusCode.ERR_BAD_INFO_INDEX, None
 
-        return setter(info, lockId)
+        _payload, statusCode, statusMsg = setter(info, lockId)
+        return {}, statusCode, statusMsg
 
 
     # =======================================================================

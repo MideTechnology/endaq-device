@@ -71,10 +71,18 @@
             <UnicodeElement name="PackagePath" id="0x4000" multiple="0" mandatory="0">Path to ESP32 package</UnicodeElement>
         </MasterElement>
         <MasterElement name="SetWiFi" id="0x84">
-            <MasterElement name="AP" id="0x4200" multiple="1" mandatory="1">
+            <MasterElement name="AP" id="0x4200" multiple="1" mandatory="0">
                 <UnicodeElement name="SSID" id="0x4201" multiple="0" mandatory="1">Network SSID</UnicodeElement>
                 <UnicodeElement name="Password" id="0x4202" multiple="0" mandatory="0" />
                 <UIntegerElement name="Selected" id="0x4203" multiple="0" mandatory="0" />
+            </MasterElement>
+            <MasterElement name="APMode" id="0x42A0" multiple="0" mandatory="0">
+                <UnicodeElement name="SSID" />
+                <UnicodeElement name="Password" />
+                <MasterElement name="AP4G" id="0x42A4" multiple="0" mandatory="0">
+                    <StringElement name="APN" id="0x42A5" multiple="0" mandatory="1"/>
+                    <StringElement name="SIMPin" id="0x42A6" multiple="0" mandatory="1"/>
+                </MasterElement>
             </MasterElement>
         </MasterElement>
         <MasterElement name="QueryWiFi" id="0x85" multiple="0" mandatory="0">Get a response for current Wi-Fi State</MasterElement>
@@ -122,7 +130,7 @@
         <UIntegerElement name="CMDQueueDepth" id="0x5100" multiple="0" mandatory="1">Available space in command queue on device, a value of 0 means any new commands issued will be dropped</UIntegerElement>
         <MasterElement name="WiFiScanResult" id="0x5200" multiple="0" mandatory="0">
             <UIntegerElement name="ScanVersion" id="0x5201" multiple="0" mandatory="1">Will default to 1 if not present</UIntegerElement>
-            <MasterElement name="AP" id="0x4200" multiple="1" mandatory="1">Access point definition
+            <MasterElement name="AP" id="0x4200" multiple="1" mandatory="0">Access point definition
                 <UnicodeElement name="SSID" id="0x4201" multiple="0" mandatory="1">Network SSID</UnicodeElement>
                 <IntegerElement name="RSSI" id="0x5205" multiple="0" mandatory="0">Signal Strength, 0-100, where 100 is perfect, absent field means SSID is in the list for another reason but was not seen in the scan</IntegerElement>
                 <UIntegerElement name="AuthType" id="0x5206" multiple="0" mandatory="1">0 means open, 1 is any kind of secured</UIntegerElement>
@@ -137,13 +145,15 @@
             Else if PENDING then read nothing else in this data structure besides SSID as they are not guaranteed to be valid.
             <UnicodeElement name="SSID" id="0x4201" multiple="0" mandatory="1">Network SSID</UnicodeElement>
             <UIntegerElement name="WiFiConnectionStatus" id="0x5301" multiple="0" mandatory="1">Integer enum.
-                0: IDLE, no connection is in process, error fields are valid.
-                1: PENDING, connection is in process,
-                2: CONNECTED, error fields will all be 0, RSSI tag is present in this data structure and represents the strength of the connected net
-                10: AP_MODE, the device is running as an access point. Not applicable to enDAQ data recorders.
+                0x00: IDLE, no connection is in process, error fields are valid.
+                0x01: PENDING, connection is in process,
+                0x02: CONNECTED, error fields will all be 0, RSSI tag is present in this data structure and represents the strength of the connected net
+                0x10: AP_MODE, the device is running as an access point. Not applicable to enDAQ data recorders.
+                0x30: AP4G_MODE, the device is running as an access point and bridge to a 4G data network. Not applicable to enDAQ data recorders.
             </UIntegerElement>
             <UIntegerElement name="WiFiConnectionError" id="0x5304" multiple="0" mandatory="0">Integer enum. Holds ESP32 error codes, found in https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/wifi.html#wi-fi-reason-code</UIntegerElement>
             <IntegerElement name="RSSI" id="0x5205" multiple="0" mandatory="0">Signal Strength, 0-100, where 100 is perfect. Only present if CONNECTED</IntegerElement>
+            <StringElement name="APN" id="0x42A5" multiple="0" mandatory="1"/>
         </MasterElement>
         <MasterElement name="NetworkStatusResponse" id="0x5400" multiple="0" mandatory="0">
             <BinaryElement name="IPV4Address" id="0x5401" multiple="0" mandatory="0"> Network IP address; absent if not connected. </BinaryElement>
@@ -160,7 +170,11 @@
             Bit 15: Battery present
             Bit 14: Device can report external power (for future use, will be 0)
             Bit 13: Device has external power, invalid w/o bit 14 == 1 (for future use)
-            Bits 12-10: Reserved
+            Bits 12-10: Error condition
+              == 0b000: No error
+              == 0b010: Temperature too high
+              == 0b011: Temperature too low
+              Other values Reserved
             Bit 9: Battery charging
             Bit 8: Level report mode
               == 0: 3-state approximate report (value 0 == empty, 255 == full, any other value is 'some' charge)

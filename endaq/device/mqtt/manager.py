@@ -397,7 +397,8 @@ class MQTTDevice:
                 file, or `None` if no cached header is available.
         """
         header = self.manager.cache.get(self.sn, 'header')
-        logger.debug(f'Loaded cached header for {self.sn} ({len(header)} bytes)')
+        if header:
+            logger.debug(f'Loaded cached header for {self.sn} ({len(header)} bytes)')
         return header
 
 
@@ -751,7 +752,8 @@ def start(host: Optional[str] = MQTT_BROKER,
           connectArgs: Dict[str, Any] = None,
           advertArgs: Dict[str, Any] = None,
           managerArgs: Dict[str, Any] = None,
-          clean: Optional[int] = None):
+          clean: Optional[int] = None,
+          **_kwargs):
     """
     Start the Device Manager and (optionally) the mDNS advertiser.
     This is a temporary implementation and will be refactored.

@@ -4,7 +4,7 @@ and control the recording device.
 """
 
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timezone
 import errno
 import os.path
 from pathlib import Path
@@ -190,8 +190,8 @@ class CommandInterface:
         ebml = self.schema.encodes(data, headers=False)
 
         if checkSize and self.maxCommandSize and len(ebml) > self.maxCommandSize:
-            raise CommandError("Command too large ({}); max size is {}".format(
-                    len(ebml), self.maxCommandSize))
+            raise CommandError(CommandResponseCode.ERR_BAD_PACKET,
+                               f"Command too large ({len(ebml)}); max size is {self.maxCommandSize}")
 
         return ebml
 
@@ -381,8 +381,8 @@ class CommandInterface:
         if epoch:
             return sysTime, devTime
 
-        return (util.utcfromtimestamp(sysTime),
-                util.utcfromtimestamp(devTime))
+        return (datetime.fromtimestamp(sysTime, timezone.utc),
+                datetime.fromtimestamp(devTime, timezone.utc))
 
 
     @device_synchronized
@@ -1759,7 +1759,16 @@ class SerialCommandInterface(CommandInterface):
 
         self.make_crc = make_crc
         self.ignore_crc = ignore_crc
+        self.escaped = b''
         self.port = None
+
+        # Do additional setup based on device DEVINFO.
+        # `NonRecorder` fixture instances have no DEVINFO; skip
+        if type(device).__name__ != 'NonRecorder':
+            try:
+                self.escaped = self.device.getInfo('SerialCommandInterface')['EscapedCharacters']
+            except (AttributeError, KeyError, TypeError):
+                pass
 
         serial_kwargs.pop('port', None)
         self.portArgs = self.SERIAL_PARAMS.copy()
@@ -1798,7 +1807,7 @@ class SerialCommandInterface(CommandInterface):
         try:
             self.getSerialPort()
             return True
-        except CommandError as err:
+        except DeviceError as err:
             if 'No serial port found' in str(err):
                 return False
             raise
@@ -1926,6 +1935,7 @@ class SerialCommandInterface(CommandInterface):
 
         self.port = None
 
+        # TODO: This should really raise CommunicationError. Fix here and what calls this.
         if sys.platform == 'linux':
             raise CommandError('No serial port found for device '
                                "('sudo' may be required to access serial ports)")
@@ -1984,7 +1994,7 @@ class SerialCommandInterface(CommandInterface):
         # Header: address 0 (broadcast), EBML data, immediate write.
         packet = bytearray([0x80, 0x26, 0x00, 0x0A])
         packet.extend(ebml)
-        packet = hdlc_encode(packet, crc=self.make_crc)
+        packet = hdlc_encode(packet, crc=self.make_crc, escaped=self.escaped)
         return packet
 
 
@@ -2009,7 +2019,7 @@ class SerialCommandInterface(CommandInterface):
         # Header: address 1 (host), EBML data, immediate write.
         packet = bytearray([0x81, 0x00, responseCode])
         packet.extend(ebml)
-        packet = hdlc_encode(packet, crc=self.make_crc)
+        packet = hdlc_encode(packet, crc=self.make_crc, escaped=self.escaped)
         return packet
 
 
@@ -2022,21 +2032,26 @@ class SerialCommandInterface(CommandInterface):
             :param packet: A packet of response data.
             :return: The response, as nested dictionaries.
         """
-        # Messages are Corbus packets:
-        # HDLC escaped short header, payload, crc16
-        packet = hdlc_decode(packet, ignore_crc=self.ignore_crc)
-        if packet.startswith(b'\x81\x00'):
-            resultcode = packet[2]
-            if resultcode == 0:
-                return super()._decode(packet[3:-2])
-            else:
-                errname = {0x01: "Corbus command failed",
-                           0x07: "bad Corbus command"}.get(resultcode, "unknown error")
-                raise CommandError(f"Response header indicated an error "
-                                   f"(0x{resultcode:02x}: {errname})")
-        else:
+        # Messages are HDLC escaped Corbus packets: header, payload, crc16
+        # It may end with an HDLC BREAK character, the data after which
+        # should be ignored.
+        try:
+            # Trim any junk at start and end of the packet (could occur in
+            # some environments, or if the port is used for other data)
+            packet = packet[packet.index(b'\x81\x00'):].partition(b'~')[0]
+            packet = hdlc_decode(packet, ignore_crc=self.ignore_crc)
+        except (ValueError, CRCError):
             raise CommunicationError('Response was corrupted or incomplete; '
                                      'did not have expected Corbus header')
+
+        resultcode = packet[2]
+        if resultcode == 0:
+            return super()._decode(packet[3:-2])
+        else:
+            errname = {0x01: "Corbus command failed",
+                       0x07: "bad Corbus command"}.get(resultcode, "unknown error")
+            raise CommandError(f"Response header indicated an error "
+                               f"(0x{resultcode:02x}: {errname})")
 
 
     def _decodeCommand(self, packet: Union[bytearray, bytes]) -> Dict[str, Any]:
@@ -2048,12 +2063,16 @@ class SerialCommandInterface(CommandInterface):
                 additional coding (varying by interface type).
             :return: The command, as nested dictionaries.
         """
-        packet = hdlc_decode(packet, ignore_crc=self.ignore_crc)
-        if packet.startswith(b'\x80\x26\x00\x0A'):
-            return super()._decodeCommand(packet[4:-2])
-        else:
+        try:
+            # Trim any junk at start and end of the packet (could occur in
+            # some environments, or if the port is used for other data)
+            packet = packet[packet.index(b'\x80\x26\x00\x0A'):].partition(b'~')[0]
+            packet = hdlc_decode(packet, ignore_crc=self.ignore_crc)
+        except (ValueError, CRCError):
             raise CommunicationError('Received command was corrupted or incomplete; '
                                      'did not have expected Corbus header')
+
+        return super()._decodeCommand(packet[4:-2])
 
 
     def _writeCommand(self,
@@ -2373,7 +2392,7 @@ class SerialCommandInterface(CommandInterface):
                 t0 = time()
 
         self._sendCommand({'EBMLCommand': {'SetClock': payload}},
-                          response=False, timeout=timeout)
+                          response=False, timeout=timeout, lock=True)
 
         return t0, t
 
@@ -2673,6 +2692,7 @@ class SerialCommandInterface(CommandInterface):
         if self._statusChanged.is_set():
             self._statusChanged.clear()
             return self.status
+        # TODO: This should really be a DeviceError
         raise CommandError('Device responded but did not report its status')
 
 

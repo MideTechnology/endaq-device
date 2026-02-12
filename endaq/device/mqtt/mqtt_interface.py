@@ -268,8 +268,8 @@ class MQTTConnector:
                 raise CommunicationError(f'Failed to connect to broker: {err!r}')
 
         result, _mid = self.subscribe(self._managerStateTopic, qos=0)
-        if result == mqtt.MQTT_ERR_SUCCESS:
-            self.client.message_callback_add(self._managerStateTopic, self._onMessage)
+        # if result == mqtt.MQTT_ERR_SUCCESS:
+        #     self.client.message_callback_add(self._managerStateTopic, self._onMessage)
 
         self.client.loop_start()
 
@@ -355,7 +355,12 @@ class MQTTConnector:
             self.lastUsedTime = time()
             self._ports[message.topic].append(message.payload)
         elif message.topic == self._managerStateTopic:
-            self._onManagerState(client, userdata, message)
+            # Handle state messages in a separate thread to prevent the paho
+            # client from blocking if a device is receiving a large response
+            # to a command.
+            # TODO: This is a simple implementation that may need more work
+            t = Thread(target=self._onManagerState, args=(client, userdata, message), daemon=True)
+            t.start()
         elif message.topic in self._streamers:
             self._streamers[message.topic]._writeStreamChunk(message.payload)
         else:
@@ -365,33 +370,39 @@ class MQTTConnector:
     def _onManagerState(self, _client, _userdata, message):
         """ MQTT event handler for ``endaq/manager/control/state`` updates.
         """
-        devman = self._getDevManager()
-        if not devman:
-            logger.error(f'Device manager not available')
-
         try:
-            response = devman.command._decode(message.payload)['EBMLResponse']
-            self._updateDeviceInfo(devman, response)
-        except KeyError as err:
-            logger.error(f'Device manager state message missing item: {err!r}')
-            return
+            devman = self._getDevManager()
+            if not devman:
+                logger.error(f'Device manager not available')
+                return
 
-        if self.autoupdate:
             try:
-                deviceList = response['DeviceList']['DeviceListItem']
-                for listItem in deviceList:
-                    sn = listItem.get('SerialNumber')
-                    if not sn or sn in self.exclude:
-                        continue
-                    elif sn in RECORDERS_BY_SN:
-                        self._updateDeviceInfo(RECORDERS_BY_SN[sn], listItem)
-                        # TODO: Exclude unchanged devices?
-            except KeyError:
-                pass
+                response = devman.command._decode(message.payload)['EBMLResponse']
+                self._updateDeviceInfo(devman, response)
+            except KeyError as err:
+                logger.error(f'Device manager state message missing item: {err!r}')
+                return
 
-        if self.updateCallback:
-            self.updateCallback(response)
+            if self.autoupdate:
+                try:
+                    deviceList = response['DeviceList']['DeviceListItem']
+                    for listItem in deviceList:
+                        sn = listItem.get('SerialNumber')
+                        if not sn or sn in self.exclude:
+                            continue
+                        elif sn in RECORDERS_BY_SN:
+                            self._updateDeviceInfo(RECORDERS_BY_SN[sn], listItem)
+                            # TODO: Exclude unchanged devices?
+                except KeyError:
+                    pass
 
+            if self.updateCallback:
+                self.updateCallback(response)
+
+        except Exception as err:
+            logger.error(f'Unexpected error updating manager state: {err!r}',
+                         exc_info=True)
+            raise
 
     # noinspection PyUnusedLocal
     def _onConnect(self, client, userdata, disconnect_flags, reason_code, properties):
