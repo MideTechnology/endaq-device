@@ -1616,7 +1616,7 @@ class CommandInterface:
                 stream was successful, `False` if streamed data is already
                 being received.
         """
-        raise UnsupportedFeature(self, self.startStream)
+        raise UnsupportedFeature(self, self.saveStream)
 
 
     def closeStream(self) -> bool:
@@ -1632,7 +1632,7 @@ class CommandInterface:
             :returns: `True` if the command was successful, `False` if
                 not already receiving/saving streamed data.
         """
-        raise UnsupportedFeature(self, self.stopStream)
+        raise UnsupportedFeature(self, self.closeStream)
 
 
     def streaming(self) -> bool:
