@@ -11,6 +11,7 @@ Starting an :class:`MQTTDeviceManager` is typically done via the
 """
 
 from collections import defaultdict
+from contextlib import suppress
 # import inspect
 from io import BytesIO
 import os.path
@@ -141,11 +142,9 @@ class MQTTDevice:
 
 
     def __del__(self):
-        try:
+        with suppress(AttributeError, TypeError, RuntimeError):
             self.manager.client.unsubscribe(self.measurementTopic)
             self.manager.client.unsubscribe(self.commandTopic)
-        except (AttributeError, TypeError, RuntimeError):
-            pass
 
 
     # =======================================================================
@@ -535,10 +534,8 @@ class MQTTDeviceManager(MQTTClient):
             raise ValueError(f'Could not get SN from topic {topic!r}')
         sn = parts[1]
 
-        try:
+        with suppress(TypeError, ValueError):
             sn = int(sn.lstrip('SWXC0'))
-        except (TypeError, ValueError):
-            pass
 
         return sn
 
@@ -796,6 +793,7 @@ def start(host: Optional[str] = MQTT_BROKER,
                 f'for broker on {host}:{port}')
     client = paho.mqtt.client.Client(paho.mqtt.client.CallbackAPIVersion.VERSION2,
                                      **clientArgs)
+    client.will_set(STATE_TOPIC.format(sn='manager'), MQTTDeviceManager.makeLWT())
     client.connect(host, port, 60, **connectArgs)
 
     # logger.info('Instantiating MQTTDeviceManager')
@@ -823,11 +821,11 @@ def start(host: Optional[str] = MQTT_BROKER,
     try:
         client.loop_forever()
     except KeyboardInterrupt as err:
-        logger.debug(f'{err!r}')
+        logger.info(f'{err!r}')
+        manager.stop()
     finally:
-        if advertise:
-            logger.debug('stopping advertiser')
-            manager.stop()
+        with suppress(AttributeError, TimeoutError):
+            manager.advertiser.stop()
 
     logger.debug('exited loop')
 
