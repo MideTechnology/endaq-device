@@ -9,7 +9,7 @@ from typing import Any, ByteString, Dict, Optional, Tuple, Union
 
 import ebmlite
 from ..client import CommandClient
-from ..hdlc import HDLC_BREAK_CHAR
+from ..hdlc import HDLC_BREAK_CHAR, hdlc_encode
 from ..response_codes import DeviceStatusCode
 from ..util import synchronized
 from .mqtt_interface import COMMAND_TOPIC, RESPONSE_TOPIC, STATE_TOPIC
@@ -286,3 +286,31 @@ class MQTTClient(CommandClient):
             self._devinfo = schema.encodes(devinfo, headers=False)
 
         return self._devinfo, None, None
+
+
+    # =======================================================================
+    #
+    # =======================================================================
+
+    @classmethod
+    def makeLWT(cls, extra: Dict[str, Any] = None) -> bytes:
+        """ Generate the contents of a minimal, generic 'Last Will and Testament'
+            packet for the client, to be sent on an unexpected MQTT client disconnection.
+            Note that the LWT must be set via `paho.mqtt.client.Client.will_set()`
+            prior to calling `paho.mqtt.client.Client.connect()`, which is done
+            before the `MQTTClient` is instantiated..
+
+            :param extra: A dictionary of optional, additional items to
+                add to the ``EBMLResponse``.
+        """
+        # NOTE: Because this needs to be called before instantiation of the
+        # MQTTClient, it does all its own encoding (as opposed to using
+        # the class' various methods). Any subclasses with special
+        # encoding needs will need to override this method.
+        resp = {'DeviceStatusCode': DeviceStatusCode.ERR_DISCONNECTED}
+        if extra:
+            resp.update(extra)
+
+        schema = ebmlite.loadSchema('command-response.xml')
+        ebml = schema.encodes({'EBMLResponse': resp})
+        return hdlc_encode(b'\x81\x00\x00' + ebml)
