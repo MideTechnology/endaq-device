@@ -1201,13 +1201,13 @@ class MQTTCommandInterface(SerialCommandInterface):
 
 
     @synchronized
-    def openStream(self,
+    def saveStream(self,
                    path: Union[str, Path],
                    streamCallback: Optional[Callable] = None) -> bool:
         """ Start receiving and writing data streamed from the device. Note
             that this does not send the start command to the device; that
             `startRecording()` must be done explicitly before calling
-            `openStream()`.
+            `saveStream()`.
 
             :param path: The name of the directory to which to save the
                 streamed data. The names of the individual ``.IDE``
@@ -1241,7 +1241,8 @@ class MQTTCommandInterface(SerialCommandInterface):
 
     @synchronized
     def _createStreamFile(self):
-        """ Start a new IDE file.
+        """ Start a new IDE file. If a file is currently open and has been
+            written to, close it and start another.
         """
         if self._stream and not self._stream.closed:
             if self._streamedBytes == 0:
