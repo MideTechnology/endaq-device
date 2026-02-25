@@ -6,6 +6,7 @@ data-logging devices.
 __author__ = "David Stokes"
 __copyright__ = "Copyright 2025 Mide Technology Corporation"
 
+from contextlib import suppress
 import os
 from pathlib import Path
 import string
@@ -235,9 +236,11 @@ def getDevices(paths: Optional[List[Filename]] = None,
     result = set()
 
     for path in paths:
-        dev = getRecorder(path, update=update, strict=strict)
-        if dev is not None:
-            result.add(dev)
+        with suppress(IOError):
+            # Can fail in edge case where device unplugged at wrong moment
+            dev = getRecorder(path, update=update, strict=strict)
+            if dev is not None:
+                result.add(dev)
 
     if unmounted:
         for dev in getSerialDevices(known=RECORDERS_BY_SN):

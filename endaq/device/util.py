@@ -171,9 +171,20 @@ def levenshtein(a: str, b: str) -> int:
 def getMyIP() -> str:
     """ Retrieve the computer's IP address (v4).
     """
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        s.connect(("8.8.8.8", 80))
-        return s.getsockname()[0]
+    try:
+        # More accurate, but may fail in some conditions
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.settimeout(0)
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+    except (socket.error, OSError):
+        try:
+            # Alternate method (safer, but may return loopback on some systems)
+            name = socket.gethostname()
+            return socket.gethostbyname(name)
+        except (socket.error, OSError) as err:
+            logger.error(f"Could not get IP, defaulting to 127.0.0.1 ({err!r})")
+            return '127.0.0.1'
 
 
 def makeClientID(base: str) -> str:
