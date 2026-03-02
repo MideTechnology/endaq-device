@@ -40,7 +40,9 @@ from .advertising import Advertiser
 from .caching import BaseCache, FileCache
 from .discovery import DEFAULT_NAME
 from .mqtt_client import MQTTClient
-from .mqtt_interface import STATE_TOPIC, HEADER_TOPIC, MEASUREMENT_TOPIC, COMMAND_TOPIC
+from .mqtt_interface import (STATE_TOPIC, HEADER_TOPIC,
+                             MEASUREMENT_TOPIC, COMMAND_TOPIC,
+                             EBML_ID_BYTES)
 
 __all__ = ('MQTTDeviceManager', 'start', 'stop')
 
@@ -52,7 +54,6 @@ CDB_ID = 0xA1  # EBML ID of IDE ChannelDataBlock element
 
 # Raw bytes of EBML IDs for quickly identifying elements in streams without
 # needing to parse the data.
-EBML_ID_BYTES = b'\x1A\x45\xDF\xA3'  # To identify `EBML` elements in stream
 NEWLOCKID_ID_BYTES = b'\x5A\x02'  # Raw `NewLockID`, to identify `SetLockID` commands
 
 DEVICE_TIMEOUT = 60 * 5  # seconds
