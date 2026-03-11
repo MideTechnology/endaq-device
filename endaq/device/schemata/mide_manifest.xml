@@ -31,10 +31,9 @@
   <!--<BinaryElement name="Discontinuity" global="1" id="0xFD" minver="1">Probably replaced by a flag in individual datablocks at the Channel level.</BinaryElement>  -->
   <IntegerElement name="ElementTag" global="1" id="0xFC" minver="1">Arbitrary tag. Allow for separate opening and closing tags without knowing the length of the enclosed data in advance. I.e. instead of [tag len value=[subtag len... /]/], [tag len=0][subtags and contents][/tag]. Positive value corresponds to the corresponding ElementID as an opening tag; the corresponding negative value as the closing tag. Value -int_max for any int size is reserved.</IntegerElement>
 
-<!-- Slam Stick X Manifest tags -->
-
 <!-- NOTES: -->
-<!-- This is completely independent from the portable instrumentation schema. Under normal circumstances, nobody should have to read this data directly. It is internal housekeeping for the recording device. -->
+<!-- This is completely independent from the IDE format schema. Under normal circumstances, nobody should have to read this data directly. It is internal housekeeping for the recording device. -->
+<!-- Once an Element makes it to a release product, it may not be recycled or even renamed, since this will break things (e.g. pre-existing templates with the original names) -->
 
 <!-- Overall USERPAGE structure -->
     <!-- The USERPAGE is 2KBytes (0x0000 ~ 0x07FF) and will store the complete Manifest and calibration entries. -->
@@ -48,9 +47,11 @@
     <!-- 0x0010: Recommended starting offset of Manifest. If the number of unique sections, indicated by offset/length entries as above, exceeds this value, division between section offset/length entries and first payload will be determined by the offset of the Manifest. -->
 
     <!-- Manifest structure -->
-    <!-- Consists of a DeviceManifest master tag and its subelements as shown below. The SystemInfo and Battery entries are required. -->
+	<!-- The Manifest contains manufacturer-generated identity data corresponding to this hardware, e.g. product name, serial number and a list of installed sensors. -->
+    <!-- A Manifest consists of a DeviceManifest master tag and its subelements as shown below. The SystemInfo and Battery entries are required. -->
     <!-- The remaining entries are optional, but strongly recommended, for the first Slam Stick product (defaults will be used); required if different from the defaults. -->
     <!-- Note, the production device implements a proper EBML parser for this stuff, so the "length" values shown for struct-like access are retained only as a note to the implementer regarding max. payload size for the field.-->
+	<!-- In general, if the number of possible values for an item is constrained, prefer to use unique named Elements or exact-match string values for them; this forces them to be at least a little bit self-documenting and reduces the chance of silently recycling a numeric value without noticing. -->
 
     <!-- Config structure -->
     <!-- Consists of the ConfigurationList master element and children, exactly as it will appear in the output. -->
@@ -74,15 +75,23 @@
             <StringElement name="FwCustomStr" id="0x4D0B" mandatory="0" multiple="0" minver="1">Custom firmware build. Firmware is a custom build if present. Name should match FW branch/tag name as applicable for identification purposes, but is mainly present so FW updater can generate a warning if a custom build will be replaced by a standard one.</StringElement>
             <UIntegerElement name="HwAPI" id="0x4D0C" mandatory="0" multiple="0" minver="1">Hardware API level of this hardware. This is bumped in response to hardware revs with compatibility implications.</UIntegerElement>
             <StringElement name="BatchIDStr" id="0x4D0D" mandatory="0" multiple="0" minver="1">Batch identification string. Text string encoding the date, variant and manufacturer of a given hardware batch. Batch is independent of HwRev as there may be multiple production batches of a given revision, from multiple fab houses.</StringElement>
+			<StringElement name="PinoutFamily" id="0x4D0E" mandatory="0" multiple="0" minver="1">Pinout family identification string, e.g. 'VIBE' for Low-Cost Vibration Sensor, 'H' for H-Series; default (not set) is conventional enDAQ.</StringElement>
+			<!-- PinoutFamily is intended as a stopgap to cover a small, extremely countable number of major pinout variations until a more flexible system can be implemented (e.g DeviceTree or a spiritual analogue) -->
+			<!-- More minor HW-specific differences are already special-cased in various ways using e.g. SensorConfig elements, unique variant entries for the same Sensor, etc. -->
         </MasterElement>
         <!-- Battery Info -->
         <MasterElement name="Battery" id="0x4D10" mandatory="0" multiple="0" minver="1">Class B (2 byte + 2 length) Master element for battery info.
-            <UIntegerElement name="Capacity_mAh" id="0x4D11" mandatory="0" multiple="0" minver="1">4-byte Nominal battery capacity in mAh.</UIntegerElement>
+            <UIntegerElement name="Capacity_mAh" id="0x4D11" mandatory="0" multiple="0" minver="1">4-byte Nominal battery capacity in mAh; may not be zero for a battery that really exists.</UIntegerElement>
             <UIntegerElement name="Vddscale_full_thresh" id="0x4D12" mandatory="0" multiple="0" minver="1">1-byte ACMP Vdd scale value corresponding to battery full threshold (0 ~ 63).</UIntegerElement>
             <UIntegerElement name="Vddscale_ok_thresh" id="0x4D13" mandatory="0" multiple="0" minver="1">1-byte ACMP Vdd scale value corresponding to battery 'ok' threshold (0 ~ 63).</UIntegerElement>
             <UIntegerElement name="Vddscale_low_thresh" id="0x4D14" mandatory="0" multiple="0" minver="1">1-byte ACMP Vdd scale value corresponding to low-battery alarm threshold (0 ~ 63).</UIntegerElement>
             <UIntegerElement name="Vddscale_dead_thresh" id="0x4D15" mandatory="0" multiple="0" minver="1">1-byte ACMP Vdd scale value corresponding to low-battery poweroff threshold (0 ~ 63).</UIntegerElement>
             <UIntegerElement name="Vsd" id="0x4D16" mandatory="1" multiple="0" minver="1">Hardware cutoff voltage value in mV.</UIntegerElement>
+			<MasterElement name="IsPrimaryCell" id="0x4D17" mandatory="0" multiple="0" minver="1">Explicitly denote a battery is present but non-rechargeable</MasterElement>
+			<!-- See also: the Charger master elements at top-level below to indicate specific battery management or fuel gauge ICs. It is the charger IC's job to handle chemistry-specific details; the HW doesn't otherwise need it called out. -->
+			<!-- Special battery topics: -->
+			<!--   * For primary batteries with or without a wired power supply, specify IsPrimaryCell and do not specify any rechargeable chemistry chargers. -->
+			<!--   * For batteryless systems, omit the entire Battery element and do not specify any rechargeable chemistry chargers. -->
         </MasterElement>
         <!-- Information about the antialiasing filter bank, if present. -->
         <MasterElement name="AAFilterInfo" id="0x4D20" mandatory="0" multiple="0" minver="1">Class B (2 byte + 2 length) Master element for the antialiasing filter info.
@@ -115,9 +124,18 @@
                 <UIntegerElement name="AnalogSensorChannelCTF" id="0x4D57" mandatory="0" multiple="0" minver="1" default="1">CTF filter.</UIntegerElement>
             </MasterElement>
         </MasterElement>
+
         <!-- Codes for specific digital sensors and storage devices. We can't make this all-singing-all-dancing generic, but can at least tell the FW if specific sensors at known e.g. bus locations are stuffed or not. -->
-        <!-- Media elements (SD, eventually wireless/etc.?) -->
-        <MasterElement name="DigitalStorageSD" id="0x4D80" mandatory="0" multiple="0" minver="1">Indicates the presence of a uSD card on the SPI bus.</MasterElement>
+
+        <!-- Storage Media elements -->
+        <MasterElement name="DigitalStorageSD" id="0x4D80" mandatory="0" multiple="0" minver="1">Indicates the presence of a SD/MMC device on the SPI bus.</MasterElement>
+		<MasterElement name="DigitalStorageSpiFlash" id="0x4D81" mandatory="0" multiple="0" minver="1">Indicates the presence of a serial Flash.</MasterElement>
+		<!-- In general, SD/MMC cards SPI Flash are commoditized and have discovery mechanisms, e.g. CSD or SFDP respectively, so we don't need to specify a part number. If that changes, add an element here. -->
+		<MasterElement name="DigitalStorageRAM" id="0x4D82" mandatory="0" multiple="0" minver="1">Indicates the presence of an external volatile (RAM) element.
+			<StringElement name="RAMPartFamily" id="0x4D83" mandatory="0" multiple="0" minver="1">Base part number, if needed. Including any necesary capacity indicators, excluding e.g. package variant.</StringElement>
+			<!-- SPI RAM are much less standardized, so even knowing the r/w command set, let alone capacity or speed limits, requires looking it up from a known part number. -->
+			<!-- This is intentionally a child of the specific memory type in case we have multiple types on the same board potentially needing a partnumber callout. -->
+		</MasterElement>
 
         <!-- Digital inertial sensors (accelerometer, gyro, IMU, etc.) -->
         <MasterElement name="DigitalSensorADXL362" id="0x4D90" mandatory="0" multiple="0" minver="1">Indicates the presence of an ADXL362 accelerometer on the SPI bus.</MasterElement>
@@ -166,24 +184,37 @@
             <UIntegerElement name="SensorConfig" id="0x4E00" mandatory="0" multiple="0" minver="1">Configuration data for digital sensors. Value varies by hardware.</UIntegerElement>
         </MasterElement>
 
-        <!-- Battery charger ICs -->
-        <MasterElement name="ChargerMCP73837" id="0x4D60" mandatory="0" multiple="0" minver="1">Indicates the presence of a MCP73837 battery charger.</MasterElement>
+        <!-- Battery management and fuel gauge ICs -->
+        <MasterElement name="ChargerMCP73837" id="0x4D60" mandatory="0" multiple="0" minver="1">Indicates the presence of a MCP73837 battery charger (default if none specified).</MasterElement>
         <MasterElement name="ChargerMAX14747" id="0x4D61" mandatory="0" multiple="0" minver="1">Indicates the presence of a MAX14747 battery charger.</MasterElement>
         <MasterElement name="ChargerBQ25611D" id="0x4D62" mandatory="0" multiple="0" minver="1">Indicates the presence of a BQ25611D battery charger.</MasterElement>
         <MasterElement name="ChargerBQ25185" id="0x4D63" mandatory="0" multiple="0" minver="1">Indicates the presence of a BQ25185 battery charger.</MasterElement>
+		<MasterElement name="FuelGaugeBQ35100" id="0x4D64" mandatory="0" multiple="0" minver="1">Indicates the presence of a BQ35100 fuel gauge.</MasterElement>
+		<MasterElement name="ChargerNone" id="0x4D65" mandatory="0" multiple="0" minver="1">Indicates explicit lack of a charger IC or charge capability since historical default is to assume MCP7383x family.</MasterElement>
 
         <!-- Communication -->
-        <MasterElement name="CommunicationWiFi_ESP32" id="0x4D70" mandatory="0" multiple="0" minver="1">Indicates the presence of an ESP32 Wi-Fi module.</MasterElement>
+        <MasterElement name="CommunicationWiFi_ESP32" id="0x4D70" mandatory="0" multiple="0" minver="1">Indicates the presence of an ESP32 Wi-Fi module.
+			<!-- This element specifically refers to an Espressif ESPxx family module -->
+			<StringElement name="ESPPartFamily" id="0x4D73" mandatory="0" multiple="0" minver="1">Espressif Wifi variant identifier, e.g. 'S3' or 'C6'. Default (unset) is original ESP32.</StringElement>
+		</MasterElement>
         <MasterElement name="CommunicationNoSerial" id="0x4D71" mandatory="0" multiple="0" minver="1">Indicates device should not appear as a USB serial communication device, and accept file commands instead. </MasterElement>
         <MasterElement name="CommunicationCorBus" id="0x4D72" mandatory="0" multiple="0" minver="1">Indicates device has a CorBus interface and will respond to/send CorBus commands. </MasterElement>
+		<MasterElement name="CommunicationNoUSB" id="0x4D74" mandatory="0" multiple="0" minver="1">Indicates device has no USB port. </MasterElement>
+		<MasterElement name="CommunicationProgUART" id="0x4D75" mandatory="0" multiple="0" minver="1">Indicates a (non-CorBus) UART for initial program load and command interface. The command interface framing is nominally CorBus compatible, but this implies the full stack is missing or disabled, i.e. the device will not enumerate or host other devices. </MasterElement>
 
         <!-- Misc. -->
-        <MasterElement name="DigitalSensorReset" id="0x4DD0" mandatory="0" multiple="0" minver="1">Indicates the presence of a hardware pushbutton reset controller.</MasterElement>
+		<!-- Warning, id 4dd9 was already used for the IRIG input -->
+        <MasterElement name="DigitalSensorReset" id="0x4DD0" mandatory="0" multiple="0" minver="1">Indicates the presence of a hardware pushbutton reset controller.
+			<UIntegerElement name="ResetTimeMsec" id="0x4DDC" mandatory="0" multiple="0" minver="1">Reset time in msec, default (unset) is 10000. </UIntegerElement>
+		</MasterElement>
+		
         <MasterElement name="DigitalPowerMAX77801" id="0x4DD1" mandatory="0" multiple="0" minver="1">Indicates the presence of a MAX77801 power management IC on the I2C1 bus.</MasterElement>
         <MasterElement name="DigitalLedThree" id="0x4DD2" mandatory="0" multiple="0" minver="1">Indicates that the membrane has a 3rd LED driven by the MCU.</MasterElement>
         <MasterElement name="DigitalSensorSI1133" id="0x4DD3" mandatory="0" multiple="0" minver="1">Indicates the presence of a SI1133 light sensor on the I2C1 bus.</MasterElement>
         <MasterElement name="UseLegacyUserInterface" id="0x4DD7" mandatory="0" multiple="0" minver="1">Indicates that the device should be displaing the legacy UI.</MasterElement>
         <MasterElement name="DeepSleepWakeupPins" id="0x4DD8" mandatory="0" multiple="0" minver="1">Indicates that the device has line USB_VBUS_Sense connected to PA3 instead of PA9, giving it the proper wakeup pins for lowest possible sleep level.</MasterElement>
+		<MasterElement name="MagneticSwitch" id="0x4DDA" mandatory="0" multiple="0" minver="1">Device has a magnetic switch rather than a conventional user-facing pushbutton. They work about the same but the operational intent may differ. </MasterElement>
+		<MasterElement name="DigitalLedRGB" id="0x4DDB" mandatory="0" multiple="0" minver="1">Device has a combined RGB LED rather than discrete elements.</MasterElement>
 
         <!-- Analog Out -->
         <MasterElement name="PeripheralHeater" id="0x4F00" mandatory="0" multiple="0" minver="1">Indicates the presence of an analog heater device.
