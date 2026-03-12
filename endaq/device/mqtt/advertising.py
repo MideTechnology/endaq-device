@@ -45,6 +45,7 @@ class Advertiser(Thread):
         self.rename = rename
         self.serviceName, self.serviceType = splitServiceName(name)
         self.properties = properties or {}
+        self.fullName = f'{self.serviceName}.{self.serviceType}'
 
         # TODO: IPv6 support?
         self.address = address or getMyIP()
@@ -52,13 +53,12 @@ class Advertiser(Thread):
 
         self.info = ServiceInfo(
                 self.serviceType,
-                f'{self.serviceName}.{self.serviceType}',
+                self.fullName,
                 addresses=[socket.inet_aton(self.address)],
                 port=self.port,
                 properties=self.properties,
         )
 
-        self.fullName = name
         self._stopEvent = Event()
         super().__init__(daemon=True)
         self.name = self.name.replace("Thread", type(self).__name__)
@@ -184,10 +184,12 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     advertiser = Advertiser(**vars(args))
+    print(f'Advertising "{advertiser.fullName}" ({advertiser.address} port {advertiser.port})')
     advertiser.start()
 
     try:
         while True:
             sleep(60)
     except KeyboardInterrupt:
+        print('Advertising shutting down...')
         advertiser.stop()
