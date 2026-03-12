@@ -159,3 +159,35 @@ class Advertiser(Thread):
                          f'on {self.address}:{self.port}.')
             self.zeroconf.unregister_service(self.info)
             self.zeroconf.close()
+
+
+# ===========================================================================
+#
+# ===========================================================================
+
+if __name__ == '__main__':
+    import argparse
+
+    desc = __doc__ + ("\n\nDo not run if the MQTTDeviceManager is already advertising "
+                      "(e.g., endaq.device.mqtt.manager run without the '--silent' option).")
+    parser = argparse.ArgumentParser(description=desc)
+
+    parser.add_argument('-a', '--address', type=str, default=None,
+                        help="MQTT Broker address/hostname. Defaults to this machine.")
+    parser.add_argument('-p', '--port', type=int, default=MQTT_PORT,
+                        help="MQTT Broker port.")
+    parser.add_argument('-n', '--name', type=str, default=DEFAULT_NAME,
+                        help="The advertised name of the MQTT broker.")
+    parser.add_argument('-r', '--rename', action='store_true',
+                        help="Add an incrementing number to the advertised name "
+                             "if that name is already in use.")
+
+    args = parser.parse_args()
+    advertiser = Advertiser(**vars(args))
+    advertiser.start()
+
+    try:
+        while True:
+            sleep(60)
+    except KeyboardInterrupt:
+        advertiser.stop()
