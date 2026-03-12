@@ -52,7 +52,7 @@ class Advertiser(Thread):
 
         self.info = ServiceInfo(
                 self.serviceType,
-                name,
+                f'{self.serviceName}.{self.serviceType}',
                 addresses=[socket.inet_aton(self.address)],
                 port=self.port,
                 properties=self.properties,
