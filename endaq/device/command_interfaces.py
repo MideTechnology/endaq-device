@@ -1086,7 +1086,7 @@ class CommandInterface:
             if up_ext != '.bin':
                 raise ValueError("Userpage update file must be type .bin")
             if validate:
-                updating.validateUserpage(self, userpage)
+                updating.validateUserpage(self.device, userpage)
 
         hasFw = self._copyUpdateFile(firmware, fw, clean)
         hasUp = self._copyUpdateFile(userpage, up, clean)
