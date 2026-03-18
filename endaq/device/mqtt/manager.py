@@ -17,7 +17,6 @@ from io import BytesIO
 import os.path
 from pathlib import Path
 import struct
-import sys
 import threading
 from time import time
 from typing import Any, ByteString, Dict, List, Optional, Tuple, Union
@@ -72,12 +71,6 @@ MIN_INTERVAL = 2
 # Maximum interval between scheduled MQTTDeviceManager state updates.
 # Manager updates triggered by device updates reset the interval.
 MAX_INTERVAL = 45
-
-# Paths for cached data (IDE headers, etc.)
-if sys.platform == 'win32':
-    CACHE_PATH = os.path.expandvars(r'%APPDATA%\endaq\mqtt_manager')
-else:
-    CACHE_PATH = os.path.expanduser('~/.endaq/mqtt_manager')
 
 
 # ===========================================================================
