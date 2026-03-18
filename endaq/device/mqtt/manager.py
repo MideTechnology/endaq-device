@@ -18,6 +18,7 @@ import os.path
 from pathlib import Path
 import struct
 import sys
+import threading
 from time import time
 from typing import Any, ByteString, Dict, List, Optional, Tuple, Union
 from weakref import WeakSet
@@ -62,6 +63,14 @@ DEVICE_TIMEOUT = 60 * 5  # seconds
 # the device that differ from system time by this amount or more are
 # considered untrustworthy.
 MAX_DRIFT = 60 * 60
+
+# Minimum interval between MQTTDeviceManager state updates, to prevent
+# rapid device state updates from each triggering a flood of manager updates.
+MIN_INTERVAL = 30.
+
+# Maximum interval between scheduled MQTTDeviceManager state updates.
+# Manager updates triggered by device updates reset the interval.
+MAX_INTERVAL = 60.
 
 # Paths for cached data (IDE headers, etc.)
 if sys.platform == 'win32':
@@ -214,6 +223,7 @@ class MQTTDevice:
         """ Handle a command message to the device, scraping any change to
             the `LockID`.
         """
+        # TODO: Put this in a separate thread, to reduce time spent blocking message handler?
         self.lastCommand = time()
         msg = message.payload
 
@@ -256,6 +266,7 @@ class MQTTDevice:
         """ Handle an incoming chunk of IDE data. If the message completes
             an element, it is handled.
         """
+        # TODO: Put this in a separate thread, to reduce time spent blocking message handler?
         self.totalMsgs += 1
         self.lastMeasurement = self.lastContact = time()
         if self.stateInfo:
@@ -451,7 +462,8 @@ class MQTTDeviceManager(MQTTClient):
                  client: paho.mqtt.client.Client,
                  make_crc: bool = True,
                  ignore_crc: bool = False,
-                 interval: int = 45,
+                 interval: float = MAX_INTERVAL,
+                 minInterval: float = MIN_INTERVAL,
                  cache: Union[str, Path, BaseCache] = CACHE_PATH,
                  shutdown: bool = False):
         """ A client that monitors several MQTT topics, providing additional
@@ -462,8 +474,11 @@ class MQTTDeviceManager(MQTTClient):
                 and responses.
             :param ignore_crc: If `False`, do not validate incoming commands
                 or responses.
-            :param interval: The time between published `state` updates. If
-                0, no `state` updates will be published.
+            :param interval: The maximum time between scheduled `state`
+                updates, in seconds. If 0, `state` updates from the manager
+                will only be published when devices publish their states.
+            :param minInterval: The minimum time between published `state`
+                updates, in seconds.
             :param cache: The location for cached device data, either a
                 directory or an instance of a `BaseCache` storage handler.
             :param shutdown: If `True`, the manager can be shut down remotely
@@ -480,6 +495,7 @@ class MQTTDeviceManager(MQTTClient):
         else:
             self.cachePath = cache
 
+        self.minInterval = minInterval
         self.allowShutdown = shutdown
 
         self.knownDevices: dict[int, MQTTDevice] = {}
@@ -494,6 +510,7 @@ class MQTTDeviceManager(MQTTClient):
         self.client.message_callback_add(self.stateSubTopic, self.onStateMessage)
 
         self.advertiser: Optional[Advertiser] =  None
+        self.stateUpdater = threading.Timer(1, lambda: None)
 
 
     def __repr__(self):
@@ -553,6 +570,16 @@ class MQTTDeviceManager(MQTTClient):
 
     @synchronized
     def updateState(self):
+        """ Publish an updated set of data to the 'state' topic.
+        """
+        if self.stateUpdater.is_alive():
+            return
+        self.stateUpdater = threading.Timer(MIN_INTERVAL, self._updateState)
+        self.stateUpdater.daemon = True
+        self.stateUpdater.start()
+
+
+    def _updateState(self):
         """ Publish an updated set of data to the 'state' topic.
         """
         # curframe = inspect.currentframe()
