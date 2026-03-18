@@ -38,7 +38,7 @@ from ..exceptions import CommandError, CRCError, DeviceError, ValidationError
 from ..util import getMyIP, makeClientID, synchronized, dump
 from .mqtt_interface import MQTT_BROKER, MQTT_PORT
 from .advertising import Advertiser
-from .caching import BaseCache, FileCache
+from .caching import CACHE_PATH, BaseCache, FileCache
 from .discovery import DEFAULT_NAME
 from .mqtt_client import MQTTClient
 from .mqtt_interface import (STATE_TOPIC, HEADER_TOPIC,
@@ -49,6 +49,7 @@ __all__ = ('MQTTDeviceManager', 'start', 'stop')
 
 # ===========================================================================
 # 'Constants'
+# Unless otherwise specified, time-related values are in seconds.
 # ===========================================================================
 
 CDB_ID = 0xA1  # EBML ID of IDE ChannelDataBlock element
@@ -66,11 +67,11 @@ MAX_DRIFT = 60 * 60
 
 # Minimum interval between MQTTDeviceManager state updates, to prevent
 # rapid device state updates from each triggering a flood of manager updates.
-MIN_INTERVAL = 30.
+MIN_INTERVAL = 2
 
 # Maximum interval between scheduled MQTTDeviceManager state updates.
 # Manager updates triggered by device updates reset the interval.
-MAX_INTERVAL = 60.
+MAX_INTERVAL = 45
 
 # Paths for cached data (IDE headers, etc.)
 if sys.platform == 'win32':
@@ -89,7 +90,8 @@ class MQTTDevice:
     presenting itself as an enDAQ recorder over MQTT. It handles capturing and
     caching metadata. Not to be confused with `endaq.device.Recorder`, which
     is a more thorough representation of the device itself, for configuration
-    and control purposes; this class is more abstract.
+    and control purposes; this class is more abstract and part of the manager's
+    internal mechanisms.
     """
 
     def __init__(self,
