@@ -43,12 +43,18 @@ jobs:
         python-version: ['3.12']
 
     env:
-      APPROVED_USERS: '["pscheidler", "StokesMIDE"]'
+      APPROVED_USERS: '["pscheidler", "StokesMIDE", "JSMTHWCK"]'
       VENV_DIR: /opt/runner/venvs/endaq-device
       PYTHON_VERSION: ${{ matrix.python-version }}
 
     runs-on: [self-hosted, device-library-tester]
     steps:
+      - name: Print IP Address
+        if: ${{ contains(fromJSON(env.APPROVED_USERS), github.event.pusher.name) }}
+        run: |
+          echo "IP=$(hostname -I | awk '{print $1}')"
+        shell: bash
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -65,15 +71,13 @@ jobs:
             echo "Creating virtual environment in ${{ env.FULL_VENV_PATH }}"
             python -m venv ${{ env.FULL_VENV_PATH }}
           fi
-
-          echo "Activating virtual environment $FULL_VENV_PATH ..."
-          source "${{ env.FULL_VENV_PATH }}/bin/activate"
         env:
           FULL_VENV_PATH: ${{ format('{0}_{1}/', env.VENV_DIR, env.PYTHON_VERSION) }}
         shell: bash
 
       - name: Set up libraries
         run: |
+          source "${{ env.FULL_VENV_PATH }}/bin/activate"
           echo "::group::Initial library list"
           python -m pip list
           echo "::endgroup::"
@@ -96,12 +100,8 @@ jobs:
 
       - name: Run device tests if pusher is approved
         if: ${{ contains(fromJSON(env.APPROVED_USERS), github.event.pusher.name) }}
-        run: python -m pytest --random-order --device "W0018491" --raspi ./test_hardware/
+        run: |
+          source "${{ env.FULL_VENV_PATH }}/bin/activate"
+          python -m pytest --random-order --device "W0018491" --raspi ./test_hardware/
         env:
           GUEST_WIFI_PW: ${{ secrets.GUEST_WIFI_PW }}
-
-      - name: Print IP Address
-        if: ${{ contains(fromJSON(env.APPROVED_USERS), github.event.pusher.name) }}
-        run: |
-          echo "IP=$(hostname -I | awk '{print $1}')"
-        shell: bash
