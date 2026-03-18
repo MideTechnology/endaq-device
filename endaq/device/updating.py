@@ -89,7 +89,7 @@ def validatePackage(device: "Recorder",
     elif not device.canCopyFirmware:
         raise UnsupportedFeature('The device cannot be updated via software')
     elif not device.mcuType:
-        DeviceError("Could not determine device's MCU type")
+        raise DeviceError("Could not determine device's MCU type")
 
     info = parsePackage(package)
 

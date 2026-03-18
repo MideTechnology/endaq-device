@@ -11,6 +11,7 @@ Starting an :class:`MQTTDeviceManager` is typically done via the
 """
 
 from collections import defaultdict
+from contextlib import suppress
 # import inspect
 from io import BytesIO
 import os.path
@@ -39,7 +40,9 @@ from .advertising import Advertiser
 from .caching import BaseCache, FileCache
 from .discovery import DEFAULT_NAME
 from .mqtt_client import MQTTClient
-from .mqtt_interface import STATE_TOPIC, HEADER_TOPIC, MEASUREMENT_TOPIC, COMMAND_TOPIC
+from .mqtt_interface import (STATE_TOPIC, HEADER_TOPIC,
+                             MEASUREMENT_TOPIC, COMMAND_TOPIC,
+                             EBML_ID_BYTES)
 
 __all__ = ('MQTTDeviceManager', 'start', 'stop')
 
@@ -51,7 +54,6 @@ CDB_ID = 0xA1  # EBML ID of IDE ChannelDataBlock element
 
 # Raw bytes of EBML IDs for quickly identifying elements in streams without
 # needing to parse the data.
-EBML_ID_BYTES = b'\x1A\x45\xDF\xA3'  # To identify `EBML` elements in stream
 NEWLOCKID_ID_BYTES = b'\x5A\x02'  # Raw `NewLockID`, to identify `SetLockID` commands
 
 DEVICE_TIMEOUT = 60 * 5  # seconds
@@ -140,11 +142,9 @@ class MQTTDevice:
 
 
     def __del__(self):
-        try:
+        with suppress(AttributeError, TypeError, RuntimeError):
             self.manager.client.unsubscribe(self.measurementTopic)
             self.manager.client.unsubscribe(self.commandTopic)
-        except (AttributeError, TypeError, RuntimeError):
-            pass
 
 
     # =======================================================================
@@ -397,7 +397,8 @@ class MQTTDevice:
                 file, or `None` if no cached header is available.
         """
         header = self.manager.cache.get(self.sn, 'header')
-        logger.debug(f'Loaded cached header for {self.sn} ({len(header)} bytes)')
+        if header:
+            logger.debug(f'Loaded cached header for {self.sn} ({len(header)} bytes)')
         return header
 
 
@@ -533,10 +534,8 @@ class MQTTDeviceManager(MQTTClient):
             raise ValueError(f'Could not get SN from topic {topic!r}')
         sn = parts[1]
 
-        try:
+        with suppress(TypeError, ValueError):
             sn = int(sn.lstrip('SWXC0'))
-        except (TypeError, ValueError):
-            pass
 
         return sn
 
@@ -751,7 +750,8 @@ def start(host: Optional[str] = MQTT_BROKER,
           connectArgs: Dict[str, Any] = None,
           advertArgs: Dict[str, Any] = None,
           managerArgs: Dict[str, Any] = None,
-          clean: Optional[int] = None):
+          clean: Optional[int] = None,
+          **_kwargs):
     """
     Start the Device Manager and (optionally) the mDNS advertiser.
     This is a temporary implementation and will be refactored.
@@ -793,6 +793,7 @@ def start(host: Optional[str] = MQTT_BROKER,
                 f'for broker on {host}:{port}')
     client = paho.mqtt.client.Client(paho.mqtt.client.CallbackAPIVersion.VERSION2,
                                      **clientArgs)
+    client.will_set(STATE_TOPIC.format(sn='manager'), MQTTDeviceManager.makeLWT())
     client.connect(host, port, 60, **connectArgs)
 
     # logger.info('Instantiating MQTTDeviceManager')
@@ -820,11 +821,11 @@ def start(host: Optional[str] = MQTT_BROKER,
     try:
         client.loop_forever()
     except KeyboardInterrupt as err:
-        logger.debug(f'{err!r}')
+        logger.info(f'{err!r}')
+        manager.stop()
     finally:
-        if advertise:
-            logger.debug('stopping advertiser')
-            manager.stop()
+        with suppress(AttributeError, TimeoutError):
+            manager.advertiser.stop()
 
     logger.debug('exited loop')
 

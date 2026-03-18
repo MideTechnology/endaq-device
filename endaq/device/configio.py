@@ -123,3 +123,4 @@ def importConfig(device: Recorder,
             item.value = imported.config.items[configId].value
         elif not merge:
             item.value = None
+    device._name = device.config.name

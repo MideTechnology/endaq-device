@@ -14,6 +14,9 @@ from time import sleep, time
 from typing import Any, ByteString, Callable, Dict, Optional, Tuple, Union
 import socket
 
+from .response_codes import CommandResponseCode
+from .exceptions import DeviceError
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -139,18 +142,6 @@ def formatFwRev(rev: int) -> str:
         return str(rev)
 
 
-# noinspection PyDeprecation
-def utcfromtimestamp(timestamp: int) -> datetime.datetime:
-    """ Convert an Epoch timestamp to a UTC datetime, getting around
-        deprecated `datetime.datetime.utcfromtimestamp` needed for
-        Python 3.9. To be removed once Python 3.9 is sunsetted.
-    """
-    try:
-        return datetime.datetime.fromtimestamp(timestamp, datetime.UTC)
-    except AttributeError:
-        return datetime.datetime.utcfromtimestamp(timestamp)
-
-
 def levenshtein(a: str, b: str) -> int:
     """Calculates the Levenshtein distance between a and b.
     """
@@ -180,9 +171,20 @@ def levenshtein(a: str, b: str) -> int:
 def getMyIP() -> str:
     """ Retrieve the computer's IP address (v4).
     """
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        s.connect(("8.8.8.8", 80))
-        return s.getsockname()[0]
+    try:
+        # More accurate, but may fail in some conditions
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.settimeout(0)
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+    except (socket.error, OSError):
+        try:
+            # Alternate method (safer, but may return loopback on some systems)
+            name = socket.gethostname()
+            return socket.gethostbyname(name)
+        except (socket.error, OSError) as err:
+            logger.error(f"Could not get IP, defaulting to 127.0.0.1 ({err!r})")
+            return '127.0.0.1'
 
 
 def makeClientID(base: str) -> str:
@@ -227,6 +229,25 @@ def waitfor(func: Callable,
 
     raise TimeoutError
 
+
+def decodeAttr(data, obj):
+    name = data.pop('AttributeName')
+
+    attrs = getattr(obj, 'attributes', None)
+    if attrs is None:
+        attrs = obj.attributes = {}
+
+    for k, v in data.items():
+        if k.name.endswith('Attribute'):
+            try:
+                attrs[name].append(v)
+            except KeyError:
+                attrs[name] = [v]
+
+
+# ===========================================================================
+# Decorators
+# ===========================================================================
 
 def synchronized(method):
     """ Decorator for making methods use a lock, modeled after the one in
@@ -314,3 +335,24 @@ def _device_synchronized(method):
                 if 'waiting' not in str(method):
                     logger.debug(f'<<< exiting synchronized method {method} (thread {get_native_id()})')
     return wrapped
+
+
+def info_lock_required(func: Callable,
+                       what: str = 'Function/method call') -> Optional[bytes]:
+    """ Convenience function for getting/setting info requiring the device's
+        Lock ID match the host's. It turns ERR_BAD_LOCK_ID errors into a
+        more useful message, since .
+
+        :param func: The function to be called, e.g., a `functools.partial`
+            that calls `CommandInterface._getInfo()` or
+            `CommandInterface._setInfo()` with the required parameters.
+        :param what: The name or short description of the function called.
+    """
+    try:
+        return func()
+    except DeviceError as err:
+        if err.errno == CommandResponseCode.ERR_BAD_LOCK_ID:
+            err.args = (err.args[0],
+                        f'{what} requires a matching lock ID '
+                        'set with Recorder.command.setLockID()')
+        raise
