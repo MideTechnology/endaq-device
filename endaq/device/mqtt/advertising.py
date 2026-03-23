@@ -45,6 +45,7 @@ class Advertiser(Thread):
         self.rename = rename
         self.serviceName, self.serviceType = splitServiceName(name)
         self.properties = properties or {}
+        self.fullName = f'{self.serviceName}.{self.serviceType}'
 
         # TODO: IPv6 support?
         self.address = address or getMyIP()
@@ -52,13 +53,12 @@ class Advertiser(Thread):
 
         self.info = ServiceInfo(
                 self.serviceType,
-                name,
+                self.fullName,
                 addresses=[socket.inet_aton(self.address)],
                 port=self.port,
                 properties=self.properties,
         )
 
-        self.fullName = name
         self._stopEvent = Event()
         super().__init__(daemon=True)
         self.name = self.name.replace("Thread", type(self).__name__)
@@ -159,3 +159,37 @@ class Advertiser(Thread):
                          f'on {self.address}:{self.port}.')
             self.zeroconf.unregister_service(self.info)
             self.zeroconf.close()
+
+
+# ===========================================================================
+#
+# ===========================================================================
+
+if __name__ == '__main__':
+    import argparse
+
+    desc = __doc__ + ("\n\nDo not run if the MQTTDeviceManager is already advertising "
+                      "(e.g., endaq.device.mqtt.manager run without the '--silent' option).")
+    parser = argparse.ArgumentParser(description=desc)
+
+    parser.add_argument('-a', '--address', type=str, default=None,
+                        help="MQTT Broker address/hostname. Defaults to this machine.")
+    parser.add_argument('-p', '--port', type=int, default=MQTT_PORT,
+                        help="MQTT Broker port.")
+    parser.add_argument('-n', '--name', type=str, default=DEFAULT_NAME,
+                        help="The advertised name of the MQTT broker.")
+    parser.add_argument('-r', '--rename', action='store_true',
+                        help="Add an incrementing number to the advertised name "
+                             "if that name is already in use.")
+
+    args = parser.parse_args()
+    advertiser = Advertiser(**vars(args))
+    print(f'Advertising "{advertiser.fullName}" ({advertiser.address} port {advertiser.port})')
+    advertiser.start()
+
+    try:
+        while True:
+            sleep(60)
+    except KeyboardInterrupt:
+        print('Advertising shutting down...')
+        advertiser.stop()
