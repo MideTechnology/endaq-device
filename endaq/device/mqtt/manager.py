@@ -12,7 +12,6 @@ Starting an :class:`MQTTDeviceManager` is typically done via the
 
 from collections import defaultdict
 from contextlib import suppress
-# import inspect
 from io import BytesIO
 import os.path
 from pathlib import Path
@@ -505,7 +504,7 @@ class MQTTDeviceManager(MQTTClient):
         self.client.message_callback_add(self.stateSubTopic, self.onStateMessage)
 
         self.advertiser: Optional[Advertiser] =  None
-        self.stateUpdater = threading.Timer(1, lambda: None)
+        self.stateUpdater = threading.Timer(1, lambda: None)  # dummy initial value, not run
 
 
     def __repr__(self):
@@ -577,11 +576,6 @@ class MQTTDeviceManager(MQTTClient):
     def _updateState(self):
         """ Publish an updated set of data to the 'state' topic.
         """
-        # curframe = inspect.currentframe()
-        # calframe = inspect.getouterframes(curframe, 2)
-        # caller = calframe[2][3]
-        # logger.debug(f'Updating state topic {self.stateTopic} ({caller})')
-
         # Schedule the next automatic update
         self.nextUpdate = time() + self.interval
 
