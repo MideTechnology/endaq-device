@@ -45,7 +45,7 @@ class MQTTClient(CommandClient):
                  make_crc: bool = True,
                  ignore_crc: bool = False,
                  name: str = None,
-                 interval: int = 120):
+                 interval: float = 120.0):
         """ Base class for software clients that respond like, or work with,
             enDAQ hardware.
 
