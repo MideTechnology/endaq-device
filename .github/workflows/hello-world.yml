@@ -1,0 +1,9 @@
+#Hello world YAML file to debug working with the local runner
+name: Hello World
+on: workflow_dispatch
+jobs:
+  example-job:
+    runs-on: self-hosted
+    steps:
+      - name: example-step
+        run: echo "Hello World!"
