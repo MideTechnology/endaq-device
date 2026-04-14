@@ -8,6 +8,7 @@ from test_hardware.helper_functions.hardware_interface import HardwareInterface,
 from test_hardware.helper_functions.general_config import GeneralConfig
 from test_hardware.helper_functions.connection_helper import safe_get_device, wait_for_status, stopRecOldFW, get_status
 import sys
+from typing import Callable, List, Optional, Dict
 from tests.fake_recorders import RECORDER_PATHS
 
 # Helper class:
@@ -130,6 +131,40 @@ def setupTeardown(no_skip_hardware_interface, device_sn, fast_clean):
         print(f"Test completed after {time.time() - start_time} seconds.")
     print(f"Test Done")
 
+# # abstract tests
+"""
+Common actions that have tests associated with them, abstracted to be used across
+multiple tests. These are not fixtures, and should not be called alone.
+For uniformity, all methods should return a device.
+"""
+def start_recording(device, device_sn, status):
+    # Confirm device is recording
+    device.command.startRecording()
+    device = safe_get_device(device_sn, timeout=30, unmounted=True)
+    wait_for_status(device, [status])
+    assert (device.command.status[1] == status
+            ), f"Expected Stauts {status}, received {device.command.status[1]}"
+    return device
+
+def stop_recording(device, device_sn, is_raspi):
+    """
+
+    :param firmware_version: used to determine how to stop the 
+    :param is_rapsi: used with `firmware_version` for devices that can't stop via the command interface
+    Note that stopping recording is dependent on the firmware version, 
+    """
+    # Confirm device stopped recording
+    if 20000 <= device.firmwareVersion <= 30100:
+        assert stopRecOldFW(device, is_raspi) is None
+    else:
+        assert device.command.stopRecording() is True, "Device did not stop recording."
+        
+    device = safe_get_device(device_sn, timeout=30)
+    wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE,
+            endaq.device.DeviceStatusCode.IDLE_UNMOUNTED])
+    assert (device.command.status[1] == endaq.device.DeviceStatusCode.IDLE or
+        device.command.status[1] == endaq.device.DeviceStatusCode.IDLE_UNMOUNTED), "Device is not idle."
+    return device 
 
 # # Tests:
 
@@ -161,7 +196,7 @@ def test_set_config(device_sn, setupTeardown):
     assert len(error_list) == 0, "\n".join(error_list)
 
 
-def test_standard_run(device_sn, setupTeardown):
+def test_standard_run(device_sn, setupTeardown, is_raspi):
     """ Test a standard run of an enDAQ device.
 
         :param device_sn: the tested device's serial number collected from the
@@ -173,40 +208,84 @@ def test_standard_run(device_sn, setupTeardown):
     device = safe_get_device(device_sn)
     fw_version = device.firmwareVersion
     serial_number = device.serial
+     
+    # Confirm device starts as idle
+    get_status(device)       # Refresh the device status
+    assert (
+        device.command.status[1] == endaq.device.DeviceStatusCode.IDLE or
+        device.command.status[1] == endaq.device.DeviceStatusCode.IDLE_UNMOUNTED), "Device is not idle."
 
-    if 20000 <= fw_version <= 30100:
-        device.command.startRecording()
-        stopRecOldFW(device, is_raspi)      # FIXME: Fix this later
-    else:
-        # Confirm device starts as idle
-        get_status(device)       # Refresh the device status
-        assert (
-            device.command.status[1] == endaq.device.DeviceStatusCode.IDLE or
-            device.command.status[1] == endaq.device.DeviceStatusCode.IDLE_UNMOUNTED), "Device is not idle."
+    device = start_recording(device, serial_number, endaq.device.DeviceStatusCode.RECORDING)
+    
+    # Clear cached device
+    # TODO: Is this test still needed?
+    device.refresh()
+    assert device.available == False, "Device is still cached"
+    # safe_get_device(device_sn, unmounted=True)
+    assert device.serial == serial_number, "Did not reconnect to the same device."
 
-        # Confirm device is recording
-        device.command.startRecording()
-        device = safe_get_device(device_sn, timeout=30, unmounted=True)
-        wait_for_status(device, [endaq.device.DeviceStatusCode.RECORDING])
-        assert (device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
-                ), f"Device is not recording. Status was {device.command.status[1]} not 10."
+    stop_recording(device, serial_number, is_raspi)
 
-        # Clear cached device
-        # TODO: Is this test still needed?
-        device.refresh()
-        assert device.available == False, "Device is still cached"
-        # safe_get_device(device_sn, unmounted=True)
-        assert device.serial == serial_number, "Did not reconnect to the same device."
+@pytest.mark.parametrize("trigger_keys, values", [
+   ([80], [{"enabled" : True, "high" : 10}])
+])
+def test_standard_run_w_triggers(
+    trigger_keys: Optional[int, List[int]], 
+    values: Optional[dict[str, Any], List[dict[str, Any]]], 
+    device_sn, 
+    setupTeardown,
+    is_raspi):
+    """
+    Performs a standard run of an enDAQ device with triggers activated.
+    Note that if triggers / values is a list, the other must be of equal size
+    as well.
+    
+    :param trigger_keys: the channel value(s) for the triggers.
+    :param values: The kwarg value(s) associated with each trigger. 
+    """
+    # Set up; Confirm device is idle
+    device = safe_get_device(device_sn)
+    fw_version = device.firmwareVersion
+    serial_number = device.serial
+     
+    # Confirm device starts as idle
+    get_status(device)       # Refresh the device status
+    assert (
+        device.command.status[1] == endaq.device.DeviceStatusCode.IDLE or
+        device.command.status[1] == endaq.device.DeviceStatusCode.IDLE_UNMOUNTED), "Device is not idle."
 
-        # Confirm device stopped recording
-        assert device.command.stopRecording() is True, "Device did not stop recording."
-        device = safe_get_device(device_sn, timeout=30)
-        wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE,
-                endaq.device.DeviceStatusCode.IDLE_UNMOUNTED])
-        assert (device.command.status[1] == endaq.device.DeviceStatusCode.IDLE or
-            device.command.status[1] == endaq.device.DeviceStatusCode.IDLE_UNMOUNTED), "Device is not idle."
+    #set triggers
+    chs = device.channels    
+    if not isinstance(trigger_keys, List):
+        trigger_keys = [trigger_keys]
+    if not isinstance(values, List):
+        values = [values]
+    if len(trigger_keys) != len(values):
+        raise ValueException("An equal number of triggers and values need to exist")
 
+    for ch_id, v in zip(trigger_keys, values):
+        device.config.setTrigger(chs[ch_id], **v)
+    device.config.applyConfig()
+    
+    device = start_recording(device, serial_number, endaq.device.DeviceStatusCode.TRIGGERING)
+    #NOTE: We have no way of activating the device without a raspi 
+    if is_raspi:
+        set_button(True)
+        set_button(False) #so the button isn't being held down
+        get_status(device)
+        assert device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING
+        
+    # Clear cached device
+    # TODO: Is this test still needed?
+    device.refresh()
+    assert device.available == False, "Device is still cached"
+    # safe_get_device(device_sn, unmounted=True)
+    assert device.serial == serial_number, "Did not reconnect to the same device."
 
+    stop_recording(device, serial_number, is_raspi)
+    #TODO: should this test force the setupTeardown / skip without it? 
+    #      Leftover triggers will mess with other tests.
+    
 @pytest.mark.parametrize("command, status_code",
                          [("battery", endaq.device.DeviceStatusCode.IDLE),
                           ("startRecording", endaq.device.DeviceStatusCode.RECORDING),
@@ -258,8 +337,7 @@ def test_ping_status(command, status_code, device_sn, setupTeardown):
         if device.command.status[1] == endaq.device.DeviceStatusCode.RECORDING:
             device.command.stopRecording()
             # Don't need to wait for the stop to complete, teardown/cleanup should handle it
-
-
+    
 # This test only works if looped in sequential order. Random order is disabled
 # for this reason.
 @pytest.mark.random_order(disabled=True)
