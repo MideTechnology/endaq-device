@@ -45,8 +45,8 @@ GENERAL_CONFIG_IDS = {
                 'InternalTemperatureTriggerHigh': 262436,
                 'MainAccelerationTriggerLow': 261896,
                 'MainAccelerationTriggerHigh': 327432,
-                '40gAccelerationThreshold': 327504,
-                '40gAccelerationTriggerEnable': 393040,
+                'AdxlAccelerationThreshold': 327504,
+                'AdxlAccelerationTriggerEnable': 393040,
             }
 
 

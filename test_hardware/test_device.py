@@ -92,7 +92,7 @@ def setupTeardownSession(no_skip_hardware_interface, fast_clean: bool):
 
 @pytest.fixture # with a default scope of "function"
 def setupTeardown(no_skip_hardware_interface, device_sn, fast_clean):
-    """ HArd reset the enDAQ before and after every test, and load in the configuration.
+    """ Hard reset the enDAQ before and after every test, and load in the configuration.
 
         :param is_raspi: True if the tests are meant to run on a RaspberryPi,
             False otherwise. Set in command line.
@@ -112,6 +112,7 @@ def setupTeardown(no_skip_hardware_interface, device_sn, fast_clean):
         no_skip_hardware_interface.timed_button_press(18)
         # Connect to the device
         device = safe_get_device(device_sn, timeout=30, unmounted=False)
+        old_conf = device.config.getConfig()
         # Set it to standard configuration
         config_dict = {"WifiEnable": 0, "PreRecordingDelay": 0, "RecordingTimeLimit": 120}
         config = GeneralConfig(**config_dict)
@@ -127,6 +128,7 @@ def setupTeardown(no_skip_hardware_interface, device_sn, fast_clean):
         # Teardown
         no_skip_hardware_interface.set_usb(True)
         no_skip_hardware_interface.set_button(False)
+        device.config.applyConfig(config)
 
         print(f"Test completed after {time.time() - start_time} seconds.")
     print(f"Test Done")
