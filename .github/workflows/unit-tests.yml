@@ -51,7 +51,7 @@ jobs:
     steps:
       - name: Print user called
         run: |
-          echo "name $github.event.sender.name"
+          echo "name ${{ github.event.sender.name }}"
         shell: bash
     
       - name: Print IP Address
