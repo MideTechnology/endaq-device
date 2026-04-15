@@ -71,9 +71,9 @@ jobs:
             echo "Creating virtual environment in ${{ env.FULL_VENV_PATH }}"
             python -m venv ${{ env.FULL_VENV_PATH }}
           fi
+          echo "FULL_VENV_PATH=$FULL_VENV_PATH" >> "$GITHUB_ENV"
         env:
           FULL_VENV_PATH: ${{ format('{0}_{1}/', env.VENV_DIR, env.PYTHON_VERSION) }}
-          echo "FULL_VENV_PATH=${{ env.FULL_VENV_PATH }}" >> $GITHUB_ENV
         shell: bash
 
       - name: Set up libraries
