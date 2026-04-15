@@ -4,6 +4,7 @@ https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-
 """
 import os
 import traceback as tb
+from typing import List, Any, Literal
 
 __all__ = ['debug', 'notice', 'warning', 'error', 'actions_exception', 'Group', 'print_test_name']
 
@@ -22,39 +23,43 @@ def debug(message: str):
     """
     print(f'\n::debug::{message}')
 
+
+def _log(
+    message: str, 
+    sent_by: Literal["notice", "warning", "error"], 
+    send_to: List[Any],
+    file=None, 
+    line=None, 
+    endLine=None, 
+    title=None,
+    once_only=True):
+    """
+    creates a string with the syntax from Github Actions Workflow Commands
+    This does not return anything, rather muting :param:`send_to` 
+    """
+    _file, _line = getFileInfo()
+
+    output  = f'\n::{sent_by}'
+    output += f' file={file or _file}'
+    output += f',line={line or _line}'
+    if endLine is not None: output += f',endLine={endLine}'
+    if title is not None: output += f', title={title}'
+    output += f'::{message}'
+
+    if once_only and output in send_to:
+        debug(message)
+    else:
+        send_to.append(output)
+        print(output)
+    
 notices_sent = []
 def notice(message: str, file=None, line=None, endLine=None, title=None, once_only: bool=True):
     """
     Prints a message with the notice syntax from Github Actions Workflow Commands
     """
     global notices_sent
-    _file, _line = getFileInfo()
+    output = _log(message, "notice", notices_sent, file, line, endLine, title)
 
-    output = '\n::notice'
-
-    if file is None:
-        output += f' file={_file}'
-    else:
-        output += f' file={file}'
-
-    if line is None:
-        output += f',line={_line}'
-    else:
-        output += f',line={line}'
-
-    if endLine is not None:
-        output += f',endLine={endLine}'
-
-    if title is not None:
-        output += f',title={title}'
-
-    output += f'::{message}'
-
-    if once_only and output in notices_sent:
-        debug(message)
-    else:
-        notices_sent.append(output)
-        print(output)
 
 warnings_sent = []
 def warning(message: str, file=None, line=None, endLine=None, title=None, once_only: bool=True):
@@ -62,68 +67,16 @@ def warning(message: str, file=None, line=None, endLine=None, title=None, once_o
     Prints a message with the warning syntax from Github Actions Workflow Commands
     """
     global warnings_sent
-    _file, _line = getFileInfo()
-
-    output = '\n::warning'
-
-    if file is None:
-        output += f' file={_file}'
-    else:
-        output += f' file={file}'
-
-    if line is None:
-        output += f',line={_line}'
-    else:
-        output += f',line={line}'
-
-    if endLine is not None:
-        output += f',endLine={endLine}'
-
-    if title is not None:
-        output += f',title={title}'
-
-    output += f'::{message}'
-
-
-    if once_only and output in warnings_sent:
-        debug(message)
-    else:
-        warnings_sent.append(output)
-        print(output)
-
+    output = _log(message, "warning", file, line, endLine, title)
 
 errors_sent = []
 def error(message: str, file=None, line=None, endLine=None, title=None, once_only: bool=True):
     """
     Prints a message with the error syntax from Github Actions Workflow Commands
     """
-    _file, _line = getFileInfo()
+    global errors_sent
+    output = _log(message, "error", file, line, endLine, title)
 
-    output = '\n::error'
-
-    if file is None:
-        output += f' file={_file}'
-    else:
-        output += f' file={file}'
-
-    if line is None:
-        output += f',line={_line}'
-    else:
-        output += f',line={line}'
-
-    if endLine is not None:
-        output += f',endLine={endLine}'
-
-    if title is not None:
-        output += f',title={title}'
-
-    output += f'::{message}'
-
-    if once_only and output in errors_sent:
-        debug(message)
-    else:
-        errors_sent.append(output)
-        print(output)
 
 def print_test_name(name: str):
     """

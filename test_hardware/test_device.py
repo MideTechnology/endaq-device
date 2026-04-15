@@ -1,15 +1,22 @@
 """
 Automated tests for endaq.device.
 """
-import time
-import pytest
 import endaq.device
+from idelib.importer import importFile
+import pytest
+
 from test_hardware.helper_functions.hardware_interface import HardwareInterface, RaspiInterface, WindowsInterface, FakeInterface
 from test_hardware.helper_functions.general_config import GeneralConfig
 from test_hardware.helper_functions.connection_helper import safe_get_device, wait_for_status, stopRecOldFW, get_status
-import sys
-from typing import Callable, List, Optional, Dict
 from tests.fake_recorders import RECORDER_PATHS
+
+import time
+import sys
+import glob
+import os
+from pathlib import Path
+from typing import Callable, List, Optional, Dict, Union, Any
+
 
 # Helper class:
 class Payload:
@@ -232,8 +239,8 @@ def test_standard_run(device_sn, setupTeardown, is_raspi):
    ([80], [{"enabled" : True, "high" : 10}])
 ])
 def test_standard_run_w_triggers(
-    trigger_keys: Optional[int, List[int]], 
-    values: Optional[dict[str, Any], List[dict[str, Any]]], 
+    trigger_keys: Optional[Union[int, List[int]]], 
+    values: Optional[Union[dict[str, Any], List[dict[str, Any]]]], 
     device_sn, 
     setupTeardown,
     is_raspi):
@@ -575,3 +582,80 @@ def test_start_recording_timeout(device_sn, setupTeardown):
         # If the device doesn't go back to idle, send a stop command, but otherwise let setup handle it
         if not wait_for_status(device, [endaq.device.DeviceStatusCode.IDLE]):
             device.command.stopRecording()
+
+def test_bad_start(device_sn, is_raspi, setupTeardown):
+    """
+    Tests that calling start when in unexpected cases (explained case by case in inline comments)
+    is handled properly.
+    """
+    #calling start while device is triggering
+    device = safe_get_device(device_sn, timeout=30)
+
+    start_recording(device, device_sn, endaq.device.DeviceStatusCode.RECORDING)
+    #second recording shouldn't be possible from commands
+    with pytest.raises(endaq.device.exceptions.CommandError) as excinfo:
+        device.command.startRecording() #has to be done this way, not through start_recording
+    assert str(excinfo.value) == "[ERR_INVALID_COMMAND -20] Badly formed command"
+
+    #still possible to stop the recording even after bad command. 
+    stop_recording(device, device_sn, is_raspi)
+    
+def test_bad_end(device_sn, is_raspi, setupTeardown):
+    """
+    Tests that calling end in unexpected cases (explained case by case in inline comments)
+    is handled properly.
+    In the case that the firmware version is incompatible, this test will be skipped
+    """
+    #attempts to call end before start is called.
+    device = safe_get_device(device_sn, timeout=30)
+    with pytest.raises(endaq.device.exceptions.CommandError) as excinfo:
+        stop_recording(device, device_sn, is_raspi)
+    assert str(excinfo.value) == "[ERR_INVALID_COMMAND -20] Badly formed command"
+    #attempts to call end after already calling end
+    start_recording(device, device_sn, endaq.device.DeviceStatusCode.RECORDING)
+    time.sleep(2)
+    stop_recording(device, device_sn, is_raspi)
+
+    with pytest.raises(endaq.device.exceptions.CommandError) as excinfo:
+        stop_recording(device, device_sn, is_raspi)
+    assert str(excinfo.value) == "[ERR_INVALID_COMMAND -20] Badly formed command"
+
+def test_property_accuracy(device_sn, setupTeardown):
+    """
+    Tests that device properties of a "Real" Recorder are correct.
+    """
+  
+    device = safe_get_device(device_sn, timeout=30)
+    #for sake of modularity, information like birthday / channels aren't
+    #checked.
+    assert device.available
+    assert device.canRecord
+    assert device.hasConfigInterface
+    assert device.command is not None and device.hasCommandInterface
+    assert not device.isVirtual
+
+    
+def test_virtual_accuracy(device_sn, is_raspi, setupTeardown):
+    """
+    Tests that fields consistent between Virtual and "Real" recorders 
+    are accurate.
+    """
+    device = safe_get_device(device_sn, timeout=30)
+    start_recording(device, device_sn, endaq.device.DeviceStatusCode.RECORDING)
+    time.sleep(2) #arbitrary time, just to ensure file is created
+    stop_recording(device, device_sn, is_raspi)
+    rec_path = max(
+        glob.glob(str(Path(device._path+"Data/Record/*.IDE"))),
+        key = os.path.getctime
+    )
+    ide_file = importFile(rec_path)
+    virtual = endaq.device.Recorder.fromRecording(ide_file)
+
+    assert device.name == virtual.name
+    assert device.partNumber == virtual.partNumber
+    assert device.productName == virtual.productName
+    assert device.notes == virtual.notes
+    assert device.birthday == virtual.birthday
+    assert device.firmware == virtual.firmware
+    assert device.firmwareVersion == virtual.firmwareVersion
+    assert device.chipId == virtual.chipId
