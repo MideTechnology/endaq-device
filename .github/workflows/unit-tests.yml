@@ -51,11 +51,12 @@ jobs:
     steps:
       - name: Print user called
         run: |
-          echo "name ${{ github.event.sender.name }}"
+          echo "actor name ${{ github.actor }}"
+          echo "sender name ${{ github.event.sender.name }}"
         shell: bash
     
       - name: Print IP Address
-        if: ${{ contains(fromJSON(env.APPROVED_USERS), github.event.sender.name) }}
+        if: ${{ contains(fromJSON(env.APPROVED_USERS), github.actor) }}
         run: |
           echo "IP=$(hostname -I | awk '{print $1}')"
         shell: bash
@@ -105,7 +106,7 @@ jobs:
 #        run: python ./test_hardware/config_test.py
 
       - name: Run device tests if pusher is approved
-        if: ${{ contains(fromJSON(env.APPROVED_USERS), github.event.sender.name) }}
+        if: ${{ contains(fromJSON(env.APPROVED_USERS), github.actor) }}
         run: |
           source "${{ env.FULL_VENV_PATH }}/bin/activate"
           python -m pytest --random-order --device "S0013290" --raspi ./test_hardware/
