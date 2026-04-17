@@ -43,7 +43,7 @@ jobs:
         python-version: ['3.12']
 
     env:
-      APPROVED_USERS: '["pscheidler", "StokesMIDE", "JSMTHWCK"]'
+      APPROVED_USERS: '["pscheidler", "StokesMIDE", "JSMTHWCK", "SMITJ06"]'
       VENV_DIR: /opt/runner/venvs/endaq-device
       PYTHON_VERSION: ${{ matrix.python-version }}
 
