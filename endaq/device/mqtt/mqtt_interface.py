@@ -117,7 +117,7 @@ class MQTTConnector:
             publishes updates to its 'state' topic.
         :param updateCallback: A function to be called when a 'state'
             update is received from the `MQTTDeviceManager`. The
-            function should acceptone argument, a dictionary of state
+            function should accept one argument, a dictionary of state
             data. This can be set later via the
             `MQTTConnector.updateCallback` attribute.
         :param connectCallback: A function to be called when the
@@ -148,6 +148,7 @@ class MQTTConnector:
         self.updateCallback = updateCallback
         self.connectCallback = connectCallback
         self.disconnectCallback = disconnectCallback
+        self.brokerProps = kwargs.get('properties', {})
 
         self.clientArgs.update(clientArgs or {})
         self.clientArgs.setdefault('client_id', makeClientID(type(self).__name__))
@@ -305,7 +306,8 @@ class MQTTConnector:
     @synchronized
     def addPort(self, subscriber: "MQTTSerialPort"):
         """ Connect (or reconnect) an existing `MQTTSerialPort` to the
-            client. To create a new virual serial port, use `newPort()`.
+            client. To create a new virtual serial port, use `newPort()`.
+
         """
         self.lastUsedTime = time()
 
@@ -351,6 +353,18 @@ class MQTTConnector:
                          f'{err!r}')
 
 
+    def _runCallback(self, callback: Optional[Callable], *args) -> Optional[Thread]:
+        """ Simple helper method to run a method/function in a thread.
+            Arguments are passed to the callback.
+        """
+        if not callback:
+            return None
+        t = Thread(target=callback, args=args, daemon=True)
+        t.name = f'{callback.__name__}{t.name}'
+        t.start()
+        return t
+
+
     def _onMessage(self, client, userdata, message):
         """ MQTT event handler for messages.
         """
@@ -364,10 +378,10 @@ class MQTTConnector:
             # client from blocking if a device is receiving a large response
             # to a command.
             # TODO: This is a simple implementation that may need more work
-            t = Thread(target=self._onManagerState, args=(client, userdata, message), daemon=True)
-            t.start()
+            self._runCallback(self._onManagerState, client, userdata, message)
         elif message.topic in self._streamers:
-            self._streamers[message.topic]._writeStreamChunk(message.payload)
+            # self._streamers[message.topic]._writeStreamChunk(message.payload)
+            self._runCallback(self._streamers[message.topic]._writeStreamChunk, message.payload)
         else:
             logger.debug(f'Message from unknown topic: {message.topic}')
 
@@ -401,8 +415,7 @@ class MQTTConnector:
                 except KeyError:
                     pass
 
-            if self.updateCallback:
-                self.updateCallback(response)
+            self._runCallback(self.updateCallback, response)
 
         except Exception as err:
             logger.error(f'Unexpected error updating manager state: {err!r}',
@@ -417,8 +430,8 @@ class MQTTConnector:
                      f' ({reason_code.getName()})')
         self.resubscribe()
 
-        if self.connectCallback:
-            self.connectCallback(client, userdata, disconnect_flags, reason_code, properties)
+        self._runCallback(self.connectCallback, client, userdata,
+                          disconnect_flags, reason_code, properties)
 
 
     # noinspection PyUnusedLocal
@@ -428,8 +441,8 @@ class MQTTConnector:
         logger.debug(f'Disconnected from MQTT broker {client.host}:{client.port}'
                      f' ({reason_code.getName()})')
 
-        if self.disconnectCallback:
-            self.disconnectCallback(client, userdata, disconnect_flags, reason_code, properties)
+        self._runCallback(self.disconnectCallback, client, userdata,
+                          disconnect_flags, reason_code, properties)
 
 
     def newPort(self,
