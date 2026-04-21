@@ -76,13 +76,14 @@
                 <UnicodeElement name="Password" id="0x4202" multiple="0" mandatory="0" />
                 <UIntegerElement name="Selected" id="0x4203" multiple="0" mandatory="0" />
             </MasterElement>
-            <MasterElement name="APMode" id="0x42A0" multiple="0" mandatory="0">
+            <MasterElement name="APMode" id="0x42A0" multiple="0" mandatory="0"> For Gateway devices: Gateway running as a Wi-Fi access point
                 <UnicodeElement name="SSID" />
                 <UnicodeElement name="Password" />
-                <MasterElement name="AP4G" id="0x42A4" multiple="0" mandatory="0">
-                    <StringElement name="APN" id="0x42A5" multiple="0" mandatory="1"/>
-                    <StringElement name="SIMPin" id="0x42A6" multiple="0" mandatory="1"/>
-                </MasterElement>
+            </MasterElement>
+            <MasterElement name="MobileData" id="0x42A4" multiple="0" mandatory="0"> Gateway is connected to mobile data network (e.g., 4G)
+                <StringElement name="APN" id="0x42A5" multiple="0" mandatory="1"/>
+                <StringElement name="SIMPin" id="0x42A6" multiple="0" mandatory="1"/>
+                <StringElement name="MobileDataType" id="0x42A7" multiple="0" mandatory="0">The mobile data network type, e.g., "4G" (default)</StringElement>
             </MasterElement>
         </MasterElement>
         <MasterElement name="QueryWiFi" id="0x85" multiple="0" mandatory="0">Get a response for current Wi-Fi State</MasterElement>
@@ -148,8 +149,9 @@
                 0x00: IDLE, no connection is in process, error fields are valid.
                 0x01: PENDING, connection is in process,
                 0x02: CONNECTED, error fields will all be 0, RSSI tag is present in this data structure and represents the strength of the connected net
-                0x10: AP_MODE, the device is running as an access point. Not applicable to enDAQ data recorders.
-                0x30: AP4G_MODE, the device is running as an access point and bridge to a 4G data network. Not applicable to enDAQ data recorders.
+                0x10: MODE_AP, the device is running as an access point. Not applicable to enDAQ data recorders.
+                0x20: MODE_4G, the device is connected to a wireless data network.
+                0x30: MODE_AP4G, the device is running as an access point and bridge to a 4G data network. Not applicable to enDAQ data recorders.
             </UIntegerElement>
             <UIntegerElement name="WiFiConnectionError" id="0x5304" multiple="0" mandatory="0">Integer enum. Holds ESP32 error codes, found in https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/wifi.html#wi-fi-reason-code</UIntegerElement>
             <IntegerElement name="RSSI" id="0x5205" multiple="0" mandatory="0">Signal Strength, 0-100, where 100 is perfect. Only present if CONNECTED</IntegerElement>
@@ -159,10 +161,13 @@
             <BinaryElement name="IPV4Address" id="0x5401" multiple="0" mandatory="0"> Network IP address; absent if not connected. </BinaryElement>
             <BinaryElement name="MACAddress" id="0x5402" multiple="0" mandatory="1"> Network MAC address </BinaryElement>
             <UIntegerElement name="CurrentWiFiStatus" id="0x5403" multiple="0" mandatory="1">Integer enum.
-                0: Connection to the Wi-Fi has failed.
-                1: The device is currently trying to connect.
-                2: Connected to Wi-Fi without connection to the cloud (if cloud checking is not implemented and thus the status unknown, this should be used).
-                3: Connected to Wi-Fi with cloud connection
+                0x00: CONNECTION_FAILED, Connection to the Wi-Fi has failed.
+                0x01: CONNECTING, The device is currently trying to connect.
+                0x02: CONNECTED, Connected to Wi-Fi without connection to the cloud (if cloud checking is not implemented and thus the status unknown, this should be used).
+                0x03: CONNECTED_CLOUD, Connected to Wi-Fi with cloud connection
+                0x10: MODE_AP, the device is running as an access point. Not applicable to enDAQ data recorders.
+                0x20: MODE_4G, the device is connected to a wireless data network.
+                0x30: MODE_AP4G, the device is running as an access point and bridge to a 4G data network. Not applicable to enDAQ data recorders.
             </UIntegerElement>
         </MasterElement>
 		<BinaryElement name="ClockTime" id="0x5501" multiple="0" mandatory="0">Serial and Wireless only. 10 byte RTC clock time. Comparable to reading the CLOCK file.</BinaryElement>
