@@ -165,10 +165,8 @@
                 0x01: CONNECTING, The device is currently trying to connect.
                 0x02: CONNECTED, Connected to Wi-Fi without connection to the cloud (if cloud checking is not implemented and thus the status unknown, this should be used).
                 0x03: CONNECTED_CLOUD, Connected to Wi-Fi with cloud connection
-                0x10: MODE_AP, the device is running as an access point. Not applicable to enDAQ data recorders.
-                0x20: MODE_4G, the device is connected to a wireless data network.
-                0x30: MODE_AP4G, the device is running as an access point and bridge to a 4G data network. Not applicable to enDAQ data recorders.
             </UIntegerElement>
+            <StringElement name="Hostname" id="0x5404" multiple="0" mandatory="0"> For Gateway hardware: the network hostname. </StringElement>
         </MasterElement>
 		<BinaryElement name="ClockTime" id="0x5501" multiple="0" mandatory="0">Serial and Wireless only. 10 byte RTC clock time. Comparable to reading the CLOCK file.</BinaryElement>
 		<UIntegerElement name="BatteryState" id="0x5601" multiple="0" mandatory="0">Serial and Wireless only. uint16 (big endian), low byte is charge level, high byte is bit flags.

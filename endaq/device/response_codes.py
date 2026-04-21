@@ -97,10 +97,6 @@ class CurrentWiFiStatus(IntEnum):
     CONNECTED = 2  #: The device is connected to the Wi-Fi AP, but not yet to enDAQ Cloud (or cloud connection status unknown).
     CONNECTED_CLOUD = 3  #: Connected to Wi-Fi and to enDAQ Cloud.
 
-    MODE_AP = 0x10  #: For Gateway hardware: Device operating as a Wi-Fi access point.
-    MODE_4G = 0x20  #: For Gateway hardware: Connected to an AP and 4G data.
-    MODE_AP4G = 0x30  #: For Gateway hardware: Gateway is operating as AP and 4G bridge.
-
 
 class WiFiConnectionError(IntEnum):
     """ ESP32 error codes, potentially returned when querying Wi-Fi.

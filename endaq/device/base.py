@@ -316,11 +316,11 @@ class Recorder:
         # devices) can be found anywhere. This will also update the paths
         # of known devices.
         if self.chipId:
-            dev = findDevice(chipId=self.chipId, update=True,
-                             unmounted=True, paths=paths, strict=strict)
+            dev: Recorder = findDevice(chipId=self.chipId, update=True,
+                                       unmounted=True, paths=paths, strict=strict)
         else:
-            dev = findDevice(sn=self.serialInt, update=True,
-                             unmounted=True, paths=paths, strict=strict)
+            dev: Recorder = findDevice(sn=self.serialInt, update=True,
+                                       unmounted=True, paths=paths, strict=strict)
 
         if dev and dev != self:
             # Device's DEVINFO has changed, change in place

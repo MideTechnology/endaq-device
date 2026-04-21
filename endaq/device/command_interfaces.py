@@ -1416,11 +1416,11 @@ class CommandInterface:
             raise UnsupportedFeature('{!r} has no network adapter'.format(self.device))
 
 
-        response = self._sendCommand({'EBMLCommand': {'NetworkStatus': None}},
-                                 response=True,
-                                 timeout=timeout,
-                                 interval=interval,
-                                 callback=callback)
+        response: dict = self._sendCommand({'EBMLCommand': {'NetworkStatus': None}},
+                                           response=True,
+                                           timeout=timeout,
+                                           interval=interval,
+                                           callback=callback)
 
         return self._encodeResponseCodes(response.get('NetworkStatusResponse'))
 
@@ -1861,7 +1861,7 @@ class SerialCommandInterface(CommandInterface):
     def getSerialPort(self,
                       reset: bool = False,
                       timeout: Union[int, float] = 1,
-                      kwargs: Optional[Dict[str, Any]] = None) -> Union[None, serial.Serial]:
+                      kwargs: Optional[Dict[str, Any]] = None) -> serial.Serial:
         """
         Connect to a device's serial port.
 
@@ -2002,10 +2002,10 @@ class SerialCommandInterface(CommandInterface):
         responseCode = 0
 
         # Header: address 1 (host), EBML data, immediate write.
-        packet = bytearray([0x81, 0x00, responseCode])
-        packet.extend(ebml)
-        packet = hdlc_encode(packet, crc=self.make_crc, escaped=self.escaped)
-        return packet
+        out = bytearray([0x81, 0x00, responseCode])
+        out.extend(ebml)
+        out = hdlc_encode(out, crc=self.make_crc, escaped=self.escaped)
+        return out
 
 
     def _decode(self,
@@ -2946,12 +2946,12 @@ class SerialCommandInterface(CommandInterface):
         # Note: Reading config or user calibration requires a LockID
         # lock = index in (5, 6)
         cmd = {'EBMLCommand': {'GetInfo': infoIdx}}
-        response = self._sendCommand(cmd,
-                                     response=True,
-                                     timeout=timeout,
-                                     lock=lock,
-                                     index=index,
-                                     callback=callback)
+        response: dict = self._sendCommand(cmd,
+                                           response=True,
+                                           timeout=timeout,
+                                           lock=lock,
+                                           index=index,
+                                           callback=callback)
 
         try:
             info = response['GetInfoResponse']['InfoPayload']
