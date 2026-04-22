@@ -153,6 +153,12 @@ class CommandInterface:
         return self.device and not self.device.isVirtual
 
 
+    @property
+    def _canSetInfo(self) -> bool:
+        """ Can this interface use `<SetInfo>` commands? """
+        return False
+
+
     def resetConnection(self) -> bool:
         """
         Reset the interface. Only applicable to subclasses with a persistent
@@ -482,7 +488,7 @@ class CommandInterface:
             self.status = now, statusCode, statusMsg
             self._statusChanged.set()
 
-        lockId = lockId or '\x00' * 16
+        lockId: bytes = lockId or '\x00' * 16
         if lockId != self.lockId[1]:
             self.lockId = lockTime or now, lockId
 
@@ -1709,8 +1715,11 @@ class SerialCommandInterface(CommandInterface):
     """
 
     # USB serial port vendor and product IDs, for finding the right device
-    USB_IDS = ((0x10C4, 0x0004),  # SiLabs USB Serial, e.g. enDAQ recorders
-               (0x0483, 0x4003))  # STM32 USB Serial, e.g. newer enDAQs
+    USB_IDS = (
+        (0x10C4, 0x0004),  # SiLabs USB Serial, e.g. enDAQ recorders
+        (0x0483, 0x4003),  # STM32 USB Serial, e.g. newer enDAQs
+        (0x1D6B, 0x0104),  # IOT-GATE 'gadget' port
+    )
 
     # Default serial port parameters
     SERIAL_PARAMS = dict(baudrate=115200,
@@ -1740,18 +1749,22 @@ class SerialCommandInterface(CommandInterface):
         If additional keyword arguments are provided, they will be used
         when opening the serial port.
         """
-        super().__init__(device)
-
         self.make_crc = make_crc
         self.ignore_crc = ignore_crc
         self.escaped = b''
         self.port = None
 
+        super().__init__(device)
+
         # Do additional setup based on device DEVINFO.
         # `NonRecorder` fixture instances have no DEVINFO; skip
         if type(device).__name__ != 'NonRecorder':
             try:
-                self.escaped = self.device.getInfo('SerialCommandInterface')['EscapedCharacters']
+                sci = self.device.getInfo('SerialCommandInterface')
+                self.escaped = sci.get('EscapedCharacters',
+                                       self.escaped)
+                self.maxCommandSize = sci.get('MaxCommandSize',
+                                              self.maxCommandSize)
             except (AttributeError, KeyError, TypeError):
                 pass
 
@@ -1811,8 +1824,11 @@ class SerialCommandInterface(CommandInterface):
         # Find valid USB/serial device by vendor/product ID
         for port in serial.tools.list_ports.comports():
             sn = port.serial_number
+
+            # XXX: TODO: handle Gateway port serial numbers (different format TBD)
             if not sn or len(sn) != 8:
                 continue
+
             try:
                 if strict and (port.vid, port.pid) not in cls.USB_IDS:
                     continue
@@ -1875,7 +1891,7 @@ class SerialCommandInterface(CommandInterface):
             the device can be found.
         """
         timeout = -1 if timeout is None else timeout
-        kwargs = kwargs or {}
+        kwargs: dict = kwargs or {}
         kwargs.setdefault('timeout', self.timeout)
         params = self.SERIAL_PARAMS.copy()
         params.update(kwargs)
@@ -2116,7 +2132,7 @@ class SerialCommandInterface(CommandInterface):
         :return: A `dict` of response data, or `None` if `callback` caused
             the process to cancel.
         """
-        timeout = -1 if timeout is None else timeout
+        timeout: float = -1 if timeout is None else timeout
         deadline = time() + timeout
 
         buf = b''
@@ -2330,7 +2346,7 @@ class SerialCommandInterface(CommandInterface):
             while int(t) == int(sysTime):
                 sysTime = time()
 
-        response = self._sendCommand(command, timeout=timeout)
+        response: dict = self._sendCommand(command, timeout=timeout)
         try:
             dt = response['ClockTime']
             devTime = self._TIME_PARSER.unpack_from(dt)[0]
@@ -2457,7 +2473,6 @@ class SerialCommandInterface(CommandInterface):
             raise DeviceTimeout("Timed out waiting for device to come back online")
 
 
-
     def ping(self,
              data: Union[bytearray, bytes, None] = None,
              timeout: Union[int, float] = 10,
@@ -2484,8 +2499,8 @@ class SerialCommandInterface(CommandInterface):
                 raise ValueError("Payload larger than 30 bytes.")
 
         cmd = {'EBMLCommand': {'SendPing': b'' if data is None else data}}
-        response = self._sendCommand(cmd, timeout=timeout, interval=interval,
-                                     callback=callback)
+        response: dict = self._sendCommand(cmd, timeout=timeout, interval=interval,
+                                           callback=callback)
 
         if 'PingReply' not in response:
             raise DeviceError('Ping response did not contain a PingReply')
@@ -2572,7 +2587,7 @@ class SerialCommandInterface(CommandInterface):
                        callback: Optional[Callable] = None) -> bool:
         """ Start the device recording.
 
-            :param wait: If `True`, wait for the recorer to respond and/or
+            :param wait: If `True`, wait for the recorder to respond and/or
                 dismount, indicating the recording has started.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
@@ -2916,6 +2931,20 @@ class SerialCommandInterface(CommandInterface):
     # General device info getting/setting
     # =======================================================================
 
+    @property
+    def _canSetInfo(self) -> bool:
+        """ Can this interface use `<SetInfo>` commands? """
+        # Exclude non-existent devices and special case `NonRecorder`
+        # objects (which get into `getInfo()` loops)
+        if not self.device or type(self.device).__name__ == 'NonRecorder':
+            return False
+
+        # Currently, only Gateways can set info over a serial interface.
+        # This will be revised if/when we have others.
+        devtype = self.device.getInfo('RecorderTypeUID', 0)
+        return bool(devtype & 0xa0000000)
+
+
     def _getInfo(self,
                  infoIdx: int,
                  timeout: Union[int, float] = 10,
@@ -2988,7 +3017,31 @@ class SerialCommandInterface(CommandInterface):
                 be cancelled. The callback function should require no arguments.
         """
         # Only supported via MQTT (for now?)
-        raise UnsupportedFeature(self, self._setInfo)
+        if not self._canSetInfo:
+            raise UnsupportedFeature(self, self._setInfo)
+
+        logger.debug(f'{self.device.serial} Setting info index {infoIdx}')
+
+        # Note: `LockID` and `CommandIdx` are explicitly added to ensure they
+        #   come before the `InfoPayload` in the command dict.
+        cmd = {
+            'EBMLCommand': {
+                'LockID': None,  # will be set in _sendCommand
+                'CommandIdx': None,  # will be set in _sendCommand
+                'SetInfo': {
+                    'InfoIndex': infoIdx,
+                    'InfoPayload': payload}
+            }
+        }
+
+        self._sendCommand(cmd,
+                          response=True,
+                          timeout=timeout,
+                          lock=True,
+                          index=True,
+                          callback=callback)
+
+        return True
 
 
 # ===========================================================================
