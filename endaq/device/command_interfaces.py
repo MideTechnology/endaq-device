@@ -1825,8 +1825,14 @@ class SerialCommandInterface(CommandInterface):
         for port in serial.tools.list_ports.comports():
             sn = port.serial_number
 
-            # XXX: TODO: handle Gateway port serial numbers (different format TBD)
-            if not sn or len(sn) != 8:
+            if not sn:
+                continue
+
+            # Gateway devices have the prefix "DCB" + 8 digits
+            if sn.startswith('DCB'):
+                sn = sn[3:]
+
+            if len(sn) != 8 or not all(c.isdigit() for c in sn):
                 continue
 
             try:
