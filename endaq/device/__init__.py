@@ -417,7 +417,7 @@ def getSerialDevices(known: Optional[Dict[int, Recorder]] = None,
         with _module_busy:
             try:
                 logger.debug(f'Getting info for SN {sn} via serial')
-                info = fake.command._getInfo(0, index=False)
+                info = fake.command._getInfo(0, index=False, timeout=3)
                 if not info:
                     logger.debug(f'No info returned by SN {sn}, continuing')
                     continue
@@ -428,6 +428,9 @@ def getSerialDevices(known: Optional[Dict[int, Recorder]] = None,
                         device._devinfo = SerialDeviceInfo(device)
                         devices.append(device)
                         break
+            except TimeoutError:
+                logger.debug(f'Timed out getting DEVINFO from SN {sn}, continuing')
+                continue
             except CommandError as err:
                 if err.errno != DeviceStatusCode.ERR_INVALID_COMMAND:
                     logger.debug(f'Unexpected {type(err).__name__} getting info for {sn}: {err}')
