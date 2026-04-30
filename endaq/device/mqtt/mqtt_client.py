@@ -3,6 +3,7 @@ Base class for software clients that respond like, or work with,
 enDAQ hardware.
 """
 
+from copy import deepcopy
 from threading import Event, Thread
 from time import sleep, time
 from typing import Any, ByteString, Dict, Optional, Tuple, Union
@@ -50,8 +51,8 @@ class MQTTClient(CommandClient):
             enDAQ hardware.
 
             :param client: The MQTT client to use. Note: this class will set
-                the MQTT client's `on_connect` and `on_disconnect` mehtods.
-                Avoid reusing the same MQTT client in multiple instannces.
+                the MQTT client's `on_connect` and `on_disconnect` methods.
+                Avoid reusing the same MQTT client in multiple instances.
             :param sn: The client's serial number. For recorder-like clients
                 that interact with the MQTT Device Manager, this should be an
                 integer.
@@ -258,7 +259,7 @@ class MQTTClient(CommandClient):
             :return: A reference to the MQTTClient's unencoded DEVINFO data.
         """
         if self._devinfoDict is None or refresh:
-            devinfo = self.DEFAULT_DEVINFO.copy()
+            devinfo = deepcopy(self.DEFAULT_DEVINFO)
 
             if isinstance(self.sn, int):
                 devinfo['RecorderSerial'] = self.sn
