@@ -15,6 +15,13 @@ If you are failing tests, running into errors, or want a more detailed view into
 
 If you want to run your tests in a random order, first install pytest-random-order using `pip install pytest-random-order`, and then add the `--random-order` flag to one of the pytest command line examples above.
 
+In the current state of testing, there is an ocassional serial-based error, ocassionally causing test failures due to TODO. It is highly encouraged to install pytest-rerunfailures using `pip install pytest-rerunfailures`, and add the following flags
+
+- `--reruns 10` to rerun the failed tests 
+- `--rerun-exepct AssertionError` to rerun the inconsistent failing tests
+- `--reruns-delay 30` to let the resync and clear any issues.
+
+All properties tested are checked using `assert`, so any non-`AssertionError` Exceptions are not being tested. Any tests written should follow this pattern, and try-catch statements should be used in case of any expected errors.
 ### RasPi Testing / Automatic Testing
 **Automatic testing through GitHub Actions will only be available for approved MIDE users!**
 

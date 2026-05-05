@@ -104,7 +104,8 @@ class GeneralConfig(BaseModel):
         dev.config.revert()     # Remove any unsaved changes
         for key, value in item_dict.items():
             if key in GENERAL_CONFIG_IDS:
-                if GENERAL_CONFIG_IDS[key] not in dev.config.items:
+                cfg_id = GENERAL_CONFIG_IDS[key] 
+                if cfg_id not in dev.config.items:
                     continue    # Setting does not exist for the device
                 if quick_config:
                     if dev.config.items[GENERAL_CONFIG_IDS[key]].value == value:

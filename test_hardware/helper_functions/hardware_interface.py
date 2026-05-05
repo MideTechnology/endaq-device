@@ -5,7 +5,6 @@ There are a few different test boards, so make sure you're using the right one
 import subprocess
 import time
 from abc import ABC, abstractmethod
-
 class HardwareInterface(ABC):
     @abstractmethod
     def set_usb(self, on: bool) -> None:

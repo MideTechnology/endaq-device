@@ -21,9 +21,22 @@ def pytest_addoption(parser):
         "-F", "--fast_clean", action="store_true", default=False, help="Include to not reset the device on every setup"
     )
 
+    parser.addoption(
+        "-P", "--production", action="store_true", default=False, help="Include for more comprehensive tests" \
+        "This will greatly increase run time"
+    )
+
+    parser.addoption(
+        "-N", "--num_attepmpts", type=int, default = 3
+    )
+
 @pytest.fixture(scope="session")
 def is_raspi(request) -> bool:
     return request.config.getoption("--raspi")
+
+@pytest.fixture(scope="session")
+def is_prod(request) -> bool:
+    return request.config.getoption("--production")
 
 @pytest.fixture(scope="session")
 def fast_clean(request) -> bool:
@@ -80,3 +93,7 @@ def pytest_generate_tests(metafunc):
     """
     device_sn = metafunc.config.getoption("device")
     metafunc.parametrize("device_sn", [device_sn], scope="session")
+
+def pytest_runtest_setup(item):
+    if 'prod_only' in item.keywords and not item.config.getoption('--production'):
+        pytest.skip("skipped production only test (use --production to run)")
