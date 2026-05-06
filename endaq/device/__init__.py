@@ -30,20 +30,21 @@ from .exceptions import *
 from .endaq import EndaqS, EndaqW
 from .response_codes import DeviceStatusCode
 from .slamstick import SlamStickX, SlamStickC, SlamStickS
+from endaq.device.gateway import Gateway
 from .types import Drive, Filename, Epoch
 
 # ============================================================================
 #
 # ============================================================================
 
-__version__ = "1.4.1b5"
+__version__ = "1.4.1b6"
 
 __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'DeviceError', 'DeviceTimeout', 'UnsupportedFeature',
            'deviceChanged', 'findDevice', 'fromRecording',
            'getDevices', 'getRecorder', 'isRecorder', 'onRecorder',
-           'Recorder', 'EndaqS', 'EndaqW', 'SlamStickX', 'SlamStickC',
-           'SlamStickS')
+           'Recorder', 'Gateway', 'EndaqS', 'EndaqW', 'SlamStickX',
+           'SlamStickC', 'SlamStickS')
 
 # ============================================================================
 # EBML schema path modification
@@ -71,7 +72,7 @@ if SCHEMA_PATH not in ebmlite.core.SCHEMA_PATH:
 # after the more specific ones. `SlamStickC` is first, since it is now sold
 # as Sx-D16 but has the old SlamStick hardware, but the naming convention
 # matches that of `EndaqS`. The base `Recorder` should be last.
-RECORDER_TYPES = [SlamStickC, EndaqS, EndaqW, SlamStickS, SlamStickX, Recorder]
+RECORDER_TYPES = [SlamStickC, EndaqS, EndaqW, Gateway, SlamStickS, SlamStickX, Recorder]
 
 # Cache of previously seen recorders, to prevent redundant instantiations.
 # Keyed by the hash of the recorders DEVINFO (or equivalent).

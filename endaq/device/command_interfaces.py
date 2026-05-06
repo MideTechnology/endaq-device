@@ -2151,19 +2151,24 @@ class SerialCommandInterface(CommandInterface):
                 if waiting:
                     buf += self.port.read(waiting)
                     self._lastbuf = buf
-                    if HDLC_BREAK_CHAR in buf:
-                        packet, _, buf = buf.partition(HDLC_BREAK_CHAR)
-                        if packet.startswith(b'\x81\x00'):
-                            response = self._decode(packet)
-                            self._response = time(), response
-                            if 'EBMLResponse' not in response:
-                                logger.warning('Response did not contain an EBMLResponse element')
-                            return response.get('EBMLResponse', response)
-                        else:
-                            # In the future, there might be other devices on the
-                            # bus, so a wrong header might be for a different
-                            # address. Ignore.
-                            logger.debug("Packet incomplete or has wrong header, ignoring")
+
+                    # Process only what's between a packet header and break,
+                    # filtering out extraneous bytes (e.g., Gateway prompts,
+                    # etc.)
+                    start = buf.find(b'\x81\x00')
+                    end = buf.rfind(HDLC_BREAK_CHAR)
+
+                    if start < 0 or end < 0 or start > end:
+                        sleep(.01)
+                        continue
+
+                    packet, _, buf = buf[start:].partition(HDLC_BREAK_CHAR)
+                    response = self._decode(packet)
+                    self._response = time(), response
+                    if 'EBMLResponse' not in response:
+                        logger.warning('Response did not contain an EBMLResponse element')
+                    return response.get('EBMLResponse', response)
+                
                 else:
                     sleep(.01)
 
