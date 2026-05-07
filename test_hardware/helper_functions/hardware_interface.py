@@ -17,6 +17,10 @@ class HardwareInterface(ABC):
     @abstractmethod
     def timed_button_press(self, period: int) -> None:
         pass
+        
+    @abstractmethod
+    def unplug_replug(self, period: int) -> None:
+        pass
 
 class FakeInterface(HardwareInterface):
     def set_usb(self, on: bool) -> None:
@@ -26,6 +30,9 @@ class FakeInterface(HardwareInterface):
         pass
 
     def timed_button_press(self, period: int) -> None:
+        pass
+
+    def unplug_replug(self, period: int) -> None:
         pass
 
 class WindowsInterface(HardwareInterface):
@@ -39,7 +46,16 @@ class WindowsInterface(HardwareInterface):
         pass        
 
     def timed_button_press(self, period: int) -> None:
-        input(f"Press button for {period} seconds and press Enter")
+        if period <= 0.5:
+            input(f"click button and press Enter")
+        else:
+            input(f"Press button for {period} seconds and press Enter")
+
+    def unplug_replug(self, period: int) -> None:
+        self.set_usb(False)
+        time.sleep(period)
+        self.set_usb(True)
+        time.sleep(period)
 
 
 class RaspiInterface(HardwareInterface):
@@ -80,6 +96,12 @@ class RaspiInterface(HardwareInterface):
         time.sleep(period)
         self.set_button(False)
 
+    def unplug_replug(self, period: int) -> None:
+        self.set_usb(False)
+        time.sleep(period)
+        self.set_usb(True)
+        time.sleep(period)
+        
     def _set_line(self, line: int, value: bool):
         """
         Interface to set a Raspi GPIO

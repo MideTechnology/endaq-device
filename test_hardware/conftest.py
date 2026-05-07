@@ -22,13 +22,20 @@ def pytest_addoption(parser):
     )
 
     parser.addoption(
-        "-P", "--production", action="store_true", default=False, help="Include for more comprehensive tests" \
+        "-P", "--production", action="store_true", default=False, help="Include for more comprehensive tests. " \
         "This will greatly increase run time"
     )
 
     parser.addoption(
-        "-N", "--num_attepmpts", type=int, default = 3
+        "-N", "--num_attempts", type=int, default = 3
     )
+
+    parser.addoption(
+        "-C", "--cleanup", action="store_true", default=False, help="Include to newly created tests " \
+        "and folders after running tests"
+    )
+
+    
 
 @pytest.fixture(scope="session")
 def is_raspi(request) -> bool:
@@ -42,21 +49,11 @@ def is_prod(request) -> bool:
 def fast_clean(request) -> bool:
     return request.config.getoption("--fast_clean")
 
-def pytest_configure(config):
-    """
-    Registers the device type marks.
-    """
-    config.addinivalue_line(
-        "markers", "device_w: mark test to run only when a W is connected"
-    )
-    config.addinivalue_line(
-        "markers", "device_s: mark test to run only when an S is connected"
-    )
-    config.addinivalue_line(
-        "markers", "device_needed: mark test to run only when a device is connected"
-    )
+@pytest.fixture(scope="session")
+def device_sn(request) -> bool:
+    return request.config.getoption("--device")
 
-
+#TODO: don't know if this is needed.
 def pytest_collection_modifyitems(config, items):
     """
     Defines how to treat tests with device type marks depending on the device 
@@ -84,6 +81,11 @@ def pytest_collection_modifyitems(config, items):
     else:
         raise ValueError(f"Input parameter {device} not recognized. Expected format is an enDAQ serial number, starting with W or S")
 
+    for item in items:
+        if 'prod_only' in item.keywords and not config.getoption('--production'):
+            pytest.skip("skipped production only test (use --production to run)")
+    
+
 
 def pytest_generate_tests(metafunc):
     """
@@ -94,6 +96,3 @@ def pytest_generate_tests(metafunc):
     device_sn = metafunc.config.getoption("device")
     metafunc.parametrize("device_sn", [device_sn], scope="session")
 
-def pytest_runtest_setup(item):
-    if 'prod_only' in item.keywords and not item.config.getoption('--production'):
-        pytest.skip("skipped production only test (use --production to run)")

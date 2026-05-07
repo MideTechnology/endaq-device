@@ -70,7 +70,10 @@ def wait_for_status(
     start_time = time.time()
     status = "Not Yet Set"
     while not out_of_time:
-        status = get_status(device)
+        try:
+            status = get_status(device)
+        except:
+            None
         if status in target_status:
             print(f"Got status {status} after {time.time()-start_time:0.2f} sec")
             return True
