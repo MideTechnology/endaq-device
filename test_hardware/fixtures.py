@@ -4,16 +4,16 @@ Contains fixtures used in device tests. Note that some fixtures are in `conftest
 from test_hardware.conftest import is_raspi, fast_clean, device_sn
 import pytest
 import sys
-from test_hardware.helper_functions.hardware_interface import *
+from test_hardware.helper_functions.hardwareInterface import *
 from test_hardware.helper_functions.connection_helper import safe_get_device, get_status
 from test_hardware.helper_functions.general_config import GeneralConfig
 import endaq.device
 from endaq.device import DeviceStatusCode as Status
 
-__ALL__ = ["no_skip_hardware_interface", "setupTeardownSession", "setupTeardown", "newDir"]
+__ALL__ = ["noSkipHardwareInterface", "setupTeardownSession", "setupTeardown", "newDir"]
 
 @pytest.fixture(scope="session", autouse=True)
-def hardware_creation(is_raspi):
+def hardwareCreation(is_raspi):
     if is_raspi:
         print(f"Setting Raspi interface")
         hw = RaspiInterface()
@@ -25,17 +25,17 @@ def hardware_creation(is_raspi):
     yield hw
 
 @pytest.fixture
-def hardware_interface(hardware_creation):
-    if isinstance(hardware_creation, FakeInterface):
+def hardwareInterface(hardwareCreation):
+    if isinstance(hardwareCreation, FakeInterface):
         pytest.skip("Skipping interactive test in non-interactive mode. Run pytest with -s option")
-    yield hardware_creation
+    yield hardwareCreation
 
 @pytest.fixture(scope="session")
-def no_skip_hardware_interface(hardware_creation):
-    yield hardware_creation
+def noSkipHardwareInterface(hardwareCreation):
+    yield hardwareCreation
 
 @pytest.fixture(scope="session", autouse=True)
-def setupTeardownSession(no_skip_hardware_interface, fast_clean: bool):
+def setupTeardownSession(noSkipHardwareInterface, fast_clean: bool):
     """ Set up and teardown GPIO RasPi controls at the beginning and end
         of a session.
 
@@ -59,14 +59,14 @@ def setupTeardownSession(no_skip_hardware_interface, fast_clean: bool):
     else:
         # Always update the device configuration
         print("\nSetting up RasPi...")
-        no_skip_hardware_interface.set_usb(True)
-        no_skip_hardware_interface.set_button(False)
+        noSkipHardwareInterface.set_usb(True)
+        noSkipHardwareInterface.set_button(False)
 
         yield
 
         print("\nTearing down RasPi setup...")
-        no_skip_hardware_interface.set_usb(True)
-        no_skip_hardware_interface.set_button(False)
+        noSkipHardwareInterface.set_usb(True)
+        noSkipHardwareInterface.set_button(False)
 
         # Only reset after the tests if the device is not present
         reset_device = False
@@ -79,15 +79,15 @@ def setupTeardownSession(no_skip_hardware_interface, fast_clean: bool):
             reset_device = True
         if reset_device:
             # if device is not connected, reset it
-            no_skip_hardware_interface.set_usb(True)
-            no_skip_hardware_interface.timed_button_press(20)
+            noSkipHardwareInterface.set_usb(True)
+            noSkipHardwareInterface.timed_button_press(20)
 
         print("\nDone with RasPi tear down.")
 
     print(f"Finished session")
 
 @pytest.fixture # with a default scope of "function"
-def setupTeardown(no_skip_hardware_interface, device_sn, fast_clean):
+def setupTeardown(noSkipHardwareInterface, device_sn, fast_clean):
     """ Hard reset the enDAQ before and after every test, and load in the configuration.
 
         :param is_raspi: True if the tests are meant to run on a RaspberryPi,
@@ -103,9 +103,9 @@ def setupTeardown(no_skip_hardware_interface, device_sn, fast_clean):
         # start up and connect
         print("\nSetting up...")
         start_time = time.time()
-        no_skip_hardware_interface.set_usb(True)
+        noSkipHardwareInterface.set_usb(True)
         # Hold the button down to reset the device
-        no_skip_hardware_interface.timed_button_press(18)
+        noSkipHardwareInterface.timed_button_press(18)
         # Connect to the device
         device = safe_get_device(device_sn, timeout=30, unmounted=False)
         # Set it to standard configuration
@@ -121,8 +121,8 @@ def setupTeardown(no_skip_hardware_interface, device_sn, fast_clean):
         yield # Runs test
 
         # Teardown
-        no_skip_hardware_interface.set_usb(True)
-        no_skip_hardware_interface.set_button(False)
+        noSkipHardwareInterface.set_usb(True)
+        noSkipHardwareInterface.set_button(False)
         
 
         print(f"Test completed after {time.time() - start_time} seconds.")
@@ -149,13 +149,13 @@ def newDir(device_sn):
     #shutil.rmtree(f"{device.path}/DATA/{new_name}")
 
 @pytest.fixture
-def triggerCleanup(no_skip_hardware_interface, device_sn):
+def triggerCleanup(noSkipHardwareInterface, device_sn):
     yield
     device = safe_get_device(device_sn, timeout=30, unmounted=True) #we are fine with unmounted devices
     try:
         device.command.stopRecording()
     except:
-        no_skip_hardware_interface.timed_button_press(18)
+        noSkipHardwareInterface.timed_button_press(18)
     device = safe_get_device(device_sn, timeout=30, unmounted=True)
     config = GeneralConfig()
     if config.set_configs(device, quick_config=True):

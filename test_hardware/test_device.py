@@ -12,7 +12,7 @@ from test_hardware.helper_functions.connection_helper import safe_get_device, wa
 from test_hardware.helper_functions.raspi_endaq_controller import set_usb, set_button
 from tests.fake_recorders import RECORDER_PATHS
 from test_hardware.helper_functions.subtask_helpers import start_recording, stop_recording, make_recording, config_name_from_id 
-from test_hardware.fixtures import *
+from test_hardware.fixtures import noSkipHardwareInterface
 
 import time
 from datetime import datetime
@@ -670,3 +670,122 @@ def test_plugin_action(device_sn, setupTeardown, no_skip_hardware_interface, tri
     assert device.command.status[1] == rec_status
     if rec_status == Status.RECORDING:
         stop_recording(device, device_sn, is_raspi)
+
+def test_pre_recording_delay():
+    TODO("test_pre_recording_delay")
+
+@pytest.mark.parametrize('rec_size', [
+-10, 0, 50, 100, 500, 987])
+def test_max_recording_size(device_sn, setupTeardown, newDir, rec_size):
+    if rec_size < 0:
+        #assert that it raises value error
+    elif rec_size == 0:
+        pytest.skip('0kb recording is equivalent to a standard run, ignoring')
+    else:
+        
+    #this should probably be done in a new dir so we can delete and not run out of space
+    TODO("test_max_recording_size")
+
+@pytest.mark.parametrize('time_value, expected_out', [
+    
+])
+def test_set_time(device_sn, time_value, expected_out):
+   TODO("test_set_time") 
+
+def test_delay_trigger_settings():
+    TODO("test_delay_or_trigger")
+	
+    
+class TestLock:
+    def test_standard_lock_run(self):
+        TODO("test_standard_lock_run")
+
+    def test_invalid_lock_settings(self):
+        #set lock id to something unhashable
+
+        #trying to set a 
+        TODO("test_invalid_lock_settings")
+
+    def test_no_lock_props(self):
+        device = None
+        
+        assert device.command.isLocked() == (False, False) 
+        TODO("test_no_lock_props")
+
+def test_get_changes():
+    TODO("test_get_changes")
+
+#TODO: this might need to converted to use pytest.param
+@pytest.mark.parametrize("ch_id", [
+    ()
+])
+def test_get_sample_rate(device_sn, ch_id):
+    TODO("test_get_sample_rate")
+
+@pytest.mark.paramemtrize('cfg_id, ch_id', [
+    (),
+    ()
+])
+def test_is_enabled(device_sn, cfg_id, setupTeardown):
+    device = safe_get_device(device_sn)
+    
+    for cfg_val, assert_val in [(0, False), (1, True)]:
+        device.config.items[cfg_id].value = cfg_val
+        device.config.applyConfig()
+        assert device.config.isEnabled(device.channels[ch_id]) == b
+        
+
+@pytest.mark.parametrize('cfg_id', [
+])
+def test_get_trigger(device_sn, cfg_id):
+    TODO("test_get_trigger")
+    #assert that getTrigger work
+    
+    #assert that getTriggers has that as that as the only channel activated.
+
+def test_change_recording_file_prefix(device_sn):
+    #get name wih no uses
+
+    #make recording, ensure that's that is the only one of it's name, called *name*_000001.IDE
+
+    #go back to none, make sure it goes back to original, and there are n + 1 of that recording number
+    TODO("test_change_recording_file_prefix")
+
+def test_get_config_values(device_sn):
+    TODO("test_get_config_values")
+
+def test_set_time_default(device_sn):
+    device = safe_get_device(device_sn)
+    
+    TODO("test_set_time_default")
+
+def test_retrigger():
+    """
+    
+    """
+
+    #NOTE: we test the validity of max_recording_length in test `test_max_recording_time`
+    #and will use it in this test.
+    TODO("test_retrigger_basic")
+	
+def test_UTC_offset(device_sn, setupTeardown, triggerCleanup, is_raspi, newDir):
+    """
+    Tests that setting the UTC offset in the config has the proper effects,
+    explained in inline comments
+    """
+    
+    UTC_config_item = device.config.items[1048447]
+    device = safe_get_device(device_sn)
+    default_offset = UTC_config_item.value
+    #create recording
+    create_recording(device, device_sn, Status.RECORDING, is_raspi)
+    newest_rec = max(glob.glob(f"{newDir}/*.IDE"), key = os.path.getctime)
+    UTC_config_.value = default_offset - 60 * 60 #1 hour backwards
+    create_recording(device, device_sn, Status.RECORDING, is_raspi)
+    #assert the previous recording (with the future time zone) is the newest
+    assert newest_rec == max(glob.glob(f"{newDir}/*.IDE"), key = os.path.getctime)
+    UTC_config_item.value = default_offset + 2 * 60 * 60 #forward 2 hours
+    create_recording(device, device_sn, Status.RECORDING, is_raspi)
+    all_recs = glob.glob(f"{rec_dir}/{newDir}/*.IDE")
+    assert newest_rec != max(all_recs, key = os.path.getctime)
+    TODO("test_UTC_offset")
