@@ -4,6 +4,9 @@ Pytest configuration functions.
 
 import pytest
 
+pytest_plugins = [
+    'test_hardware.fixtures'
+]
 
 def pytest_addoption(parser):
     """
@@ -27,7 +30,8 @@ def pytest_addoption(parser):
     )
 
     parser.addoption(
-        "-N", "--num_attempts", type=int, default = 3 #TODO: help
+        "-N", "--num_attempts", type=int, default = 3, help="Sets the number of times to retry a test "\
+            "in case of a unexpected error."
     )
 
     
@@ -48,7 +52,6 @@ def fast_clean(request) -> bool:
 def device_sn(request) -> bool:
     return request.config.getoption("--device")
 
-#TODO: don't know if this is needed.
 def pytest_collection_modifyitems(config, items):
     """
     Defines how to treat tests with device type marks depending on the device 

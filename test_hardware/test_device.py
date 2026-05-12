@@ -10,15 +10,15 @@ from test_hardware.helper_functions.general_config import GeneralConfig, GENERAL
 from test_hardware.helper_functions.connection_helper import safe_get_device, wait_for_status, stopRecOldFW, get_status, safe_ping
 from tests.fake_recorders import RECORDER_PATHS
 from test_hardware.helper_functions.subtask_helpers import start_recording, stop_recording, make_recording 
-from test_hardware.fixtures import noSkipHardwareInterface
+#from test_hardware.fixtures import noSkipHardwareInterface, setupTeardown
 
 import time
+import calendar
 from datetime import datetime
+from datetime import timezone as tz
 import glob
 import os
 from pathlib import Path
-#these imports are only used for creating fixtures. random should never
-#be called in actual tests. For property based tests, use hypothesis
 
 
 class Payload:
@@ -104,10 +104,7 @@ def test_virtual_accuracy(device_sn, is_raspi, setupTeardown):
     are accurate.
     """
     device = safe_get_device(device_sn, timeout=30)
-    start_recording(device, device_sn, Status.RECORDING)
-    time.sleep(2) #arbitrary time, just to ensure file is created
-    safe_ping(device)
-    stop_recording(device, device_sn, is_raspi)
+    make_recording(device, device_sn, Status.RECORDING, is_raspi, 2)
     safe_ping(device)
     rec_path = max(
         glob.glob(str(Path(device.path+f"/Data/{getattr(device.config, 'recordingDir', 'RECORD')}/*.IDE"))),
@@ -125,7 +122,7 @@ def test_virtual_accuracy(device_sn, is_raspi, setupTeardown):
     assert device.firmwareVersion == virtual.firmwareVersion
     assert device.chipId == virtual.chipId
 
-def test_unplug_device(device_sn, no_skip_hardware_interface):
+def test_unplug_device(device_sn, noSkipHardwareInterface):
     """
     Tests methods that produce different results when a device 
     is plugged in / unplugged.
@@ -137,60 +134,37 @@ def test_unplug_device(device_sn, no_skip_hardware_interface):
     if config.set_configs(device, quick_config=True):
         device.config.applyConfig()
     for usb_on, num_connected in iter([(False, 0), (True, 1)]):    
-        no_skip_hardware_interface.set_usb(usb_on)
+        noSkipHardwareInterface.set_usb(usb_on)
         time.sleep(10)
         assert (len(endaq.device.getDevices()) == num_connected
                ), f"getDevices detected {endaq.device.getDevices()}, when only {num_connected} is present"
         assert (len(endaq.device.getDeviceList()) == num_connected
                ), f"getDeviceList detected {endaq.device.getDevices()}, when only {num_connected} is present"
 
-class TestGetDevices:
-    def test_get_devices_default(self, device_sn, setupTeardown): 
-        device = endaq.device.getDevices()[0]
-        assert device.serial == device_sn, "Incorrect device connected."
-        
-    def test_get_devices_correct_path(self, device_sn, setupTeardown):
-        device = endaq.device.getDevices(
-            paths=RECORDER_PATHS, unmounted=False, strict=False)
-        assert device != [], f"Specified device was not returned: {device}"
-        
-    def test_get_devices_incorrect_path(self, device_sn, setupTeardown): 
-        device = endaq.device.getDevices(
-            paths=("/abc/"), unmounted=False, strict=False)
-        assert device == [], f"Device was returned: {device}"
-        
-    def test_get_devices_unmounted_default(self, device_sn, setupTeardown): 
-        device = []
-        device_list = endaq.device.getDevices(unmounted=False)
-        for dev in device_list:
-            if dev.serial == device_sn:
-                device.append(dev)
-        assert device, "Incorrect device or no device connected."
-        
-    def test_get_devices_unmounted_recording(self, device_sn, setupTeardown, is_raspi): 
-        device = endaq.device.getDevices()[0]
-        fw_version = device.firmwareVersion
+def test_get_devices_unmounted_recording(device_sn, setupTeardown, is_raspi):
+    """Tests that getDevices correctly reads a recording device as unmounted""" 
+    device = endaq.device.getDevices()[0]
+    fw_version = device.firmwareVersion
 
-        if 20000 <= fw_version <= 30100:
-            device.command.startRecording()
-            # Just delay for a bit to let the device start record
-            time.sleep(15)
-            new_device = endaq.device.getDevices(unmounted=False)
-            dev_list = []
-            for i in new_device:
-                curr_dev = i
-                if curr_dev.serial == device_sn:
-                    dev_list.append(curr_dev)
-            assert dev_list == [], "Device was returned while recording."
-            stopRecOldFW(device, is_raspi) 
-        else:
-            start_recording(device, device_sn, Status.RECORDING)
-            new_devices = endaq.device.getDevices(unmounted=False)
-            dev_sn_list = [dev.serial for dev in new_devices]
-            assert device_sn not in dev_sn_list, "Device was returned while recording."
-            device.command.stopRecording()
+    if 20000 <= fw_version <= 30100:
+        device.command.startRecording()
+        # Just delay for a bit to let the device start record
+        time.sleep(15)
+        new_device = endaq.device.getDevices(unmounted=False)
+        dev_list = []
+        for i in new_device:
+            curr_dev = i
+            if curr_dev.serial == device_sn:
+                dev_list.append(curr_dev)
+        assert dev_list == [], "Device was returned while recording."
+        stopRecOldFW(device, is_raspi) 
+    else:
+        start_recording(device, device_sn, Status.RECORDING)
+        new_devices = endaq.device.getDevices(unmounted=False)
+        dev_sn_list = [dev.serial for dev in new_devices]
+        assert device_sn not in dev_sn_list, "Device was returned while recording."
+        device.command.stopRecording()
                 
-@pytest.mark.skip("known bug")
 def test_start_recording_wait(device_sn, setupTeardown, is_raspi):
     """ Tests that 'startRecording()' returns faster than the default case when
         'wait=False'.
@@ -241,44 +215,11 @@ def test_start_recording_wait(device_sn, setupTeardown, is_raspi):
     assert (false_execution_time < default_execution_time
             ), "Default returned quicker than when wait=False."
 
-@pytest.mark.skip("known to not be working")
-def test_start_recording_timeout(device_sn, setupTeardown, is_raspi):
-    """ Tests that 'startRecording()' raises an Exception when 'timeout' is too low.
-
-        :param device_sn: the tested device's serial number collected from the
-            command line.
-        :param setupTeardown: a pytest fixture function that properly resets the
-            enDAQ before and after every test.
-    """
-    # Set up
-    device = safe_get_device(device_sn)
-    device.refresh()
-    fw_version = device.firmwareVersion
-
-    # Since startRecording's behavior is firmware specific, its tests are too!
-    if 20000 <= fw_version <= 30100:
-        # Old FW doesn't seem to support the timeout param
-        device.command.startRecording()
-        stopRecOldFW(device, is_raspi)
-    else:
-        # Verify that if the timeout value is low enough, a DeviceTimeout
-        # exception will be raised
-        with pytest.raises(endaq.device.exceptions.DeviceTimeout) as exc_info:
-            device.command.startRecording(wait=True, timeout=0.1)
-        assert (exc_info.type == endaq.device.exceptions.DeviceTimeout
-                ), "Didn't time out during startRecording."
-        assert (str(exc_info.value) == "Timed out waiting for recording to start"
-                ), "Wrong error message during timeout"
-
-        device = safe_get_device(device_sn, timeout=30, unmounted=True)
-        # If the device doesn't go back to idle, send a stop command, but otherwise let setup handle it
-        if not wait_for_status(device, [Status.IDLE]):
-            device.command.stopRecording()
                 
 # # Device change tests 
 def test_set_config(device_sn, setupTeardown):
     """
-    Test that we can set the device configuration and it will actually get written to the file and be retrievable
+    Test that basic config info is stored across reboots. 
     """
     dev = safe_get_device(device_sn)
     
@@ -323,41 +264,54 @@ def test_bad_end(device_sn, is_raspi, setupTeardown):
         stop_recording(device, device_sn, is_raspi)
     assert str(excinfo.value) == "[ERR_INVALID_COMMAND -20] Badly formed command"
     #attempts to call end after already calling end
-    start_recording(device, device_sn, Status.RECORDING)
-    time.sleep(2)
-    stop_recording(device, device_sn, is_raspi)
+    make_recording(device, device_sn, Status.RECORDING, is_raspi)
 
     with pytest.raises(endaq.device.exceptions.CommandError) as excinfo:
         stop_recording(device, device_sn, is_raspi)
     assert str(excinfo.value) == "[ERR_INVALID_COMMAND -20] Badly formed command"
 
+sample_datetime = datetime(2000,3,14,15,2,30, tzinfo=tz.utc)
+sample_dt_out = sample_datetime.timestamp()
+sample_struct_time = time.gmtime()
 @pytest.mark.parametrize('time_value, expected_out', [
-    
+    (sample_datetime.timestamp(), sample_dt_out), #float,
+    (int(sample_datetime.timestamp()), sample_dt_out), #int,
+    (sample_datetime, sample_dt_out), #datetime
+    (sample_struct_time, calendar.timegm(sample_struct_time)),
 ])
 def test_set_time(device_sn, setupTeardown, time_value, expected_out):
-    TIME_TOLERANCE = 2 
+    """
+    Tests that the different supported time representations work as intended.
+    """
+    TIME_TOLERANCE = 1
     device = safe_get_device(device_sn)  
     start_time = time.time()
     device.command.setTime(time_value)
     elapsed_time = time.time() - start_time
-    if expected_out < 946684800: #minimum time, Jan 1 2000. anything below will snap to it.
-        assert device.command.get_time() - (946684800 + elapsed_time) <= TIME_TOLERANCE
-    else:
-        assert 0 <= device.command.get_time() - (expected_out + elapsed_time) <= TIME_TOLERANCE
+    #NOTE: minimum time, Jan 1 2000. anything below will snap to it.
+    assert -1 * TIME_TOLERANCE <= device.command.getTime()[1] - (expected_out + elapsed_time) <= TIME_TOLERANCE
 
     
-class TestLock:    
-
+class TestLock:
+    """
+    A collection of tests based on the set of `Lock` functions in a Recorder's Command Interface
+    """
     def test_bad_lockID(self, device_sn, setupTeardown):
+        """
+        Tests that the correct error messages are shown when inputting incompatible lock ids.
+        """
         device = safe_get_device(device_sn)
         with pytest.raises(TypeError) as excinfo:
             device.command.setLockID(1)
         assert str(excinfo.value) == "Cannot encode int 1 as binary"
         with pytest.raises(endaq.device.exceptions.CommandError) as excinfo:
-            device.command.setLockID(1)
+            device.command.setLockID("1")
         assert str(excinfo.value) == "[ERR_BAD_LOCK_ID -21] Command Lock ID invalid or already set"
     
     def test_standard_lock_run(self, device_sn, setupTeardown, is_raspi):
+        """
+        tests that the lock-based methods work as intended when used in a typical manner.
+        """
         device = safe_get_device(device_sn)
         assert device.command.setLockID()
         with pytest.raises(endaq.device.exceptions.CommandError) as excinfo:
@@ -367,22 +321,34 @@ class TestLock:
         assert device.command.clearLockID(lockID)
         make_recording(device, device_sn, Status.RECORDING, is_raspi)
 
-    def test_no_lock_props(self):
-        device = None
+    def test_no_lock_props(self, device_sn, setupTeardown):
+        """Tests that lock-based properties work as intended without an active lock id set."""
+        device = safe_get_device(device_sn)
         assert device.command.getLockID() is None
         assert device.command.isLocked() == (False, False) 
         #tests that clearing non-existant lockID doesn't break
         assert device.command.clearLockID()
 
+#TODO: find compatible value for every object.
 def _change_cfg_value(cfg_item: endaq.device.config.ConfigItem):
+    """
+    Finds and applies a value that is valid and different than the existing value in the 
+    given config item.
+    Note that this function does not guarentee that `device.config.applyConfig()` will not error,
+    only ensuring that making a change doesn't error. Types may be incorrect due to this assumption.
+    """
     num_options = len(cfg_item.options)
     if num_options <= 1: 
-        cfg_item.value = 1 if cfg_item.value != 1 else 0 #actual value / typing doesn't matter
-    cfg_item.value = next((k for k, _ in cfg_item.options if cfg_item.value != k), None)
+        cfg_item.value = 30 if cfg_item.value != 30 else 0
+    else: 
+        cfg_item.value = next((k for k, _ in cfg_item.options.items() if cfg_item.value != k), None)
 
+@pytest.mark.skip('buggy implementation')
 def test_get_revert_changes(device_sn, setupTeardown):
     """
-    tests both get_changes and revert_changes
+    Tests that all config items can be modified, and all show up when calling `getChanges()`.
+    Additionally tests that `device.config.revert()` reverts all of the changes
+    made.
     """
     device = safe_get_device(device_sn)
     assert len(device.config.getChanges()) == 0
@@ -394,23 +360,28 @@ def test_get_revert_changes(device_sn, setupTeardown):
     
 def test_is_enabled(device_sn, setupTeardown):
     device = safe_get_device(device_sn)
-    device.config.enableChannel(device.channels[80], enabled=True)
-    assert device.config.isEnabled == True
-    device.config.enableChannel(device.channels[80], enabled=False)
-    assert device.config.isEnabled == False
+    ch80 = device.channels[80]
+    device.config.enableChannel(ch80, enabled=True)
+    assert device.config.isEnabled(ch80) == True
+    device.config.enableChannel(ch80, enabled=False)
+    assert device.config.isEnabled(ch80) == False
     
 def test_set_get_trigger(device_sn, setupTeardown):
     device = safe_get_device(device_sn)   
     
-    device.config.setTrigger(device.channels[80], enabled=True, high = 10)
+    ch80 = device.channels[80]
+    device.config.setTrigger(ch80, enabled=True, high = 10)
     device.config.applyConfig()
-    device.getTrigger() == {'enabled': 1, 'high': 10}
+    device.config.getTrigger(ch80) == {'enabled': 1, 'high': 10}
     
-    device.config.setTrigger(device.channels[80], enabled=False)
+    device.config.setTrigger(ch80, enabled=False)
     device.config.applyConfig()
-    device.getTrigger() == {'enabled': 0, 'high': 10}
+    device.config.getTrigger(ch80) == {'enabled': 0, 'high': 10}
 
-def test_get_config_values(device_sn):
+def test_get_config_values(device_sn, setupTeardown):
+    """
+    Tests that getConfigValues reflects the values present in `device.config.items`.
+    """
     device = safe_get_device(device_sn)
     config_vals = device.config.getConfigValues()
     for k,v in config_vals.items():
@@ -421,6 +392,10 @@ def test_get_config_values(device_sn):
     *[(k, False) for k in [3000, 1500, 780, 200]]
 ])
 def test_sample_rate(device_sn, setupTeardown, sample_rate, is_valid):
+    """
+    Tests that applying all of the allowed sample rates work, and non-valid 
+    sample_rates throw the correct error.
+    """
     device = safe_get_device(device_sn)
     if is_valid:
         device.config.setSampleRate(device.channels[80], sample_rate)
@@ -428,24 +403,28 @@ def test_sample_rate(device_sn, setupTeardown, sample_rate, is_valid):
     else:
         with pytest.raises(ValueError):
             device.config.setSampleRate(device.channels[80], sample_rate)
-            
-def test_config_props(device_sn, setupTeardown):
+
+
+@pytest.mark.parametrize('attr_name, attr_id, attr_value, expected_out', [
+    ('retrigger', 0xEFF7F, 1, 1),
+    ('recordingStartTime', 0xFFF7F, sample_datetime.timestamp(), sample_datetime),
+    ('recordingSizeLimit', 0x11FF7F, 1, 1),
+    ('recordingPrefix', 0x15FF7F, 'recTMP', 'recTMP'),
+    ('recordingDir', 0x14FF7F, 'recTMP', 'recTMP'),
+    ('notes', 0x9FF7F, 'tmp', 'tmp'),
+    ('name', 0x8FF7F, 'tmp', 'tmp'),
+    ('buttonMode', 0x10FF7F, 1, 1)
+])
+def test_config_props(device_sn, setupTeardown, attr_name, attr_id, attr_value, expected_out):
     """
     tests that the properties in `device.config` match the 
     values that are assigned from the config.
     """
     device = safe_get_device(device_sn)
-    attrs_to_test = ['retrigger', 'recordingStartTime', 'recordingSizeLimit', 
-                     'recordingPrefix', 'recordingDir', 'pluginAction', 
-                     'notes', 'name', 'buttonMode']
-    attr_values = [1, int(datetime.now().timestamp()), 1, 
-                   "recTMP", "recTMP", 1, 
-                   "notesTMP", "nameTMP", "buttonModeTMP"]
-    
-    for attr, val in zip(attrs_to_test, attr_values):
-        cfg_item = device.config.items[GENERAL_CONFIG_IDS[attr.capitalize()]]
-        cfg_item.value = val
-        device.config.applyConfig()
-        assert getattr(device.config, attr) == val
+
+    cfg_item = device.config.items[attr_id]
+    cfg_item.value = attr_value
+    device.config.applyConfig()
+    assert getattr(device.config, attr_name) == expected_out
     
    

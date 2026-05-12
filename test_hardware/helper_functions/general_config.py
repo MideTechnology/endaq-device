@@ -106,6 +106,7 @@ class GeneralConfig(BaseModel):
             if key in GENERAL_CONFIG_IDS:
                 cfg_id = GENERAL_CONFIG_IDS[key] 
                 if cfg_id not in dev.config.items:
+                    if verbose: print(f'setting {cfg_id} ({key}) does not exist')
                     continue    # Setting does not exist for the device
                 if quick_config:
                     if dev.config.items[GENERAL_CONFIG_IDS[key]].value == value:

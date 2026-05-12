@@ -4,7 +4,7 @@ Contains fixtures used in device tests. Note that some fixtures are in `conftest
 from test_hardware.conftest import is_raspi, fast_clean, device_sn
 import pytest
 import sys
-from test_hardware.helper_functions.hardwareInterface import *
+from test_hardware.helper_functions.hardware_interface import *
 from test_hardware.helper_functions.connection_helper import safe_get_device, get_status
 from test_hardware.helper_functions.general_config import GeneralConfig
 import endaq.device
@@ -75,7 +75,7 @@ def setupTeardownSession(noSkipHardwareInterface, fast_clean: bool):
             get_status(device)
             if device.command.status[1] != Status.IDLE:
                 reset_device = True
-        except endaq.device.exceptions.DeviceError as e:
+        except endaq.device.exceptions.DeviceError:
             reset_device = True
         if reset_device:
             # if device is not connected, reset it
@@ -114,7 +114,7 @@ def setupTeardown(noSkipHardwareInterface, device_sn, fast_clean):
         if config.set_configs(device, quick_config=True):
             print(f"Applying config")
             device.config.applyConfig()
-            time.sleep(5)               # Is the config not written fast enough or something? #TODO <- this could be related to the issue
+            time.sleep(5)               # Is the config not written fast enough or something?
             device.command.reset()      # Need to reset the device to turn the wifi on
             device = safe_get_device(device_sn, timeout=30, unmounted=False)
 
@@ -127,26 +127,6 @@ def setupTeardown(noSkipHardwareInterface, device_sn, fast_clean):
 
         print(f"Test completed after {time.time() - start_time} seconds.")
     print(f"Test Done")
-
-@pytest.fixture
-def newDir(device_sn):
-    """
-    creates a randomly named file directory for the test, then deletes it after
-    """
-    device = safe_get_device(device_sn)
-    dir_name = lambda : random.choices(string.ascii_letters, k=10)
-    old_name = device.config.recordingDir
-    new_name = dir_name()
-    while not os.path.exists(f"{device.path}/DATA/{new_name}"):
-        new_name = dir_name()
-    device.config.recordingDir = new_name
-    device.config.applyConfig()
-    yield new_name
-    device = safe_get_device(device_sn)
-    device.config.recordingDir = old_name
-    device.config.applyConfig()
-    #TODO: before uncommenting below, make sure the name doesn't get changed from setupTeardown
-    #shutil.rmtree(f"{device.path}/DATA/{new_name}")
 
 @pytest.fixture
 def triggerCleanup(noSkipHardwareInterface, device_sn):
