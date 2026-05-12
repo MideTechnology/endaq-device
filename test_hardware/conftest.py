@@ -27,12 +27,7 @@ def pytest_addoption(parser):
     )
 
     parser.addoption(
-        "-N", "--num_attempts", type=int, default = 3
-    )
-
-    parser.addoption(
-        "-C", "--cleanup", action="store_true", default=False, help="Include to newly created tests " \
-        "and folders after running tests"
+        "-N", "--num_attempts", type=int, default = 3 #TODO: help
     )
 
     

@@ -6,51 +6,25 @@ from endaq.device import DeviceStatusCode as Status
 from idelib.importer import importFile
 import pytest
 
-from test_hardware.helper_functions.hardware_interface import HardwareInterface, RaspiInterface, WindowsInterface, FakeInterface
-from test_hardware.helper_functions.general_config import GeneralConfig
+from test_hardware.helper_functions.general_config import GeneralConfig, GENERAL_CONFIG_IDS
 from test_hardware.helper_functions.connection_helper import safe_get_device, wait_for_status, stopRecOldFW, get_status, safe_ping
-from test_hardware.helper_functions.raspi_endaq_controller import set_usb, set_button
 from tests.fake_recorders import RECORDER_PATHS
-from test_hardware.helper_functions.subtask_helpers import start_recording, stop_recording, make_recording, config_name_from_id 
+from test_hardware.helper_functions.subtask_helpers import start_recording, stop_recording, make_recording 
 from test_hardware.fixtures import noSkipHardwareInterface
 
 import time
 from datetime import datetime
-from datetime import timezone as tz
-import sys
 import glob
 import os
-from typing import Callable, List, Optional, Dict, Union, Any
 from pathlib import Path
 #these imports are only used for creating fixtures. random should never
 #be called in actual tests. For property based tests, use hypothesis
-import random
-import string
-import shutil
 
 
-# Helper class:
 class Payload:
     payload = ''
 
 TODO = lambda name : pytest.skip(f"Test {name} has not yet been implemented")
-RANDOM_NAME = lambda k: random.choices(string.ascii_letters, k=k)
-    
-# # parametrization for the common marks
-
-#TODO: make this config_id based
-#triggers is a dict of channel id to config values. multiple triggers are allowed.
-TRIGGER_DECORATOR = pytest.mark.parametrize("triggers", [ 
-   {80: {"enabled": True, "high": 10}}
-])
-
-#TODO: fill in with values
-OFFSET_DECORATOR = pytest.mark.parametrize("offset", [
-    30, 60, 128, 0, -5
-])
-
-TIME_DECORATOR = pytest.mark.parametrize("config_time", [
-    30, 60, 128, 0, -5])
 # ================= TESTS ================= # 
 # # Standard tests.
 def test_standard_run(device_sn, setupTeardown, is_raspi):
@@ -63,7 +37,6 @@ def test_standard_run(device_sn, setupTeardown, is_raspi):
     """
     # Set up; Confirm device is idle
     device = safe_get_device(device_sn)
-    fw_version = device.firmwareVersion
     serial_number = device.serial
      
     # Confirm device starts as idle
@@ -78,57 +51,6 @@ def test_standard_run(device_sn, setupTeardown, is_raspi):
 
     stop_recording(device, serial_number, is_raspi)
 
-@pytest.mark.parametrize("command, status_code",
-                         [("battery", Status.IDLE),
-                          ("startRecording", Status.RECORDING),
-                          ("stopRecording", Status.IDLE),
-                          ])
-def test_ping_status(command, status_code, device_sn, is_raspi, setupTeardown):
-    """ Tests that 'ping()' accurately updates the device's status.
-
-        :param command: The device command that impacts the status code.
-        :param status_code: The device status returned in the response to a
-            command.
-        :param device_sn: the tested device's serial number collected from the
-            command line.
-        :param setupTeardown: a pytest fixture function that properly resets the
-            enDAQ before and after every test.
-    """
-    # Set up
-    device = safe_get_device(device_sn)
-    fw_version = device.firmwareVersion
-
-    if 20000 <= fw_version <= 30100:
-        # Old FW does not support updating the device's status so this test
-        # does not apply
-        assert True
-    else:
-        # Run different scenarios based on the command parameter
-        match command:
-            case "battery":
-                device.command.getBatteryStatus()
-                wait_for_status(device, [status_code])
-            case "startRecording":
-                device.command.startRecording()
-                device = safe_get_device(device_sn, timeout=30, unmounted=True)
-                wait_for_status(device, [status_code])
-            case "stopRecording":
-                device.command.startRecording()
-                device = safe_get_device(device_sn, timeout=30, unmounted=True)
-                wait_for_status(device, [Status.RECORDING])
-                device.command.stopRecording()
-                device = safe_get_device(device_sn, timeout=30)
-                wait_for_status(device, [status_code])
-
-        # Verify the device has the correct status depending on what command was run
-        get_status(device)
-        assert (device.command.status[1] == status_code
-                ), f"Status was {device.command.status[1]} instead of {status_code}."
-
-        # If the device is recording, stop it
-        if device.command.status[1] == Status.RECORDING:
-            stop_recording(device, device_sn, is_raspi)
-            
 # This test only works if looped in sequential order. Random order is disabled
 # for this reason.
 @pytest.mark.random_order(disabled=True)
@@ -181,7 +103,6 @@ def test_virtual_accuracy(device_sn, is_raspi, setupTeardown):
     Tests that fields consistent between Virtual and "Real" recorders 
     are accurate.
     """
-    #TODO: update with device.config.recordingDir
     device = safe_get_device(device_sn, timeout=30)
     start_recording(device, device_sn, Status.RECORDING)
     time.sleep(2) #arbitrary time, just to ensure file is created
@@ -246,28 +167,28 @@ class TestGetDevices:
                 device.append(dev)
         assert device, "Incorrect device or no device connected."
         
-    def test_get_devices_unmounted_recording(self, device_sn, setupTeardown): 
-            device = endaq.device.getDevices()[0]
-            fw_version = device.firmwareVersion
+    def test_get_devices_unmounted_recording(self, device_sn, setupTeardown, is_raspi): 
+        device = endaq.device.getDevices()[0]
+        fw_version = device.firmwareVersion
 
-            if 20000 <= fw_version <= 30100:
-                device.command.startRecording()
-                # Just delay for a bit to let the device start record
-                time.sleep(15)
-                new_device = endaq.device.getDevices(unmounted=False)
-                dev_list = []
-                for i in new_device:
-                    curr_dev = i
-                    if curr_dev.serial == device_sn:
-                        dev_list.append(curr_dev)
-                assert dev_list == [], "Device was returned while recording."
-                stopRecOldFW(device, is_raspi)      # FIXME: Fix this
-            else:
-                start_recording(device, device_sn, Status.RECORDING)
-                new_devices = endaq.device.getDevices(unmounted=False)
-                dev_sn_list = [dev.serial for dev in new_devices]
-                assert device_sn not in dev_sn_list, "Device was returned while recording."
-                device.command.stopRecording()
+        if 20000 <= fw_version <= 30100:
+            device.command.startRecording()
+            # Just delay for a bit to let the device start record
+            time.sleep(15)
+            new_device = endaq.device.getDevices(unmounted=False)
+            dev_list = []
+            for i in new_device:
+                curr_dev = i
+                if curr_dev.serial == device_sn:
+                    dev_list.append(curr_dev)
+            assert dev_list == [], "Device was returned while recording."
+            stopRecOldFW(device, is_raspi) 
+        else:
+            start_recording(device, device_sn, Status.RECORDING)
+            new_devices = endaq.device.getDevices(unmounted=False)
+            dev_sn_list = [dev.serial for dev in new_devices]
+            assert device_sn not in dev_sn_list, "Device was returned while recording."
+            device.command.stopRecording()
                 
 @pytest.mark.skip("known bug")
 def test_start_recording_wait(device_sn, setupTeardown, is_raspi):
@@ -321,7 +242,7 @@ def test_start_recording_wait(device_sn, setupTeardown, is_raspi):
             ), "Default returned quicker than when wait=False."
 
 @pytest.mark.skip("known to not be working")
-def test_start_recording_timeout(device_sn, setupTeardown):
+def test_start_recording_timeout(device_sn, setupTeardown, is_raspi):
     """ Tests that 'startRecording()' raises an Exception when 'timeout' is too low.
 
         :param device_sn: the tested device's serial number collected from the
@@ -364,7 +285,7 @@ def test_set_config(device_sn, setupTeardown):
     old_name = dev.name
     test_name = f"T{time.time()}"
     
-    dev.config.items[589695].value = test_name
+    dev.config.items[0x8FF7F].value = test_name
     
     dev.config.applyConfig()
     dev.command.reset()
@@ -373,9 +294,9 @@ def test_set_config(device_sn, setupTeardown):
     
     initial_dev_name = dev.name
     dev.refresh()
-    reload_dev_name = dev.config.items[589695].value
+    reload_dev_name = dev.config.items[0x8FF7F].value
     
-    dev.config.items[589695].value = old_name
+    dev.config.items[0x8FF7F].value = old_name
     dev.config.applyConfig()
     error_list = []
     if test_name != initial_dev_name:
@@ -387,135 +308,6 @@ def test_set_config(device_sn, setupTeardown):
                           f"waiting up to 6 seconds between applying config and disconnecting. Expected {test_name} got "
                           f"{reload_dev_name}, initial name was {old_name}")
     assert len(error_list) == 0, "\n".join(error_list)
-
-'''
-NOTE: these two tests are currently disabled due to an incoming rework to general_config.py
-@pytest.mark.parametrize("disable_trigger_channel", [False, True])
-@TRIGGER_DECORATOR
-def test_trigger_standard_run(triggers, disable_trigger_channel, device_sn, setupTeardown, is_raspi):
-    """
-    Performs a standard run of an enDAQ device with triggers activated.
-    Note that if triggers / values is a list, the other must be of equal size
-    as well.
-    
-    :param trigger_keys: the channel value(s) for the triggers.
-    :param values: The kwarg value(s) associated with each trigger. 
-    """
-    # Set up; Confirm device is idle
-    device = safe_get_device(device_sn)
-    fw_version = device.firmwareVersion
-    serial_number = device.serial
-    old_conf = device.config.getConfig()     
-    # Confirm device starts as idle
-    get_status(device)       # Refresh the device status
-    assert (
-        device.command.status[1] == Status.IDLE or
-        device.command.status[1] == Status.IDLE_UNMOUNTED), "Device is not idle."
-    
-    for ch_id, v in triggers.items():
-        device.config.setTrigger(device.channels[ch_id], **v)
-        if disable_trigger_channel: device.config.
-    device.config.applyConfig()
-    
-    device = start_recording(device, serial_number, Status.TRIGGERING)
-        
-    assert device.serial == serial_number, "Did not reconnect to the same device." 
-    device = stop_recording(device, device_sn, is_raspi)
-    devoce.config.applyConfig(oldConf)
-
-#TODO: merge with above.
-@TRIGGER_DECORATOR
-def test_trigger_on_disabled_channel(triggers, device_sn, is_raspi, setupTeardown, triggerCleanup):
-    """
-    Tests that triggers do not effect the recording process if the 
-    channel is disabled
-    """
-    # Set up; Confirm device is idle
-    device = safe_get_device(device_sn)
-    fw_version = device.firmwareVersion
-    serial_number = device.serial
-    # Confirm device starts as idle
-    get_status(device)       # Refresh the device status
-    assert (
-        device.command.status[1] == Status.IDLE or
-        device.command.status[1] == Status.IDLE_UNMOUNTED), "Device is not idle."
-    #disable a channel
-    for ch_id, v in triggers.items():
-        v["enabled"] = False
-        device.config.setTrigger(chs[ch_id], **v)
-    device.config.applyConfig()
-    #we are checking that the status goes to RECORDING instead of TRIGGERING
-    device = start_recording(device, serial_number, Status.RECORDING)
-    
-    assert device.serial == serial_number, "Did not reconnect to the same device."
-
-    stop_recording(device, serial_number, is_raspi)
-'''
-@TIME_DECORATOR
-def test_max_recording_time(device_sn, is_raspi, is_prod, config_time, triggerCleanup):
-    """
-    Tests that the Recording Time limit is respected. Note that this test has an internal
-    margin of error, to where if the device reported it's status within 0.5 seconds of 
-    the config time, it is assumed that it might have been reported wrong, and the test will be ran again
-    with a higher config_time
-    """
-    _max_recording_tst(device_sn, is_raspi, is_prod, config_time)
-    
-def _max_recording_tst(device_sn, is_raspi, is_prod, conig_time):
-    """
-    helper function for test_max_recording time, allowing the test
-    to be re-run in the case of tolerances.
-    """
-    TOLERANCE = 0.25 
-    device = safe_get_device(device_sn)
-    config = GeneralConfig(RecordingTimeLimit=config_time)
-    if config.set_configs(device, quick_config=True):
-        device.config.applyConfig()
-        device.command.reset()
-        device = safe_get_device(device_sn)
-    start_time = time.time()
-    start_recording(device, device_sn, [Status.TRIGGERING, Status.RECORDING])
-    stop_code = wait_for_status([Status.TRIGGERING, Status.RECORDING])
-    time_delta = time.time() - start.time
-    if time_delta - config_time < TOLERANCE:
-        assert stop_code == Status.TRIGGERING
-    elif time_delta - config_time > TOLERANCE:
-        assert stop_code == Status.RECORDING
-    elif is_prod:
-        #TODO: is this print or logging?
-        print("time spent on test within tolerances, rerunning test with increased recording time")
-        _max_recording_tst(device_sn, is_raspi, is_prod, config_time + TOLERANCE)
-    else:
-        pytest.skip("time spent on test within tolerances. Use --production to get an assert value, computation will take longer")
-
-#TODO: trigger decorator
-@TIME_DECORATOR
-def test_delay_then_trigger(device_sn, is_raspi, is_prod, config_time, triggerCleanup):
-    """
-    Tests that delay then trigger works as expected.
-    """
-    _delay_then_trigger_tst(device_sn, is_raspi, is_prod, config_time)
-            
-def _delay_then_trigger_tst(device_sn, is_raspi, is_prod, config_time):
-    """
-    Helper function for test_delay_then_trigger, allowing the function to be re-called
-    in case the timing values were within error.
-    """
-    TOLERANCE = 0.25 
-    #TODO: apply config
-    start_time = time.time()
-    stop_code = wait_for_status([Status.TRIGGERING, Status.IDLE])
-    time_delta = time.time() - start.time
-    if time_delta - config_time < TOLERANCE:
-        assert stop_code == Status.RECORDING
-    elif time_delta - config_time > TOLERANCE:
-        assert stop_code == Status.IDLE
-    elif is_prod:
-        #TODO: is this print or logging?
-        print("time spent on test within tolerances, rerunning test with increased recording time")
-        _max_recording_tst(device_sn, is_raspi, is_prod, config_time + TOLERANCE)
-    else:
-        pytest.skip("time spent on test within tolerances. Use --production to get an assert value, computation will take longer")
 
 def test_bad_end(device_sn, is_raspi, setupTeardown):
     """
@@ -539,253 +331,121 @@ def test_bad_end(device_sn, is_raspi, setupTeardown):
         stop_recording(device, device_sn, is_raspi)
     assert str(excinfo.value) == "[ERR_INVALID_COMMAND -20] Badly formed command"
 
-@pytest.mark.prod_only
-@OFFSET_DECORATOR
-def test_start_at_time(device_sn, setupTeardown, triggerCleanup, is_raspi, offset):
-    """
-    Tests that the `start_at_time` config option works as intended.
-
-    NOTE: This test is marked prod_only as this test will take multiple minutes to run.
-    """
-    device = safe_get_device(device_sn)
-    now = int(datetime.now(tz.utc).timestamp())
-    new_time = now + offset
-    device.config.items[1048447].value = new_time 
-    device.config.applyConfig()
-    if offset <= 0:
-        start_recording(device, device_sn, Status.RECORDING) 
-    else:
-        start_recording(device, device_sn, Status.TRIGGERING)
-        #assert triggering
-        time.sleep(offset)
-        wait_for_status(device, [Status.RECORDING])
-    
-    stop_recording(device, device_sn, is_raspi)
-
-#TODO: change to use NEW_NAME
-def test_recdir_change(device_sn, is_raspi):
-    """
-    tests that changing the recording directory works as intended
-    """
-    device = safe_get_device(device_sn)
-    #create new directory
-    if not hasattr(device.config, 'recordingDir'):
-        pytest.skip("device is unable to change recording directory, test is not needed")
-    rec_dir = f"{device.path}/DATA"
-    new_loc = device.config.recordingDir + "TMP"
-    erase_after = not new_loc in [dir for dir in os.listdir(rec_dir) if os.path.isdir(dir)] 
-    last_recording = glob.glob(f"{rec_dir}/{new_loc}/*.IDE")
-    last_recording = None if not erase_after or len(last_recording) == 0 else max(last_recording, key = os.path.getctime)
-    
-    device.config.recordingDir = new_loc
-    device.config.applyConfig()
-    
-    start_recording(device, device_sn, Status.RECORDING)
-    time.sleep(2)
-    stop_recording(device, device_sn, is_raspi)
-    assert new_loc in os.listdir(rec_dir)
-    if erase_after:
-        shutil.rmtree(f"{rec_dir}/{new_loc}")
-        device.config.applyConfig()
-    else:
-        assert max(glob.glob(f"{rec_dir}/{new_loc}/*.IDE"), key = os.path.getctime) != last_recording       
-    #revert config path back to original
-    device.config.recordingDir = new_loc[:-3]
-    device.config.applyConfig()     
-    
-def test_max_recording_time(device_sn):
-    TODO("test_max_recording_time")
-
-class TestButtonMode:
-    #used to assert that startRecording / stopRecording still works
-    #as intended. self.command_independence is an alias of make_recording
-    
-    def _universal_setup(self, device_sn, button_value):
-        """
-        Retrieves and applies the common config setup between all tests
-        :return: the endaq device associated with the device_sn
-        """
-        device = safe_get_device(device_sn)
-        device.config.items[1113983].value = button_value
-        device.config.applyConfig()
-        return device
-        
-    def test_button_mode_instant(self, device_sn, no_skip_hardware_interface, is_raspi, setupTeardown):
-        device = self._universal_setup(device_sn, 0)
-        no_skip_hardware_interface.timed_button_press(0.3)
-        wait_for_status(device, [Status.RECORDING])
-        assert device.command.status[1] == Status.RECORDING
-        stop_recording(device, device_sn, is_raspi)
-        make_recording(device, device_sn, Status.RECORDING, is_raspi)
-
-    @pytest.mark.skip("inconsistent behavior, debugging")
-    def test_button_mode_hold(self, device_sn, no_skip_hardware_interface, is_raspi, setupTeardown):
-        #assert that tapping doesn't work
-        device = self._universal_setup(device_sn, 1)
-        breakpoint()
-        no_skip_hardware_interface.timed_button_press(0.3)
-        wait_for_status(device, [Status.IDLE])
-        assert device.command.status[1] == Status.IDLE
-
-        no_skip_hardware_interface.timed_button_press(1.5)
-        wait_for_status(device, [Status.RECORDING])
-        assert device.command.status[1] == Status.RECORDING
-        #assert that can stop recording
-        
-        no_skip_hardware_interface.timed_button_press(1.5)
-        wait_for_status(device, [Status.IDLE])
-        assert device.command.status[1] == Status.IDLE
-        make_recording(device, device_sn, Status.RECORDING, is_raspi)
-        
-    def test_button_mode_no_stop(self, device_sn, no_skip_hardware_interface, is_raspi, setupTeardown):
-        device = self._universal_setup(device_sn, 2)
-        no_skip_hardware_interface.timed_button_press(1.5)
-        wait_for_status(device, [Status.RECORDING])
-        assert device.command.status[1] == Status.RECORDING
-        
-        #assert that button press doesn't work
-        no_skip_hardware_interface.timed_button_press(1.5)
-        wait_for_status(device, [Status.RECORDING])
-        assert device.command.status[1] == Status.RECORDING
-        stop_recording(device, device_sn, is_raspi)
-        #TODO: assert that command stop still works
-        make_recording(device, device_sn, Status.RECORDING, is_raspi)
-
-
-@pytest.mark.parametrize("plugin_action_value, rec_status", [
-    (0, Status.IDLE),
-    (1, Status.RECORDING)
-])
-@TRIGGER_DECORATOR #TODO, this needs to be implemented
-def test_plugin_action(device_sn, setupTeardown, no_skip_hardware_interface, triggers, plugin_action_value, rec_status):
-    device = safe_get_device(device_sn)
-    # ignore usb during recordings, needed for test 
-    device.config.items[3014527].value = 1
-    plugin_action_item = device.config.items[3080063]
-    plugin_action_item.value = plugin_action_value
-    device.config.applyConfig()
-    no_skip_hardware_interface.unplug_replug(1)
-    wait_for_status(device, [rec_status])
-    #TODO: better strings.
-    assert device.command.status[1] == rec_status
-    if rec_status == Status.RECORDING:
-        stop_recording(device, device_sn, is_raspi)
-
-def test_pre_recording_delay():
-    TODO("test_pre_recording_delay")
-
-@pytest.mark.parametrize('rec_size', [
--10, 0, 50, 100, 500, 987])
-def test_max_recording_size(device_sn, setupTeardown, newDir, rec_size):
-    if rec_size < 0:
-        #assert that it raises value error
-    elif rec_size == 0:
-        pytest.skip('0kb recording is equivalent to a standard run, ignoring')
-    else:
-        
-    #this should probably be done in a new dir so we can delete and not run out of space
-    TODO("test_max_recording_size")
-
 @pytest.mark.parametrize('time_value, expected_out', [
     
 ])
-def test_set_time(device_sn, time_value, expected_out):
-   TODO("test_set_time") 
+def test_set_time(device_sn, setupTeardown, time_value, expected_out):
+    TIME_TOLERANCE = 2 
+    device = safe_get_device(device_sn)  
+    start_time = time.time()
+    device.command.setTime(time_value)
+    elapsed_time = time.time() - start_time
+    if expected_out < 946684800: #minimum time, Jan 1 2000. anything below will snap to it.
+        assert device.command.get_time() - (946684800 + elapsed_time) <= TIME_TOLERANCE
+    else:
+        assert 0 <= device.command.get_time() - (expected_out + elapsed_time) <= TIME_TOLERANCE
 
-def test_delay_trigger_settings():
-    TODO("test_delay_or_trigger")
-	
     
-class TestLock:
-    def test_standard_lock_run(self):
-        TODO("test_standard_lock_run")
+class TestLock:    
 
-    def test_invalid_lock_settings(self):
-        #set lock id to something unhashable
-
-        #trying to set a 
-        TODO("test_invalid_lock_settings")
+    def test_bad_lockID(self, device_sn, setupTeardown):
+        device = safe_get_device(device_sn)
+        with pytest.raises(TypeError) as excinfo:
+            device.command.setLockID(1)
+        assert str(excinfo.value) == "Cannot encode int 1 as binary"
+        with pytest.raises(endaq.device.exceptions.CommandError) as excinfo:
+            device.command.setLockID(1)
+        assert str(excinfo.value) == "[ERR_BAD_LOCK_ID -21] Command Lock ID invalid or already set"
+    
+    def test_standard_lock_run(self, device_sn, setupTeardown, is_raspi):
+        device = safe_get_device(device_sn)
+        assert device.command.setLockID()
+        with pytest.raises(endaq.device.exceptions.CommandError) as excinfo:
+            device.command.startRecording()
+        assert str(excinfo.value) == "[ERR_BAD_LOCK_ID -21] Command Lock ID invalid or already set"
+        lockID = device.command.getLockID()
+        assert device.command.clearLockID(lockID)
+        make_recording(device, device_sn, Status.RECORDING, is_raspi)
 
     def test_no_lock_props(self):
         device = None
-        
+        assert device.command.getLockID() is None
         assert device.command.isLocked() == (False, False) 
-        TODO("test_no_lock_props")
+        #tests that clearing non-existant lockID doesn't break
+        assert device.command.clearLockID()
 
-def test_get_changes():
-    TODO("test_get_changes")
+def _change_cfg_value(cfg_item: endaq.device.config.ConfigItem):
+    num_options = len(cfg_item.options)
+    if num_options <= 1: 
+        cfg_item.value = 1 if cfg_item.value != 1 else 0 #actual value / typing doesn't matter
+    cfg_item.value = next((k for k, _ in cfg_item.options if cfg_item.value != k), None)
 
-#TODO: this might need to converted to use pytest.param
-@pytest.mark.parametrize("ch_id", [
-    ()
-])
-def test_get_sample_rate(device_sn, ch_id):
-    TODO("test_get_sample_rate")
-
-@pytest.mark.paramemtrize('cfg_id, ch_id', [
-    (),
-    ()
-])
-def test_is_enabled(device_sn, cfg_id, setupTeardown):
+def test_get_revert_changes(device_sn, setupTeardown):
+    """
+    tests both get_changes and revert_changes
+    """
     device = safe_get_device(device_sn)
+    assert len(device.config.getChanges()) == 0
+    for _, v in device.config.items.items():
+        _change_cfg_value(v)
+    assert len(device.config.getChanges()) == len(device.config.items)
+    device.config.revert()
+    assert len(device.config.getChanges()) == 0
     
-    for cfg_val, assert_val in [(0, False), (1, True)]:
-        device.config.items[cfg_id].value = cfg_val
-        device.config.applyConfig()
-        assert device.config.isEnabled(device.channels[ch_id]) == b
-        
-
-@pytest.mark.parametrize('cfg_id', [
-])
-def test_get_trigger(device_sn, cfg_id):
-    TODO("test_get_trigger")
-    #assert that getTrigger work
+def test_is_enabled(device_sn, setupTeardown):
+    device = safe_get_device(device_sn)
+    device.config.enableChannel(device.channels[80], enabled=True)
+    assert device.config.isEnabled == True
+    device.config.enableChannel(device.channels[80], enabled=False)
+    assert device.config.isEnabled == False
     
-    #assert that getTriggers has that as that as the only channel activated.
-
-def test_change_recording_file_prefix(device_sn):
-    #get name wih no uses
-
-    #make recording, ensure that's that is the only one of it's name, called *name*_000001.IDE
-
-    #go back to none, make sure it goes back to original, and there are n + 1 of that recording number
-    TODO("test_change_recording_file_prefix")
+def test_set_get_trigger(device_sn, setupTeardown):
+    device = safe_get_device(device_sn)   
+    
+    device.config.setTrigger(device.channels[80], enabled=True, high = 10)
+    device.config.applyConfig()
+    device.getTrigger() == {'enabled': 1, 'high': 10}
+    
+    device.config.setTrigger(device.channels[80], enabled=False)
+    device.config.applyConfig()
+    device.getTrigger() == {'enabled': 0, 'high': 10}
 
 def test_get_config_values(device_sn):
-    TODO("test_get_config_values")
-
-def test_set_time_default(device_sn):
     device = safe_get_device(device_sn)
-    
-    TODO("test_set_time_default")
+    config_vals = device.config.getConfigValues()
+    for k,v in config_vals.items():
+        if k in device.config.items: assert device.config.items[k].value == v
 
-def test_retrigger():
-    """
-    
-    """
-
-    #NOTE: we test the validity of max_recording_length in test `test_max_recording_time`
-    #and will use it in this test.
-    TODO("test_retrigger_basic")
-	
-def test_UTC_offset(device_sn, setupTeardown, triggerCleanup, is_raspi, newDir):
-    """
-    Tests that setting the UTC offset in the config has the proper effects,
-    explained in inline comments
-    """
-    
-    UTC_config_item = device.config.items[1048447]
+@pytest.mark.parametrize('sample_rate, is_valid', [
+    *[(k, True) for k in [4000, 2000, 1000, 500, 250, 125, 63, 32, 16]],
+    *[(k, False) for k in [3000, 1500, 780, 200]]
+])
+def test_sample_rate(device_sn, setupTeardown, sample_rate, is_valid):
     device = safe_get_device(device_sn)
-    default_offset = UTC_config_item.value
-    #create recording
-    create_recording(device, device_sn, Status.RECORDING, is_raspi)
-    newest_rec = max(glob.glob(f"{newDir}/*.IDE"), key = os.path.getctime)
-    UTC_config_.value = default_offset - 60 * 60 #1 hour backwards
-    create_recording(device, device_sn, Status.RECORDING, is_raspi)
-    #assert the previous recording (with the future time zone) is the newest
-    assert newest_rec == max(glob.glob(f"{newDir}/*.IDE"), key = os.path.getctime)
-    UTC_config_item.value = default_offset + 2 * 60 * 60 #forward 2 hours
-    create_recording(device, device_sn, Status.RECORDING, is_raspi)
-    all_recs = glob.glob(f"{rec_dir}/{newDir}/*.IDE")
-    assert newest_rec != max(all_recs, key = os.path.getctime)
-    TODO("test_UTC_offset")
+    if is_valid:
+        device.config.setSampleRate(device.channels[80], sample_rate)
+        assert device.config.getSampleRate(device.channels[80]) == sample_rate
+    else:
+        with pytest.raises(ValueError):
+            device.config.setSampleRate(device.channels[80], sample_rate)
+            
+def test_config_props(device_sn, setupTeardown):
+    """
+    tests that the properties in `device.config` match the 
+    values that are assigned from the config.
+    """
+    device = safe_get_device(device_sn)
+    attrs_to_test = ['retrigger', 'recordingStartTime', 'recordingSizeLimit', 
+                     'recordingPrefix', 'recordingDir', 'pluginAction', 
+                     'notes', 'name', 'buttonMode']
+    attr_values = [1, int(datetime.now().timestamp()), 1, 
+                   "recTMP", "recTMP", 1, 
+                   "notesTMP", "nameTMP", "buttonModeTMP"]
+    
+    for attr, val in zip(attrs_to_test, attr_values):
+        cfg_item = device.config.items[GENERAL_CONFIG_IDS[attr.capitalize()]]
+        cfg_item.value = val
+        device.config.applyConfig()
+        assert getattr(device.config, attr) == val
+    
+   

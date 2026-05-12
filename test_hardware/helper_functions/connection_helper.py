@@ -1,6 +1,7 @@
 import endaq.device
 import time
 import pytest
+from test_hardware.helper_functions.raspi_endaq_controller import timed_button_press
 
 class ConnectionError(Exception):
     """
