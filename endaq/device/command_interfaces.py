@@ -1173,17 +1173,16 @@ class CommandInterface:
         timeout = -1 if timeout is None else timeout
         deadline = time() + timeout
 
-        cmd = {'SSID': ssid, 'Selected': 1}
+        try:
+            modeEl = {'sta': 'AP', 'ap': 'APMode'}[mode.lower()[:3]]
+        except (AttributeError, KeyError):
+            raise ValueError(f'Unknown Wi-Fi mode {mode!r}')
+
+        cmd = {'SSID': ssid}
         if password is not None:
             cmd['Password'] = password
-
-        modename = mode.lower()[:3]
-        if modename == 'sta':
-            modeEl = 'AP'
-        elif modename == 'ap':
-            modeEl = 'APMode'
-        else:
-            raise ValueError(f'Unknown Wi-Fi mode {mode!r}')
+        if modeEl == 'AP':
+            cmd['Selected'] = 1
 
         self.setWifi({modeEl: cmd}, timeout=timeout, callback=callback)
 
@@ -1200,7 +1199,7 @@ class CommandInterface:
                 if status & WiFiConnectionStatus.CONNECTED:
                     return None
             else:
-                logger.debug('setAP(): got bad queryWifi() response: {!r}'
+                logger.debug('_setAP(): got bad queryWifi() response: {!r}'
                              .format(response))
 
             sleep(min(timeout, 0.5))
