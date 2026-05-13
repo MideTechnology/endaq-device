@@ -26,7 +26,7 @@ def makeBackup(filename: Union[str, pathlib.Path]) -> bool:
         `restoreBackup()`.
     """
     try:
-        backupFilename = filename + "~"
+        backupFilename = f"{filename}~"
         if os.path.exists(filename):
             shutil.copy2(filename, backupFilename)
             return True
@@ -42,7 +42,7 @@ def restoreBackup(filename: Union[str, pathlib.Path],
         conjunction with `makeBackup()`.
     """
     try:
-        backupFilename = filename + "~"
+        backupFilename = f"{filename}~"
         if os.path.exists(backupFilename):
             shutil.copy2(backupFilename, filename)
             if remove:

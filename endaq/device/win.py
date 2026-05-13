@@ -42,7 +42,7 @@ else:
 # ==============================================================================
 
 def getDriveInfo(dev: Filename) -> Drive:
-    """ Get general device information. Not currently used.
+    """ Get general device information.
     """
     dev = os.path.realpath(str(dev))
 

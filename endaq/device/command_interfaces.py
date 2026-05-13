@@ -1926,6 +1926,7 @@ class SerialCommandInterface(CommandInterface):
                     raise
 
 
+    # noinspection PyUnresolvedReferences
     @classmethod
     def findSerialPort(cls,
                        device: Union["Recorder", int, str],

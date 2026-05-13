@@ -273,8 +273,8 @@ class MQTTConnector:
             if err != mqtt.MQTT_ERR_SUCCESS:
                 raise CommunicationError(f'Failed to connect to broker: {err!r}')
 
-        result, _mid = self.subscribe(self._managerStateTopic, qos=0)
-        # if result == mqtt.MQTT_ERR_SUCCESS:
+        _result, _mid = self.subscribe(self._managerStateTopic, qos=0)
+        # if _result == mqtt.MQTT_ERR_SUCCESS:
         #     self.client.message_callback_add(self._managerStateTopic, self._onMessage)
 
         self.client.loop_start()
@@ -875,7 +875,7 @@ class MQTTCommandInterface(SerialCommandInterface):
 
         self.streamCallback: Optional[Callable] = None
         self._streamPath: Union[str, Path, None] = None
-        self._stream: Optional[BinaryIO] = None
+        self._stream: BinaryIO = None
         self._streamStartTime: float = 0
         self._streamedBytes: int = 0
         self._lastStreamChunk: bytes = b''
@@ -1182,7 +1182,7 @@ class MQTTCommandInterface(SerialCommandInterface):
 
         filename = f"{self.device.serial}_{datetime.now().strftime('%y%m%d_%H%M%S')}.IDE"
         self._stream = open(os.path.join(self._streamPath, filename), 'wb')
-        logger.debug(f"Saving stream to {self._stream}")
+        logger.debug(f"Saving stream to {filename}")
 
 
     @synchronized

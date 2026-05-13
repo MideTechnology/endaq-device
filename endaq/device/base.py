@@ -493,6 +493,7 @@ class Recorder:
 
         if self._path and os.path.exists(self._path) and self._volumeName is None:
             try:
+                # noinspection PyUnresolvedReferences
                 self._volumeName = os_specific.getDriveInfo(self.path).label
             except (AttributeError, IOError, TypeError) as err:
                 logger.debug("Getting volumeName raised a possibly-allowed exception: %r" % err)
@@ -1454,6 +1455,8 @@ class Recorder:
             if xform.id is None:
                 continue
             n = "%sPolynomial" % xform.__class__.__name__
+
+            # noinspection PyUnresolvedReferences
             data.setdefault(n, []).append(xform.asDict())
 
         if date:

@@ -470,7 +470,7 @@ class ConfigInterface:
         self._schema = loadSchema('mide_config_ui.xml')
         self._schema.UNKNOWN = ConfigInterface._handleUnknownField
 
-        self.device: Optional["Recorder"] = device
+        self.device: "Recorder" = device
         self.configUi: Optional[MasterElement] = None
         self.config: Optional[MasterElement] = None
         self._items: Dict[int, ConfigItem] = {}
@@ -948,7 +948,7 @@ class ConfigInterface:
         return self._getitem(0x0bff7f).value / 3600
 
     @utcOffset.setter
-    def utcOffset(self, offset: Optional[float]):
+    def utcOffset(self, offset: float):
         # Convert from hours to seconds
         self._setitem(0x0bff7f, int(offset * 3600))
 
