@@ -1179,15 +1179,12 @@ class CommandInterface:
 
         modename = mode.lower()[:3]
         if modename == 'sta':
-            cmd = {'AP': cmd}
+            modeEl = 'AP'
         elif modename == 'ap':
-            if not self.device.getInfo('RecorderTypeUID', 0) & 0xa0000000:
-                raise UnsupportedFeature('Device does not support AP Mode')
-            cmd = {'APMode': cmd}
+            modeEl = 'APMode'
         else:
             raise ValueError(f'Unknown Wi-Fi mode {mode!r}')
 
-        modeEl = 'APMode' if mode.lower() == 'ap' else 'AP'
         self.setWifi({modeEl: cmd}, timeout=timeout, callback=callback)
 
         if not wait or timeout == 0:
@@ -1208,7 +1205,7 @@ class CommandInterface:
 
             sleep(min(timeout, 0.5))
 
-        raise DeviceTimeout(f'Timed out setting {modeEl}')
+        raise DeviceTimeout(f'Timed out setting Wi-Fi {modeEl}')
 
 
     def setAP(self,
@@ -1263,6 +1260,9 @@ class CommandInterface:
                 cancelled. The callback function should require no arguments.
                 The `callback` will not be called if `wait` is `False`.
         """
+        if not self.device.getInfo('RecorderTypeUID', 0) & 0xa0000000:
+            raise UnsupportedFeature('Device does not support AP Mode')
+
         try:
             self._setAP(ssid, password, 'ap', wait, timeout, callback)
         except TimeoutError:
