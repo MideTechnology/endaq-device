@@ -39,7 +39,6 @@ from .devinfo import DeviceInfo, FileDeviceInfo
 from . import measurement
 from .measurement import MeasurementType
 from . import command_interfaces
-from .command_interfaces import CommandInterface
 from .exceptions import *
 from .types import Drive, Filename, Epoch
 from . import util
@@ -120,31 +119,31 @@ class Recorder:
         self.strict: bool = strict
 
         self._virtual: bool = virtual
-        self._command: Optional[CommandInterface] = None
+        self._command: Optional[command_interfaces.CommandInterface] = None
         self._config: Optional[ConfigInterface] = None
         self._path: Optional[Filename] = None
         self._devinfo: Optional[DeviceInfo] = None
         self._rawinfo: Optional[bytes] = devinfo
-        self._info: Optional[Dict] = None
+        self._info: Dict = None
 
         self._hash: Optional[int] = None
-        self._configData: Optional[Dict] = None
+        self._configData: Dict = None
         self._sn: Optional[str] = None
         self._snInt: Optional[int] = None
         self._chipId: Optional[int] = None
-        self._sensors: Optional[Dict[int, Sensor]] = None
-        self._channels: Optional[Dict[int, Channel]] = None
+        self._sensors: Dict[int, Sensor] = None
+        self._channels: Dict[int, Channel] = None
         self._channelRanges = {}
         self._propData: Optional[bytes] = None
-        self._manifest: Optional[Dict[str, Any]] = None
-        self._calibration: Optional[Dict[str, Any]] = None
-        self._calData: Optional[bytes] = None
-        self._calPolys: Optional[Dict[int, Any]] = None
-        self._userCalPolys: Optional[Dict] = None
-        self._userCalDict: Optional[Dict] = None
-        self._factoryCalPolys: Optional[Dict] = None
-        self._factoryCalDict: Optional[Dict] = None
-        self._properties: Optional[Dict] = None
+        self._manifest: Dict[str, Any] = None
+        self._calibration: Dict[str, Any] = None
+        self._calData: MasterElement = None
+        self._calPolys: Dict[int, Any] = None
+        self._userCalPolys: Dict = None
+        self._userCalDict: Dict = None
+        self._factoryCalPolys: Dict = None
+        self._factoryCalDict: Dict = None
+        self._properties: Dict = None
         self._volumeName: Optional[str] = None
         self._wifi: Optional[str] = None  # Cached name of the manifest's Wi-Fi element
 
@@ -876,7 +875,7 @@ class Recorder:
         if key in self._channelRanges:
             return self._channelRanges[key]
 
-        xforms = self.getCalPolynomials()
+        xforms: dict = self.getCalPolynomials()
         lo, hi = subchannel.displayRange
 
         for xformId in subchannel.getTransforms():
@@ -1613,15 +1612,39 @@ class NonRecorder(Recorder):
     """
     Special-case `Recorder` subclass for objects that use the same interface
     but are are not actual recorders, or do not correspond to a specific
-    device (e.g., a 'fake' recorder used to get data).
+    device (e.g., a 'fake' recorder used to get data). Used internally.
     """
 
-    def __init__(self, path=None, name=None, **kwargs):
+    def __init__(self,
+                 path: Optional[Filename] = None,
+                 name: Optional[str] = None,
+                 **kwargs):
+        """ Special-case `Recorder` subclass for objects that use the same
+            interface but are are not actual recorders, or do not correspond
+            to a specific device (e.g., a 'fake' recorder used to get data).
+
+            :param path: The filesystem path to the recorder, or `None` if
+                it is a 'virtual' or remote device.
+            :param name: The name of the device. Supplying one avoids
+                reading it from the device, which can cause issues in various
+                `NonRecorder` use cases.
+            :param strict: If `True`, only allow real device paths. If
+                `False`, allow any path that contains a ``SYSTEM`` directory
+                with the standard contents on a device. Primarily for
+                testing.
+            :param devinfo: The necessary data to instantiate a `Recorder`.
+                For creating `Recorder` instances when the hardware isn't
+                physically present on the host computer. If `None`, the
+                data will be read from the device.
+            :param virtual: `True` if the device is not actual hardware
+                (e.g., constructed from data in a recording).
+        """
         super().__init__(path, **kwargs)
         self._name = name
 
 
     def __repr__(self):
+        """ Return repr(self). """
         try:
             if self._name:
                 return f'<{type(self).__name__} "{self._name}">'

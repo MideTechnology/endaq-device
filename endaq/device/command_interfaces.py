@@ -15,7 +15,7 @@ import struct
 import sys
 from threading import Event
 from time import sleep, time, struct_time
-from typing import Any, AnyStr, Dict, Generator, List, Optional, Tuple, Union, Callable
+from typing import Any, AnyStr, Dict, Generator, List, Literal, Optional, Tuple, Union, Callable
 from uuid import uuid4
 import warnings
 
@@ -1142,17 +1142,24 @@ class CommandInterface:
     # =======================================================================
 
     @device_synchronized
-    def setAP(self,
+    def _setAP(self,
               ssid: str,
               password: Optional[str] = None,
+              mode: Literal['sta', 'ap'] = 'sta',
               wait: bool = False,
               timeout: Union[int, float] = 10,
               callback: Optional[Callable] = None):
         """ Quickly set the Wi-Fi access point (router) and password.
             Applicable only to devices with Wi-Fi hardware.
 
-            :param ssid: The SSID (name) of the wireless access point.
+            :param ssid: The SSID (name) of the wireless access point to
+                which to connect.
             :param password: The access point password.
+            :param mode: The device Wi-Fi mode, either ``"sta"`` for 'station'
+                mode (the device connects to an Access Point) or ``"ap"`` for
+                Access Point mode (the device will run as an AP for other
+                devices). AP Mode is only available on enDAQ Gateway
+                hardware; recorders should use Station mode (the default).
             :param wait: If `True`, wait until the device reports it is
                 connected before returning.
             :param timeout: Time (in seconds) to wait for a response before
@@ -1166,14 +1173,23 @@ class CommandInterface:
         timeout = -1 if timeout is None else timeout
         deadline = time() + timeout
 
-        if self.device.isRemote:
-            wait = False
-
         cmd = {'SSID': ssid, 'Selected': 1}
         if password is not None:
             cmd['Password'] = password
 
-        self.setWifi(cmd, timeout=timeout, callback=callback)
+        modename = mode.lower()[:3]
+        if modename == 'sta':
+            cmd = {'AP': cmd}
+        elif modename == 'ap':
+            if not self.device.getInfo('RecorderTypeUID', 0) & 0xa0000000:
+                raise UnsupportedFeature('Device does not support AP Mode')
+            cmd = {'APMode': cmd}
+        else:
+            raise ValueError(f'Unknown Wi-Fi mode {mode!r}')
+
+        modeEl = 'APMode' if mode.lower() == 'ap' else 'AP'
+        self.setWifi({modeEl: cmd}, timeout=timeout, callback=callback)
+
         if not wait or timeout == 0:
             return None
 
@@ -1184,7 +1200,7 @@ class CommandInterface:
             response = self.queryWifi(timeout=0.5)
             if response:
                 status = response.get('WiFiConnectionStatus')
-                if status == WiFiConnectionStatus.CONNECTED:
+                if status & WiFiConnectionStatus.CONNECTED:
                     return None
             else:
                 logger.debug('setAP(): got bad queryWifi() response: {!r}'
@@ -1192,7 +1208,65 @@ class CommandInterface:
 
             sleep(min(timeout, 0.5))
 
-        raise DeviceTimeout('Timed out waiting to connect to AP SSID {}'.format(ssid))
+        raise DeviceTimeout(f'Timed out setting {modeEl}')
+
+
+    def setAP(self,
+              ssid: str,
+              password: Optional[str] = None,
+              wait: bool = False,
+              timeout: Union[int, float] = 10,
+              callback: Optional[Callable] = None):
+        """ Quickly connect to a Wi-Fi access point (router). Applicable
+            only to devices with Wi-Fi hardware.
+
+            :param ssid: The SSID (name) of the wireless access point.
+            :param password: The access point password.
+            :param wait: If `True`, wait until the device reports it is
+                connected before returning.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will be
+                cancelled. The callback function should require no arguments.
+                The `callback` will not be called if `wait` is `False`.
+        """
+        if self.device.isRemote:
+            # NOTE: This may be obsolete
+            wait = False
+
+        try:
+            self._setAP(ssid, password, 'sta', wait, timeout, callback)
+        except TimeoutError:
+            raise DeviceTimeout(f'Timed out waiting to connect to AP SSID {ssid}')
+
+
+    def setAPMode(self,
+                  ssid: str,
+                  password: Optional[str] = None,
+                  wait: bool = False,
+                  timeout: Union[int, float] = 120,
+                  callback: Optional[Callable] = None):
+        """ Set up the device as a Wi-Fi Access Point (AP), to which other
+            devices will connect. Only applicable to Gateway hardware.
+
+            :param ssid: The SSID (name) of the device's wireless access point.
+            :param password: The access point password.
+            :param wait: If `True`, wait until the device reports the AP is
+                up and running before returning.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will be
+                cancelled. The callback function should require no arguments.
+                The `callback` will not be called if `wait` is `False`.
+        """
+        try:
+            self._setAP(ssid, password, 'ap', wait, timeout, callback)
+        except TimeoutError:
+            raise DeviceTimeout('Timed out switching to AP mode')
 
 
     def setWifi(self,
@@ -1232,7 +1306,15 @@ class CommandInterface:
         if not self.device.hasWifi:
             raise UnsupportedFeature('{!r} has no Wi-Fi adapter'.format(self.device))
 
-        cmd = {'EBMLCommand': {'SetWiFi': {"AP": wifi_data}}}
+        if 'SSID' in wifi_data:
+            # Backwards compatibility: just AP data, assume `AP` element
+            # To eventually be removed.
+            warnings.warn("""setWifi data should explicitly include 'outer' "AP" or "APMode" element""",
+                          DeprecationWarning)
+
+            wifi_data = {'AP': wifi_data}
+
+        cmd = {'EBMLCommand': {'SetWiFi': wifi_data}}
 
         self._sendCommand(cmd,
                           response=False,

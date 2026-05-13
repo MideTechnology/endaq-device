@@ -3,7 +3,7 @@ Response codes to various commands. Responses from the device are all
 integers; these enumerations give them some context. This is important, as
 some common numbers have different meanings in different types of response.
 
-All response code values are interchangable with `int`, and function as
+All response code values are interchangeable with `int`, and function as
 if they are subclasses of `int`. They can be used with integers in
 comparisons and other expressions; they can even be used as array indices.
 
@@ -78,6 +78,10 @@ responsestrings = {
 
 class WiFiConnectionStatus(IntEnum):
     """ The status of the Wi-Fi connection, returned when querying Wi-Fi.
+        For future reliability, checking response codes (particularly ``IDLE``,
+        ``PENDING`` and ``CONNECTED``) is best done with a bitwise AND (e.g.,
+        ``if response & WiFiConnectionStatus.CONNECTED:``) rather than
+        equality (with ``=``).
     """
     IDLE = 0x00  #: Wi-Fi is inactive (and/or disconnected).
     PENDING = 0x01  #: The device is in the process of connecting to the Wi-Fi AP.

@@ -1,19 +1,29 @@
 """
 Classes representing an enDAQ Gateway device: hardware and/or software
-running an MQTT broker and functioning as a network hub/AP, bridge, etc.
+running an MQTT broker and device management, and functioning as a
+network hub/AP/bridge/etc.
 """
 
 from ebmlite import loadSchema
 from endaq.device.base import Recorder
+from endaq.device.mqtt.discovery import splitServiceName
 from endaq.device.util import synchronized
 
 import logging
 logger = logging.getLogger(__name__)
 
+__all__ = ('Gateway',)
+
+
+# ===============================================================================
+#
+# ===============================================================================
 
 class Gateway(Recorder):
     """
-    An enDAQ Gateway device.
+    An enDAQ Gateway device: hardware and/or software running an MQTT broker
+    and device management, optionally functioning as a network hub (AP, bridge,
+    etc.).
     """
 
     SN_FORMAT = "G%07d"
@@ -48,11 +58,12 @@ class Gateway(Recorder):
             name = self.partNumber or self.productName
 
             try:
-                # Some debugging tools and messages can indirectly call __repr__
-                # and get stuck in a recursive loop trying to resolve `name`
                 if self.name:
-                    name = f'{name} "{self.name}"'
+                    base, _ = splitServiceName(self.name)
+                    name = f'{name} "{base}"'
             except RecursionError:
+                # Some debugging tools can indirectly call __repr__ in race
+                # condition and get stuck in a loop trying to resolve `name`
                 logger.warning('RecursionError getting name in __repr__()!', exc_info=True)
 
             return f'<{type(self).__name__} {name} SN:{self.serial})>'
@@ -61,3 +72,10 @@ class Gateway(Recorder):
             # repr should never completely fail; use default object repr.
             logger.warning(f'Error in {type(self).__name__}.__repr__(): {err!r}', exc_info=True)
             return object.__repr__(self)
+
+
+    @property
+    def canRecord(self) -> bool:
+        """ Can the device record on command? Not applicable to non-sensors.
+        """
+        return False
