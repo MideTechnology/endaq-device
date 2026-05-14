@@ -6,10 +6,7 @@ from test_hardware.device_manager import DeviceManager, safe_get_device
 import pytest
 import sys
 from test_hardware.helper_functions.hardware_interface import *
-from test_hardware.helper_functions.connection_helper import safe_get_device, get_status
 from test_hardware.helper_functions.general_config import GeneralConfig
-import endaq.device
-from endaq.device import DeviceStatusCode as Status
 
 __ALL__ = ["noSkipHardwareInterface", "setupTeardownSession", "setupTeardown", "newDir"]
 

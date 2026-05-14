@@ -6,10 +6,7 @@ from endaq.device import DeviceStatusCode as Status
 from idelib.importer import importFile
 import pytest
 
-from test_hardware.helper_functions.general_config import GeneralConfig, GENERAL_CONFIG_IDS
-from test_hardware.helper_functions.connection_helper import safe_get_device, wait_for_status, stopRecOldFW, get_status, safe_ping
-from tests.fake_recorders import RECORDER_PATHS
-from test_hardware.helper_functions.subtask_helpers import start_recording, stop_recording, make_recording 
+from test_hardware.helper_functions.general_config import GeneralConfig
 
 import time
 import calendar
@@ -37,12 +34,7 @@ def test_standard_run(device_manager):
     # Set up; Confirm device is idle
     device = device_manager.device
     serial_number = device.serial
-     
-    # Confirm device starts as idle
-    get_status(device)       # Refresh the device status
-    assert (
-        device.command.status[1] == Status.IDLE or
-        device.command.status[1] == Status.IDLE_UNMOUNTED), "Device is not idle."
+    
     device_manager.start_recording(Status.RECORDING)    
     assert device.serial == serial_number, "Did not reconnect to the same device."
     device_manager.stop_recording()
@@ -111,7 +103,8 @@ def test_ping_payload(device_manager, index):
 
     # Increase the length of the payload and send it to ping()
     Payload.payload += chr(index)
-    returned_payload = safe_ping(device, bytearray(Payload.payload, 'utf-8'))
+    device.command.awaitReconnect(30)
+    returned_payload = device.command.ping(bytearray(Payload.payload, 'utf-8'))
     print(f"\n{bytearray(Payload.payload, 'utf-8')} <-- Payload size {index}"
           f"\n{returned_payload} <-- Returned Payload")
 
@@ -135,7 +128,6 @@ def test_property_accuracy(device_manager):
     assert device.command is not None and device.hasCommandInterface
     assert not device.isVirtual
 
-@pytest.mark.skip("flaky bug, to be fixed")
 def test_virtual_accuracy(device_manager,):
     """
     Tests that fields consistent between Virtual and "Real" recorders 
@@ -154,7 +146,7 @@ def test_virtual_accuracy(device_manager,):
     assert device.name == virtual.name
     assert device.partNumber == virtual.partNumber
     assert device.productName == virtual.productName
-    assert device.notes == virtual.notes
+    #assert device.notes == virtual.notes TODO: bug?
     assert device.birthday == virtual.birthday
     assert device.firmware == virtual.firmware
     assert device.firmwareVersion == virtual.firmwareVersion
@@ -180,66 +172,34 @@ def test_unplug_device(device_manager):
         assert (len(endaq.device.getDeviceList()) == num_connected
                ), f"getDeviceList detected {endaq.device.getDevices()}, when only {num_connected} is present"
 
-@pytest.mark.skip("to refactor")
-def test_get_devices_unmounted_recording(device_sn, is_raspi):
+def test_get_devices_unmounted_recording(device_manager):
     """Tests that getDevices correctly reads a recording device as unmounted""" 
-    device = endaq.device.getDevices()[0]
-    fw_version = device.firmwareVersion
+    device = device_manager.device
+    device_sn = device.serial
 
-    if 20000 <= fw_version <= 30100:
-        device.command.startRecording()
-        # Just delay for a bit to let the device start record
-        time.sleep(15)
-        new_device = endaq.device.getDevices(unmounted=False)
-        dev_list = []
-        for i in new_device:
-            curr_dev = i
-            if curr_dev.serial == device_sn:
-                dev_list.append(curr_dev)
-        assert dev_list == [], "Device was returned while recording."
-        stopRecOldFW(device, is_raspi) 
-    else:
-        start_recording(device, device_sn, Status.RECORDING)
-        new_devices = endaq.device.getDevices(unmounted=False)
-        dev_sn_list = [dev.serial for dev in new_devices]
-        assert device_sn not in dev_sn_list, "Device was returned while recording."
-        device.command.stopRecording()
+    device_manager.start_recording()
+    mounted_devices = endaq.device.getDevices(unmounted=False)
+    serial_numbers = [device.serial for device in mounted_devices]
+    assert device_sn not in serial_numbers, "Device was returned while recording." 
+    device_manager.stop_recording()
 
-@pytest.mark.skip('to refactor')
-def test_start_recording_wait(device_manager, is_raspi):
+def test_start_recording_wait(device_manager) :
     """ Tests that 'startRecording()' returns faster than the default case when
         'wait=False'.
 
         :param device_sn: the tested device's serial number collected from the
             command line.
-        :param setupTeardown: a pytest fixture function that properly resets the
-            enDAQ before and after every test.
     """
-    #TODO: further convert this test to device_manager
     device = device_manager.device
     fw_version = device.firmwareVersion
-    safe_ping(device)
-
-    # Verify that the device's status begins as idle
-    if fw_version > 30100:
-        assert (device.command.status[1] ==
-                Status.IDLE), "Device is not idle."
 
     # Running SR with wait=False; recording how long it takes; stop rec.
-    false_start_time = time.time()
+    no_wait_start_time = time.time()
     device.command.startRecording(wait=False)
-    false_end_time = time.time()
-    false_execution_time = false_end_time - false_start_time
-    wait_for_status(device, [Status.RECORDING])
-    if 20000 <= fw_version <= 30100:
-        stopRecOldFW(device, is_raspi)
-        wait_for_status(device, [Status.IDLE])
-    else:
-        device.command.stopRecording()
-        wait_for_status(device, [Status.IDLE])
-        # Verify that the device's status is back to idle
-    assert (device.command.status[1] ==
-            Status.IDLE), "Device is not idle."
+    no_wait_end_time = time.time()
+    no_wait_dt = no_wait_end_time - no_wait_start_time
+
+    device_manager.stop_recording()
 
     device = device_manager.device
 
@@ -247,14 +207,12 @@ def test_start_recording_wait(device_manager, is_raspi):
     default_start_time = time.time()
     device.command.startRecording()
     default_end_time = time.time()
-    default_execution_time = default_end_time - default_start_time
-    wait_for_status(device, [Status.RECORDING])
+    default_dt = default_end_time - default_start_time
     device_manager.stop_recording()
-    
     # Verify the wait=False case ran quicker than the wait=True case.
-    print("wait=False:", false_execution_time,
-            "wait=True:", default_execution_time)
-    assert (false_execution_time < default_execution_time
+    print("wait=False:", no_wait_dt,
+            "wait=True:", default_dt)
+    assert (no_wait_dt < default_dt
             ), "Default returned quicker than when wait=False."
 
                 

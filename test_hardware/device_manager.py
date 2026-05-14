@@ -131,6 +131,8 @@ class DeviceManager:
     
     def end_test(self, failed: bool):
         self.optional_stop()
+        self.device.command.setTime() #time isn't part of config ids, need way of resetting it
+        self.device.config.recordingDir = "RECORD" #recordingDir isn't part of the config ids
         if failed:
             return self._cleanup_failure()
         if self.device.config.getConfig() != self.init_conf:
@@ -164,7 +166,7 @@ class DeviceManager:
         self.optional_stop()
 
 
-    def start_recording(self, status: Union[Status, List[Status]]):
+    def start_recording(self, status: Union[Status, List[Status]] = Status.RECORDING):
         """
         Runs through the starting process of a device, using device.command.startRecording(),
         regardless of the hardware interface, and asserting that the right values are set.
