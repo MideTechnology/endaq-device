@@ -47,7 +47,7 @@ def device_manager(device_sn, is_raspi):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def setupTeardownSession(device_manager, noSkipHardwareInterface):
+def setupTeardownSession(device_manager):
     """ Set up and teardown GPIO RasPi controls at the beginning and end
         of a session.
 
@@ -57,6 +57,7 @@ def setupTeardownSession(device_manager, noSkipHardwareInterface):
     # Put the device in default configuration
     print(f"Setting up session")
     config_dict = {"WifiEnable": 0, "PreRecordingDelay": 0, "RecordingTimeLimit": 120}
+    hw = device_manager.hw_interface
     device = device_manager.device 
     config = GeneralConfig(**config_dict)
     if config.set_configs(device, quick_config=True):
@@ -66,19 +67,21 @@ def setupTeardownSession(device_manager, noSkipHardwareInterface):
         device = safe_get_device(timeout=30) # Wait for device to come back
 
     # Always update the device configuration
-    print("\nSetting up RasPi...")
-    noSkipHardwareInterface.set_usb(True)
-    noSkipHardwareInterface.set_button(False)
+    if isinstance(device_manager.hw_interface, RaspiInterface):
+        print("\nSetting up RasPi...")
+        hw.set_usb(True)
+        hw.set_button(False)
 
-    yield
+        yield
 
-    print("\nTearing down RasPi setup...")
-    noSkipHardwareInterface.set_usb(True)
-    noSkipHardwareInterface.set_button(False)
+        print("\nTearing down RasPi setup...")
+        hw.set_usb(True)
+        hw.set_button(False)
 
+        print("\nDone with RasPi tear down.")
+    else:
+        yield
     device_manager.end_session()
-    print("\nDone with RasPi tear down.")
-
     print(f"Finished session")
 
 @pytest.fixture # with a default scope of "function"

@@ -20,6 +20,7 @@ def pytest_addoption(parser):
     parser.addoption(
         "-R", "--raspi", action="store_true", default=False, help="Include if running on a RasPi"
     )
+    parser.addoption('--no_tty', action="store_true", default=False, help="")
     parser.addoption(
         "-N", "--num_attempts", type=int, default = 3, help="Sets the number of times to retry a test "\
             "in case of a unexpected error."
@@ -69,10 +70,13 @@ def pytest_collection_modifyitems(config, items):
                 item.add_marker(skip_test)
     else:
         raise ValueError(f"Input parameter {device} not recognized. Expected format is an enDAQ serial number, starting with W or S")
-
     for item in items:
-        if 'prod_only' in item.keywords and not config.getoption('--production'):
-            pytest.skip("skipped production only test (use --production to run)")
+        if 'tty' in item.keywords and (
+            (config.getoption('-s') != "no" or config.getoption('--no_tty')) and not config.getoption('--raspi')
+            ):
+            item.add_marker(
+                pytest.mark.skip("skipped test that requires user / raspi input")
+            )
     
 
 

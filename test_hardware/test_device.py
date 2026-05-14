@@ -160,6 +160,7 @@ def test_virtual_accuracy(device_manager,):
     assert device.firmwareVersion == virtual.firmwareVersion
     assert device.chipId == virtual.chipId
 
+@pytest.mark.tty
 def test_unplug_device(device_manager):
     """
     Tests methods that produce different results when a device 
