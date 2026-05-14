@@ -21,36 +21,27 @@ def pytest_addoption(parser):
         "-R", "--raspi", action="store_true", default=False, help="Include if running on a RasPi"
     )
     parser.addoption(
-        "-F", "--fast_clean", action="store_true", default=False, help="Include to not reset the device on every setup"
-    )
-
-    parser.addoption(
-        "-P", "--production", action="store_true", default=False, help="Include for more comprehensive tests. " \
-        "This will greatly increase run time"
-    )
-
-    parser.addoption(
         "-N", "--num_attempts", type=int, default = 3, help="Sets the number of times to retry a test "\
             "in case of a unexpected error."
     )
 
-    
+def pytest_exception_interact(node, call, report):
+    #NOTE: we made device_manager autouse, so is guarenteed to be in node.funcargs
+    if hasattr(node, 'funcargs'):
+        node.funcargs['device_manager'].end_test(True)
 
 @pytest.fixture(scope="session")
 def is_raspi(request) -> bool:
     return request.config.getoption("--raspi")
 
 @pytest.fixture(scope="session")
-def is_prod(request) -> bool:
-    return request.config.getoption("--production")
-
-@pytest.fixture(scope="session")
-def fast_clean(request) -> bool:
-    return request.config.getoption("--fast_clean")
-
-@pytest.fixture(scope="session")
 def device_sn(request) -> bool:
     return request.config.getoption("--device")
+
+@pytest.fixture(autouse=True)
+def conf_stop_rec(device_manager):
+    yield
+    device_manager.end_test(False)
 
 def pytest_collection_modifyitems(config, items):
     """
@@ -91,6 +82,6 @@ def pytest_generate_tests(metafunc):
     does not work here. This is run before any of the other fixtures and tests, 
     and we use it to set some parameters that are only known at run time.
     """
-    device_sn = metafunc.config.getoption("device")
-    metafunc.parametrize("device_sn", [device_sn], scope="session")
+    #device_sn = metafunc.config.getoption("device")
+    #metafunc.parametrize("device_sn", [device_sn], scope="session")
 

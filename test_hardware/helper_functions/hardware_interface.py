@@ -22,7 +22,7 @@ class HardwareInterface(ABC):
     def unplug_replug(self, period: int) -> None:
         pass
 
-class FakeInterface(HardwareInterface):
+class MockInterface(HardwareInterface):
     def set_usb(self, on: bool) -> None:
         pass
 
@@ -35,7 +35,7 @@ class FakeInterface(HardwareInterface):
     def unplug_replug(self, period: int) -> None:
         pass
 
-class WindowsInterface(HardwareInterface):
+class TTYInterface(HardwareInterface):
     def set_usb(self, on: bool) -> None:
         if on:
             input("Connect test unit to USB and press Enter")
