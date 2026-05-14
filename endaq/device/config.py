@@ -1441,6 +1441,8 @@ class FileConfigInterface(ConfigInterface):
         if self._supportedConfigVersions is not None:
             return self._supportedConfigVersions
 
+        # Legacy FW on EFM32GG330 does not report MCU type and only supports
+        # config version 1 through the file interface.
         mcu = self.device.getInfo('McuType', 'EFM32GG330')
         if not mcu.startswith("EFM32GG330"):
             return ConfigInterface.supportedConfigVersions.fget(self)
@@ -1635,6 +1637,14 @@ class RemoteConfigInterface(FileConfigInterface):
 
         #: The timeout for all `GetInfo` and `SetInfo` commands.
         self.timeout = timeout
+
+
+    @property
+    def supportedConfigVersions(self):
+        """ A tuple of configuration file format versions supported by
+            the interface.
+        """
+        return ConfigInterface.supportedConfigVersions.fget(self)
 
 
     def _writeConfig(self, data: bytes) -> int:
