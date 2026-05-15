@@ -722,8 +722,24 @@
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
-            <MasterElement name="ResetButton" global="1" id="404F" multiple="1">
+            <MasterElement name="ResetButton" global="1" id="0x404F" multiple="1">
                 Special-case control that resets all the siblings in its group or tab to their factory default values.
+                <UIntegerElement name="IsAdvancedFeature" />
+            </MasterElement>
+
+            <MasterElement name="RebootButton" global="1" id="0x405F" multiple="0">
+                Special-case control that issues the command to reset/reboot the device. Its label
+                and tooltip have default values, but these may be overridden with child elements.
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <UIntegerElement name="IsAdvancedFeature" />
+            </MasterElement>
+
+            <MasterElement name="ShutdownButton" global="1" id="0x406F" multiple="0">
+                Special-case control that issues the command to power off the device. Its label
+                and tooltip have default values, but these may be overridden with child elements.
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
@@ -919,6 +935,12 @@
     <MasterElement name="WiFiSelectionTab" global="1" id="0x4A88" multiple="0">
         <UIntegerElement name="IsAdvancedFeature" />
     </MasterElement>
+
+    <UIntegerElement name="FieldSubtype" id="0x5041" global="1" multiple="0">
+        The EBML ID of a field/tab subclass, for backwards compatibility with earlier versions of
+        the config GUI that neither have the new element in their schema, nor the mechanism to fall
+        back to the superclass (added in endaq-device v1.4.0). Primarily for development work.
+    </UIntegerElement>
 
 </MasterElement> <!-- ConfigUI -->
 

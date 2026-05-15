@@ -87,7 +87,13 @@
             </MasterElement>
         </MasterElement>
         <MasterElement name="QueryWiFi" id="0x85" multiple="0" mandatory="0">Get a response for current Wi-Fi State</MasterElement>
-        <MasterElement name="NetworkStatus" id="0x87" multiple="0" mandatory="0">Get network identifiers </MasterElement>
+        <MasterElement name="NetworkStatus" id="0x87" multiple="0" mandatory="0">Get network identifiers.
+            <StringElement name="Interface" id="0x5405" multiple="0" mandatory="0">
+                For Gateway hardware or other devices with multiple network interfaces: the network
+                interface name (e.g., wlan0, wwan0, eth0, etc. under Linux). If absent, the default
+                Wi-Fi interface is used. A list of interfaces can be retrieved with GetInfo.
+            </StringElement>
+        </MasterElement>
         <BinaryElement name="SetClock" id="0x5510" multiple="0" mandatory="0">Serial and Wireless only. Set the real time clock. Expects a 10 byte value. Comparable to writing to the CLOCK file.</BinaryElement>
         <MasterElement name="GetClock" id="0x5500" multiple="0" mandatory="0">Serial and Wireless only. Request RTC clock time. Comparable to reading the CLOCK file.</MasterElement>
         <MasterElement name="GetBattery" id="0x5600" multiple="0" mandatory="0">Serial and Wireless only. Request the battery state.</MasterElement>
@@ -110,6 +116,7 @@
             6: usercal.dat - Read / Write - requires LockID
             7: update.pkg - Write Only - requires LockID
             8: update.pkg.sig - Write Only - requires LockID
+            100: List of network interfaces - Read Only - Uses the command-response schema
         </IntegerElement>
         <MasterElement name="SetInfo" id="0x5B07" mandatory="0" multiple="0" >
             <IntegerElement name="InfoIndex" id="0x5B02" mandatory="1" multiple="0"> See GetInfo for index value </IntegerElement>
