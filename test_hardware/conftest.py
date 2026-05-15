@@ -3,6 +3,7 @@ Pytest configuration functions.
 """
 
 import pytest
+import endaq.device
 
 pytest_plugins = [
     'test_hardware.fixtures'
@@ -15,7 +16,7 @@ def pytest_addoption(parser):
     """
 
     parser.addoption(
-        "-D", "--device", default=None, help="Specify the serial number of the device to test"
+        "-D", "--device", required=True, default=None, help="Specify the serial number of the device to test"
     )
     parser.addoption(
         "-R", "--raspi", action="store_true", default=False, help="Include if running on a RasPi"
@@ -27,22 +28,16 @@ def pytest_addoption(parser):
     )
 
 def pytest_exception_interact(node, call, report):
-    #NOTE: we made device_manager autouse, so is guarenteed to be in node.funcargs
-    if hasattr(node, 'funcargs'):
+    """
+    This is used to cleanup any tests that resulted in a failure.
+    `device_manager` is passed in automatically to every single test, so if the test runs,
+    it is guarenteed to be accessible.
+    NOTE: If the test crashes on a fixture (eg: not having a device plugged in), 
+        then there will be no funcargs / device_manager key.
+    """
+    if hasattr(node, 'funcargs') and 'device_manager' in node.funcargs:
         node.funcargs['device_manager'].end_test(True)
 
-@pytest.fixture(scope="session")
-def is_raspi(request) -> bool:
-    return request.config.getoption("--raspi")
-
-@pytest.fixture(scope="session")
-def device_sn(request) -> bool:
-    return request.config.getoption("--device")
-
-@pytest.fixture(autouse=True)
-def conf_stop_rec(device_manager):
-    yield
-    device_manager.end_test(False)
 
 def pytest_collection_modifyitems(config, items):
     """
@@ -50,13 +45,8 @@ def pytest_collection_modifyitems(config, items):
     command line input.
     """
     device = config.getoption("--device")
-    if config.getoption("--device") is None:
-        skip_test = pytest.mark.skip(
-            reason="Run using local option, skipping device required tests")
-        for item in items:
-            if "device_needed" in item.keywords:
-                item.add_marker(skip_test)
-    elif device[0].upper() == "S":
+    
+    if device[0].upper() == "S":
         skip_test = pytest.mark.skip(
             reason="Test not required for S device")
         for item in items:
@@ -74,18 +64,14 @@ def pytest_collection_modifyitems(config, items):
         if 'tty' in item.keywords and (
             (config.getoption('-s') != "no" or config.getoption('--no_tty')) and not config.getoption('--raspi')
             ):
-            item.add_marker(
-                pytest.mark.skip("skipped test that requires user / raspi input")
-            )
-    
+            item.add_marker(pytest.mark.skip("test requires user / raspi input"))
 
 
-def pytest_generate_tests(metafunc):
+@pytest.fixture(autouse=True)
+def can_wifi(device_manager, request):
     """
-    This function will get called with any tests run from this directory. Print 
-    does not work here. This is run before any of the other fixtures and tests, 
-    and we use it to set some parameters that are only known at run time.
+    psuedo-collection_modifyitems used to skip WiFi tests for non-WiFi devices, 
+    which can only be done with a device_manager.
     """
-    #device_sn = metafunc.config.getoption("device")
-    #metafunc.parametrize("device_sn", [device_sn], scope="session")
-
+    if request.node.get_closest_marker('wifi') and not device_manager.device.hasWifi:
+        pytest.skip("test requires WiFi compatible device")

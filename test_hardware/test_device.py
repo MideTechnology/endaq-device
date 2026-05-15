@@ -24,13 +24,7 @@ TODO = lambda name : pytest.skip(f"Test {name} has not yet been implemented")
 # ================= TESTS ================= # 
 # # Standard tests.
 def test_standard_run(device_manager):
-    """ Test a standard run of an enDAQ device.
-
-        :param device_sn: the tested device's serial number collected from the
-            command line.
-        :param setupTeardown: a pytest fixture function that properly resets the
-            enDAQ before and after every test.
-    """
+    """ Test a standard run of an enDAQ device."""
     # Set up; Confirm device is idle
     device = device_manager.device
     serial_number = device.serial
@@ -39,8 +33,6 @@ def test_standard_run(device_manager):
     assert device.serial == serial_number, "Did not reconnect to the same device."
     device_manager.stop_recording()
 
-@pytest.mark.parametrize('callback', [False, True])
-@pytest.mark.skip("flaky implementation")
 class TestAwait:
     """
     Tests the 4 await functions in the device's command library
@@ -48,35 +40,70 @@ class TestAwait:
     the helper functions.
     """
 
-    def test_await_disconnect(self, device_manager, callback):
+    def test_await_disconnect(self, device_manager):
         """
+
         """
-        self.callback_called = False
         device = device_manager.device
 
         disconnector = lambda: None if device.command.reset() else False
         #perform action that would cause a disconnect.
         assert device.command.awaitDisconnect(
-            timeout = 10, 
+            timeout = 30, 
             callback = disconnector
             ) == True
-        device.command.awaitReconnect(timeout = 20)
+        device.command.awaitReconnect(timeout = 30)
 
-    def await_dismount(self, device_manager, callback):
-        """"""
-        self.callback_called = False
-        pass
+    def test_await_dismount(self, device_manager):
+        """
+    
+        """
+        device = device_manager.device
 
-    def test_await_reconnect(self, device_manager, callback):
-        """"""
-        self.callback_called = False
-        pass
+        disconnector = lambda: None if device.command.startRecording() else False
+        
+        assert device.command.awaitDismount(
+            timeout = 30,
+            callback = disconnector,
+        ) == True
+        device.command.awaitReconnect(timeout = 30)
+        device.command.stopRecording()
+        device.command.awaitRemount(timeout = 30)
+        device.command.awaitReconnect()
 
-    def test_await_remount(self, device_manager, callback):
-        """"""
-        self.callback_called = False
-        pass
+    def test_await_reconnect(self, device_manager):
+        """
+        Tests that waiting for reconnect when connected is near-instantaneous,
+        and that commands can be sent when reconnected.
+        """
+        device = device_manager.device
+        #ensuring it starts connected
+        device.command.awaitReconnect(timeout = 10)
+        assert device.command.awaitReconnect(timeout = 2) == True
+        #the moment it reconnects, we can send a ping
+        device.command.startRecording()
+        device.command.awaitReconnect(timeout = 30)
+        device.command.ping() #as long as it doesn't error, it "passes"
+        #cleanup
+        device.command.stopRecording()
+        device.command.awaitRemount()
 
+
+    def test_await_remount(self, device_manager):
+        """
+        Tests that waiting for a remount is near instantaneous when the device is
+        remounted, and that the drive can be read when remounted.
+        """
+        device = device_manager.device
+        #ensuring it starts connected
+        device.command.awaitRemount(timeout = 10)
+        assert device.command.awaitRemount(timeout = 2) == True
+        #the moment it reconnects, we can send a ping
+        device.command.startRecording()
+        device.command.awaitReconnect(timeout = 30)
+        device.command.stopRecording()
+        device.command.awaitRemount(timeout = 30)
+        device.command.awaitRemount(timeout = 2)
 
 
 
@@ -85,14 +112,10 @@ class TestAwait:
 @pytest.mark.random_order(disabled=True)
 @pytest.mark.parametrize("index", range(1, 31))
 def test_ping_payload(device_manager, index):
-    """ Tests that 'ping()' returns the input payload for a range of bytearray
-        sizes.
+    """ 
+    Tests that 'ping()' returns the input payload for a range of bytearray sizes.
 
-        :param index: parameterized index of payload bitarray length.
-        :param device_sn: the tested device's serial number collected from the
-            command line.
-        :param setupTeardown: a pytest fixture function that properly resets the
-            enDAQ before and after every test.
+    :param index: parameterized index of payload bitarray length.
     """
     # Connect to device
     device = device_manager.device
@@ -166,7 +189,7 @@ def test_unplug_device(device_manager):
         device.config.applyConfig()
     for usb_on, num_connected in iter([(False, 0), (True, 1)]):    
         device_manager.hw_interface.set_usb(usb_on)
-        time.sleep(10)
+        time.sleep(10) #TODO: maybe awaitDisconnect / reconnect works here?
         assert (len(endaq.device.getDevices()) == num_connected
                ), f"getDevices detected {endaq.device.getDevices()}, when only {num_connected} is present"
         assert (len(endaq.device.getDeviceList()) == num_connected
@@ -184,14 +207,10 @@ def test_get_devices_unmounted_recording(device_manager):
     device_manager.stop_recording()
 
 def test_start_recording_wait(device_manager) :
-    """ Tests that 'startRecording()' returns faster than the default case when
-        'wait=False'.
-
-        :param device_sn: the tested device's serial number collected from the
-            command line.
+    """ 
+    Tests that 'startRecording()' returns faster than the default case when 'wait=False'.
     """
     device = device_manager.device
-    fw_version = device.firmwareVersion
 
     # Running SR with wait=False; recording how long it takes; stop rec.
     no_wait_start_time = time.time()
@@ -292,7 +311,7 @@ def test_set_time(device_manager, time_value, expected_out):
     elapsed_time = time.time() - start_time
     #NOTE: minimum time is Jan 1 2000. anything below will snap to it.
     assert -1 * TIME_TOLERANCE <= device.command.getTime()[1] - (expected_out + elapsed_time) <= TIME_TOLERANCE
-
+    device.command.setTime()
     
 class TestLock:
     """
@@ -369,6 +388,9 @@ def test_is_enabled(device_manager):
     assert device.config.isEnabled(ch80) == False
     
 def test_set_get_trigger(device_manager):
+    """
+    Tests that the triggers set in `getTrigger` is reflected in getTrigger
+    """
     device = device_manager.device  
     
     ch80 = device.channels[80]
@@ -387,7 +409,8 @@ def test_get_config_values(device_manager):
     device = device_manager.device
     config_vals = device.config.getConfigValues()
     for k,v in config_vals.items():
-        if k in device.config.items: assert device.config.items[k].value == v
+        if k in device.config.items: 
+            assert device.config.items[k].value == v
 
 @pytest.mark.parametrize('sample_rate, is_valid', [
     *[(k, True) for k in [4000, 2000, 1000, 500, 250, 125, 63, 32, 16]],
@@ -417,15 +440,9 @@ def test_sample_rate(device_manager, sample_rate, is_valid):
     ('name', 0x8FF7F, 'tmp', 'tmp'),
     ('buttonMode', 0x10FF7F, 1, 1)
 ])
-def test_config_props(
-    device_manager, 
-    attr_name, 
-    attr_id,
-    attr_value, 
-    expected_out):
+def test_config_props(device_manager, attr_name, attr_id, attr_value, expected_out):
     """
-    tests that the properties in `device.config` match the 
-    values that are assigned from the config.
+    tests that the properties in `device.config` match the values that are assigned from the config.
     """
     device = device_manager.device
 

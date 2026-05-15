@@ -1,4 +1,4 @@
-from typing import Optional, Any, Literal, Union, List, Dict, TYPE_CHECKING
+from typing import Optional, Literal, Union, List, Dict, TYPE_CHECKING
 import endaq.device
 from endaq.device import DeviceStatusCode as Status
 from test_hardware.helper_functions.general_config import GeneralConfig, GENERAL_CONFIG_IDS
@@ -211,17 +211,17 @@ class DeviceManager:
         :return: a boolean, True if the device is now in an idle state, and False
             if there was no way to tell if the device can be stopped.
         """
-        device = self.device
+        #if we have a device, retreive it. if we don't, try to find one.
+        device = self._device or safe_get_device(self.device_sn or "", unmounted=True)
         if device is None:
             return False
         if not device.command.awaitReconnect(timeout = 30):
             return False
         device.command.ping()
-        if device.command.status in [Status.RECORDING, Status.TRIGGERING]:
+        if device.command.status[1] in [Status.RECORDING, Status.TRIGGERING]:
             self.stop_recording()
-            device.command.awaitRemount(timeout = 30)
             return True
-        return True 
+        return False
     
     def make_recording(
             self, 
