@@ -4,6 +4,7 @@ to announce the name and IP address of the MQTT Broker via zeroconf/mDNS.
 """
 
 import itertools
+import json
 import logging
 import socket
 from threading import Event, Thread
@@ -181,9 +182,21 @@ if __name__ == '__main__':
     parser.add_argument('-r', '--rename', action='store_true',
                         help="Add an incrementing number to the advertised name "
                              "if that name is already in use.")
+    parser.add_argument('-c', '--config', type=str, default=None, metavar="FILENAME",
+                        help="The name of a configuration JSON file with additional "
+                             "arguments for the advertising. Values in the config file "
+                             "will override other arguments. Can be the same file used "
+                             "to start the device manager; extra arguments will be ignored.")
 
     args = parser.parse_args()
-    advertiser = Advertiser(**vars(args))
+    kwargs = vars(args)
+
+    if args.config:
+        with open(args.config, 'r') as f:
+            config = json.load(f)
+            kwargs.update(config)
+
+    advertiser = Advertiser(**kwargs)
     print(f'Advertising "{advertiser.fullName}" ({advertiser.address} port {advertiser.port})')
     advertiser.start()
 
