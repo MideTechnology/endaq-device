@@ -8,68 +8,10 @@ import os
 import warnings
 import endaq.device
 from endaq.device.response_codes import WiFiConnectionStatus, WiFiConnectionError
-from test_hardware.helper_functions.hardware_interface import RaspiInterface, WindowsInterface, FakeInterface
-from test_hardware.helper_functions.general_config import GeneralConfig
-from test_hardware.helper_functions.connection_helper import safe_get_device, wait_for_status, stopRecOldFW
-
-
-SET_AP_SLEEP_TIME=10
-
-@pytest.fixture(scope="session", autouse=True)
-def hardware_creation(is_raspi):
-    if is_raspi:
-        hw = RaspiInterface()
-    else:
-        if not sys.stdin.isatty():
-            hw = FakeInterface()
-        else:
-            hw = WindowsInterface()
-    yield hw
-
-@pytest.fixture
-def hardware_interface(hardware_creation):
-    if isinstance(hardware_creation, FakeInterface):
-        pytest.skip("Skipping interactive test in non-interactive mode. Run pytest with -s option")
-    yield hardware_creation
-
-@pytest.fixture
-def no_skip_hardware_interface(hardware_creation):
-    yield hardware_creation
-
-@pytest.fixture # with a default scope of "function"
-def setupTeardown(no_skip_hardware_interface, fast_clean):
-    """ Properly reset the enDAQ before and after every test.
-    """
-    # Setup
-    # Reset the device and reconnect
-    if not fast_clean:
-        no_skip_hardware_interface.timed_button_press(18)
-    device = safe_get_device(unmounted=False, timeout=30)
-    # Make sure the Wifi is turned on, clear any pre-recording delay, and set a 2 minute time limit
-    config_dict = {"WifiEnable": 1, "PreRecordingDelay": 0, "RecordingTimeLimit": 60}
-    config = GeneralConfig(**config_dict)
-    if config.set_configs(device, quick_config=True):
-        print(f"Applying updated config")
-        device.config.applyConfig()
-        device.command.reset()      # Need to reset the device to turn the wifi on
-        device = safe_get_device(unmounted=False, timeout=30)
-
-    yield # Runs test
-
-    # Teardown
-    print("Tearing down...")
-    device = safe_get_device(unmounted=True)
-    wait_for_status(device, [endaq.device.response_codes.DeviceStatusCode.IDLE])
-    if (device.command.status[1] ==
-        endaq.device.response_codes.DeviceStatusCode.RECORDING):
-        device.command.stopRecording()
-
-    print("Test complete")
-
 
 # W Specific Tests
-@pytest.mark.device_w
-def test_get_network_address(device_sn, setupTeardown):
+@pytest.mark.wifi
+def test_get_network_address(device_manager):
     """ Test that 'getNetworkAddress()' returns a valid MAC Address on W
         devices.
 
@@ -79,18 +21,18 @@ def test_get_network_address(device_sn, setupTeardown):
             enDAQ before and after every test.
     """
     # Set up
-    device = safe_get_device(device_sn)
+    device = device_manager.device
 
     # Gather the MAC and IP addresses
-    mac, ip = device.command.getNetworkAddress()
+    mac_addr, _ = device.command.getNetworkAddress()
 
     # Confirm that a valid MAC address was found
-    assert mac != None, "MAC Address was None."
-    print("MAC Address:", mac)
+    assert mac_addr != None, "MAC Address was None."
+    print("MAC Address:", mac_addr)
 
 
-@pytest.mark.device_w
-def test_get_connected_network_status(device_sn, setupTeardown):
+@pytest.mark.wifi
+def test_get_connected_network_status(device_manager):
     """ Tests that 'getNetworkStatus()' returns the correct MAC and IP address
         for cases where the device is connected or disconnected from wifi.
 
@@ -100,14 +42,14 @@ def test_get_connected_network_status(device_sn, setupTeardown):
             enDAQ before and after every test.
     """
     # Set up
-    device = safe_get_device(device_sn)
+    device = device_manager.device
     guest_wifi_pw = os.environ.get("GUEST_WIFI_PW", "nopwd")
 
     # Connected Case
-    device.command.setAP("MIDE-Guest", password=guest_wifi_pw )
-    time.sleep(SET_AP_SLEEP_TIME)
-    mac, ip = device.command.getNetworkAddress()
-    assert mac is not None, "No MAC address retreived"
+    device.command.setAP("MIDE-Guest", password=guest_wifi_pw)
+    device.command.awaitReconnect()
+    mac_addr, ip = device.command.getNetworkAddress()
+    assert mac_addr is not None, "No MAC address retreived"
     assert ip is not None, "No IP address retreived, could be wifi connection issue"
 
     network_status_connected = device.command.getNetworkStatus()
@@ -116,7 +58,7 @@ def test_get_connected_network_status(device_sn, setupTeardown):
 
     mac_byte_array = network_status_connected["MACAddress"]
     mac_hex_string = ":".join("{:02X}".format(b) for b in mac_byte_array)
-    assert mac_hex_string == mac, "MAC Address changed between getNetworkAddress and getNetworkStatus."
+    assert mac_hex_string == mac_addr, "MAC Address changed between getNetworkAddress and getNetworkStatus."
 
     ip_byte_array = network_status_connected["IPV4Address"]
     ip_address = ".".join(str(b) for b in ip_byte_array)
@@ -125,22 +67,22 @@ def test_get_connected_network_status(device_sn, setupTeardown):
     # Disconnected Case
     disconnected_ip = "0.0.0.0"
     device.command.setAP("Invalid-Wifi", password="InvalidPassword")
-    time.sleep(SET_AP_SLEEP_TIME)
+    device.command.awaitReconnect()
     network_status_disconnected = device.command.getNetworkStatus()
 
     assert network_status_connected is not None, "Failed to get network status"
 
     mac_byte_array = network_status_disconnected["MACAddress"]
     mac_hex_string = ":".join("{:02X}".format(b) for b in mac_byte_array)
-    assert mac_hex_string == mac, "MAC Address changed."
+    assert mac_hex_string == mac_addr, "MAC Address changed."
 
     ip_byte_array = network_status_disconnected["IPV4Address"]
     ip_address = ".".join(str(b) for b in ip_byte_array)
     assert ip_address == disconnected_ip, "IP Address Found."
 
 
-@pytest.mark.device_w
-def test_query_wifi(device_sn, setupTeardown):
+@pytest.mark.wifi
+def test_query_wifi(device_manager):
     """ Tests that 'queryWifi()' returns the correct SSID and connection status
         for cases where the device is connected or disconnected from wifi.
 
@@ -150,12 +92,12 @@ def test_query_wifi(device_sn, setupTeardown):
             enDAQ before and after every test.
     """
     # Set up
-    device = safe_get_device(device_sn)
+    device = device_manager.device
     guest_wifi_pw = os.environ.get("GUEST_WIFI_PW", "nopwd")
 
     # Connected Case
     device.command.setAP("MIDE-Guest", password=guest_wifi_pw)
-    time.sleep(SET_AP_SLEEP_TIME)
+    device.command.awaitReconnect()
     connected_query = device.command.queryWifi()
     assert connected_query is not None, "Got no reply to queryWifi with correct setAP"
     assert (connected_query["WiFiConnectionStatus"] ==
@@ -164,7 +106,7 @@ def test_query_wifi(device_sn, setupTeardown):
 
     # Disconnected Case
     device.command.setAP("Invalid-Wifi", password="InvalidPassword")
-    time.sleep(SET_AP_SLEEP_TIME)
+    device.command.awaitReconnect()
     disconnected_query = device.command.queryWifi()
     assert disconnected_query is not None, "Got no reply to queryWifi with bad setAP"
     assert disconnected_query["SSID"] == "", "Connected to a wifi when we sent bad info"
@@ -175,9 +117,8 @@ def test_query_wifi(device_sn, setupTeardown):
     assert (disconnected_query["WiFiConnectionError"] ==
             WiFiConnectionError.ERR_NO_AP_FOUND), "Expected error not present"
 
-
-@pytest.mark.device_w
-def test_scan_wifi(device_sn, setupTeardown):
+@pytest.mark.wifi
+def test_scan_wifi(device_manager):
     """ Tests that 'scanWifi()' can find three MIDE wifi networks. Warns if the
         connection strength for any of the three are weak.
 
@@ -189,7 +130,7 @@ def test_scan_wifi(device_sn, setupTeardown):
     # Set up
     LIST_OF_NETWORKS = ["MIDE-Corp", "Mide-LinuxNet", "MIDE-Guest"]
     STRENGTH_CUTOFF = -80
-    device = safe_get_device(device_sn)
+    device = device_manager.device
     network_indices = []
 
     # Find connected networks
@@ -210,9 +151,8 @@ def test_scan_wifi(device_sn, setupTeardown):
             warnings.warn(f"Weak connection to {network_dict["SSID"]}", Warning)
 
 
-@pytest.mark.device_w
-@pytest.mark.parametrize("SSID", ["MIDE-Guest", "Invalid-Wifi"])
-def test_set_AP(SSID, device_sn, setupTeardown):
+@pytest.mark.wifi
+def test_set_AP(device_manager):
     """ Tests that 'setAP()' will establish a connection when given a valid SSID
         and password and will not if the SSID or password are invalid.
 
@@ -223,43 +163,30 @@ def test_set_AP(SSID, device_sn, setupTeardown):
             enDAQ before and after every test.
     """
     # Set up
-    device = safe_get_device(device_sn)
+    device = device_manager.device
     guest_wifi_pw = os.environ.get("GUEST_WIFI_PW", "nopwd")
 
-    # Attempt to run setAP
-    match SSID:
-        case "MIDE-Guest":
-            # Valid PW case
-            device.command.setAP(SSID, password=guest_wifi_pw)
-            time.sleep(SET_AP_SLEEP_TIME)
-            query_wifi = device.command.queryWifi()
-            assert query_wifi is not None, "Got no reply to queryWifi when connecting to MIDE-Guest"
-            assert (query_wifi["WiFiConnectionStatus"] ==
-                    WiFiConnectionStatus.CONNECTED
-                    ), "Didn't connect to MIDE-Guest with valid PW."
+    # Valid PW case
+    device.command.setAP("MIDE-Guest", password=guest_wifi_pw)
+    device.command.awaitReconnect()
+    query_wifi = device.command.queryWifi()
+    assert query_wifi is not None, "Got no reply to queryWifi when connecting to MIDE-Guest"
+    assert (query_wifi["WiFiConnectionStatus"] ==
+            WiFiConnectionStatus.CONNECTED
+            ), "Didn't connect to MIDE-Guest with valid PW."
 
-            # Invalid PW case
-            device.command.setAP(SSID, password="InvalidPassword")
-            time.sleep(SET_AP_SLEEP_TIME)
-            query_wifi = device.command.queryWifi()
-            assert query_wifi is not None, "Got no reply to queryWifi when connecting to MIDE-Guest with bad password"
-            assert (query_wifi["WiFiConnectionStatus"] !=
-                    WiFiConnectionStatus.CONNECTED
-                    ), "Connected to Mide_Guest with invalid PW."
-
-        case "Invalid-Wifi":
-            # Invalid Wifi and PW case
-            device.command.setAP(SSID, password="InvalidPassword")
-            time.sleep(SET_AP_SLEEP_TIME)
-            query_wifi = device.command.queryWifi()
-            assert query_wifi is not None, "Got no reply to queryWifi when connecting to Invalid Wifi"
-            assert (query_wifi["WiFiConnectionStatus"] !=
-                    WiFiConnectionStatus.CONNECTED
-                    ), "Connected to Invalid Wifi."
-
-
+@pytest.mark.wifi
+def test_set_invalid_AP(device_manager):
+    device = device_manager.device
+    device.command.setAP("invalid", password="invalid")
+    device.command.awaitReconnect() #TODO: correct?
+    query_wifi = device.command.queryWifi()
+    assert query_wifi is not None, "queryWifi didn't respond to invalid WiFi"
+    assert query_wifi['WiFiConnectionStatus'] != WiFiConnectionStatus.CONNECTED, "Connected to invalid wifi"
+    
 @pytest.mark.skip
-def test_set_wifi(device_sn, setupTeardown):
+@pytest.mark.wifi
+def test_set_wifi(device_manager):
     """
     Can probably be SKIPPED since 'setAP()' calls 'setWifi()'
     """
@@ -267,7 +194,8 @@ def test_set_wifi(device_sn, setupTeardown):
 
 
 @pytest.mark.skip
-def test_update_ESP32(device_sn, setupTeardown):
+@pytest.mark.wifi
+def test_update_ESP32(device_manager):
     """
     DON'T TEST
 

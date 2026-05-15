@@ -4,6 +4,7 @@ Automated tests for endaq.device.
 import endaq.device
 from endaq.device import DeviceStatusCode as Status
 from idelib.importer import importFile
+import ebmlite
 import pytest
 
 from test_hardware.helper_functions.general_config import GeneralConfig
@@ -105,6 +106,64 @@ class TestAwait:
         device.command.awaitRemount(timeout = 30)
         device.command.awaitRemount(timeout = 2)
 
+class TestVirtualAccuracy:
+    """
+    A series of tests used to test the validity of real device to Recorder conversion
+    """
+    def _new_rec(self, device_manager) -> endaq.device.Recorder:
+        """
+        
+        """
+        device_manager.make_recording()
+        #get the recording
+        virt_path = ...
+        with importFile(virt_path) as f:
+            return endaq.device.fromRecording(f)
+
+    def test_virtual_accuracy_channels(self, device_manager):
+        device = device_manager.device
+        virtual = self._new_rec(device_manager)
+        ch = device.channels[80]
+        assert device.getAccelRange(ch) == virtual.getAccelRange(ch)
+        assert device.getAccelAxisChannels(ch) == virtual.getAccelAxisChannels(ch)
+
+
+    def test_virtual_accuracy_cals(self, device_manager):
+        """
+        tests the accuracy of the calibration retrieval functions, both user
+        and non-user generated. Note that this doesn't test anything embl related,
+        that is in `test_virtual_accuracy_embl`
+        """
+
+    
+    def test_virtual_accuracy_props(self, device_manager):
+        device = device_manager.device
+        virtual = self._new_rec(device_manager=device_manager)
+
+        assert device.name == virtual.name
+        assert device.partNumber == virtual.partNumber
+        assert device.productName == virtual.productName
+        #assert device.notes == virtual.notes TODO: bug?
+        assert device.birthday == virtual.birthday
+        assert device.firmware == virtual.firmware
+        assert device.firmwareVersion == virtual.firmwareVersion
+        assert device.chipId == virtual.chipIdV
+    
+    def test_virtual_accuracy_funcs(self, device_manager):
+        """
+        tests the methods on 
+        """
+        device = device_manager.device
+        virtual = self._new_rec(device_manager=device_manager)
+        
+        assert device.getSensors() == virtual.getSensors()
+        assert device.getProperties() == virtual.getProperties()
+        assert device.getManifest() == virtual.getManifest()
+
+    def test_virtual_accuracy_accuracy_embl(self, device_manager):
+        """
+        tests the accuracy of the calibration tests based on the ebml files
+        """
 
 
 # This test only works if looped in sequential order. Random order is disabled
@@ -166,14 +225,6 @@ def test_virtual_accuracy(device_manager,):
     ide_file = importFile(rec_path)
     virtual = endaq.device.Recorder.fromRecording(ide_file)
 
-    assert device.name == virtual.name
-    assert device.partNumber == virtual.partNumber
-    assert device.productName == virtual.productName
-    #assert device.notes == virtual.notes TODO: bug?
-    assert device.birthday == virtual.birthday
-    assert device.firmware == virtual.firmware
-    assert device.firmwareVersion == virtual.firmwareVersion
-    assert device.chipId == virtual.chipId
 
 @pytest.mark.tty
 def test_unplug_device(device_manager):

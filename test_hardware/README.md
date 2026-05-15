@@ -1,15 +1,49 @@
 # `test_hardware`: Automated testing for enDAQ™ data recorders
-The `test_hardware` folder contains tests which will automatically run on physical enDAQs. These tests check the functionality of certain enDAQ device commands and series of commands. Details on what each test is testing for can be found in their corresponding docstrings. This folder is still a **work in progress**, so some of the above-mentioned functionality may not be implemented yet. 
+The `test_hardware` folder in `endaq.device` is used to test the communication between a physical enDAQ device and a computer.
+Any testing that doesn't explicitly require a device can be found in the `tests` folder. 
 
-## `test_device.py`
-This is a collection of tests meant to test the functionality of specific commands on physical enDAQ devices. These tests can be run on both W and S type enDAQs. 
+## Command Line Arguments
+These tests are run through pytest, which supports flags for testing customizability. These flags are ordered in importance.
 
-### Manual Testing
+### device
+the `-D` or `--device` flag is a **required** flag that sets the serial number of the device being tested, including the first letter designating the device type.
+
+### pytest flags
+`-s` and `--verbose` are built in commands to pytest, that serve. `-s` is used to see 
+
+Other flags that are native to pytest, such as `-k`, `--pdb`, `-x`, can also be used is desired.
+
+For more information about these flags, refer to pytest documentation.
+
+### raspi
+the `-R` or `--raspi` flag designates the use of an in-house raspberry pi unit. 
+
+When using a raspi, ensure that the device is plugged into the top-most port.
+
+### no_tty
+some tests require interaction with the device, either done through `--raspi` or a human. `--no_tty` disables the use for human-interaction, while still being able to see the output through `-s`. 
+
+This flag has no effect if `--raspi` is enabled.
+
+> If you are testing a device with firmware < 3.01.00, it is **highly** recommended to not use this option. Older firmwares require interaction to stop recording, which can cause issues if --no_tty is enabled.
+
+### random-order
+`random-order` is a 
+
+### rerun
+TODO
+## Manual Testing
 If your computer is connected to an enDAQ with a **firmware version > 3.01.00**, these tests can be manually run using pytest:
 
-```pytest .\test_device.py --device "S0000000" -s``` Replace `"S0000000"` with the serial number of your device.
-
-If you are failing tests, running into errors, or want a more detailed view into the tests as they run, run this line instead:
+To manually run a test, use 
+```
+python -m pytest
+```
+with the flags mentioned in the preivous section. To specify files, add their 
+directory to the command line. eg, for a test file named Foo and Bar
+```
+python -m pytest ./Foo ./Bar
+```
 
 ```pytest .\test_device.py --device "S0000000" -s --verbose```
 
@@ -22,25 +56,40 @@ In the current state of testing, there is an ocassional serial-based error, ocas
 - `--reruns-delay 30` to let the resync and clear any issues.
 
 All properties tested are checked using `assert`, so any non-`AssertionError` Exceptions are not being tested. Any tests written should follow this pattern, and try-catch statements should be used in case of any expected errors.
-### RasPi Testing / Automatic Testing
-**Automatic testing through GitHub Actions will only be available for approved MIDE users!**
+## Automatic Testing
+> **Automatic testing through GitHub Actions will only be available for approved MIDE users!**
 
-The process of automatic testing is done with the help of a Raspberry Pi. First `ssh` into the RasPi. Next, activate the virtual environment located in the `endaq.device` repository called `testing_venv`. From there, automatic testing should be set up to run (**not yet implemented**). Manual testing through the RasPi is also set up.
+For automatic testing, first configure and enable the device as a github local
+runner. Refer to internal documentation if more information is needed.
 
-#### Manual Testing with a RasPi
-Navigate to the `testing_hardware` directory and then run `pytest test_device.py --device "S0000000" --raspi -s` to manually test on the RasPi. Replace `"S0000000"` with the serial number of your device. Optionally add the "--verbose" and "--random-order" flags to increase the printed output information and run the tests in a random order.
+With this enabled, on the `endaq_device` Repo, go to `actions > Unit test on push and PR`
+and choose the latest commit that has the test_hardware to test. 
 
-#### Automatic Testing with a RasPi
-Not yet implemented.
+Note that the yaml file has information specific to the device being tested, it may be necessary to update it to run properly.
 
-#### GPIO Bug Fix
+## Bug Fixes / FAQ
+
+### Raspi device not found / Raspi Test failing
+This subsection is only relevant to in-house raspberry pi's with the 
+custom hat.
+
+If testing manually, there is a chance that the USB on hat has not been enabled. This can be fixed by running the following command
+```
+python ./test_hardware/helper_functions/raspi_endaq_controller -u On
+```
+Adjusting based on the current path of your terminal. 
+
+Additionally, confirm that the enDAQ device is plugged into the port in the raspberry pi's hat, otherwise, the device will not sucessfully plug / unplug when prompted to.
+### GPIO Bug Fix
 If upon running the test you get the following error, "RuntimeError: No access to /dev/mem.  Try running as root!", here's how to fix it. Run `ls -l /dev/gpiomem` in your terminal. If the output does not start with "crw-rw---- 1 root gpio", then run `sudo chown root:gpio /dev/gpiomem && sudo chmod g+rw /dev/gpiomem` which should fix it. Running `ls -l /dev/gpiomem` should now display the correct output. 
 
-## `test_w_devices.py`
-This is a collection of tests that are specific to W type enDAQs and their Wi-Fi capabilities. These tests will produce errors if run on S type devices.
+### Sudo may be required
+This subsection is specific to linux.
 
-### Manual Testing
-All of the information described in the "`test_device.py` Manual Testing" section above applies to `test_w_devices.py` as well, with one exception: the serial number listed in the command line pytest code must begin with a **"W"** for the tests to run properly, as only W type enDAQs support the functions being run by these tests.
+When running sudo, linux enviornments ignore the virtual environments (venv) pathing. To fix this, we call python straight from the venv.
+Assuming a venv named `.venv`, run
 
-### Automatic Testing
-Automatic testing is **not yet supported** for `test_w_devices.py`. Once it is, it will follow the same set up as for `test_device.py`, but with a W type enDAQ connected to the RasPi in place of an S type.
+```
+sudo .venv/bin/python -m pytest ...
+```
+with the wanted parameters.
