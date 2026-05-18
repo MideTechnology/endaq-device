@@ -15,6 +15,7 @@ type interface_types = Union[Literal[0, "none"],
 if TYPE_CHECKING:
     from ebmlite.core import MasterElement
 
+#TODO: change name
 class DeviceManager:
     """
     A class that is used to hold the testing device and perform common actions. 
@@ -57,7 +58,7 @@ class DeviceManager:
         
 
     @property
-    def device(self):
+    def device(self) -> endaq.device.base.Recorder:
         if self._device is None:
             self._device = safe_get_device(self.device_sn, 30)
             self.init_conf = self._device.config.getConfig()
@@ -173,7 +174,6 @@ class DeviceManager:
         """
         self.device.command.startRecording()
         if isinstance(status, Status): status = [status]
-        #assert wait_for_status(device, status)
         self.device.command.awaitReconnect(30)
         self.device.command.ping()
         assert (self.device.command.status[1] in status

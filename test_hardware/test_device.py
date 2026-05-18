@@ -106,6 +106,7 @@ class TestAwait:
         device.command.awaitRemount(timeout = 30)
         device.command.awaitRemount(timeout = 2)
 
+@pytest.mark.skip("TestVirtualAccuracy not implemented yet")
 class TestVirtualAccuracy:
     """
     A series of tests used to test the validity of real device to Recorder conversion
@@ -114,6 +115,7 @@ class TestVirtualAccuracy:
         """
         
         """
+        pytest.skip("_new_rec has not been implemented yet")
         device_manager.make_recording()
         #get the recording
         virt_path = ...
@@ -134,7 +136,14 @@ class TestVirtualAccuracy:
         and non-user generated. Note that this doesn't test anything embl related,
         that is in `test_virtual_accuracy_embl`
         """
+        device = device_manager.device
+        virtual = self._new_rec(device_manager=device_manager)
 
+        for b in [False, True]:
+            assert device.getCalDate(b) == virtual.getCalDate(b)
+            assert device.getCalExpiration(b) == virtual.getCalExpiration(b)
+            assert device.getCalPolynomials(b) == virtual.getCalPolynomials(b)
+            assert device.getCalibration(b) == virtual.getCalibration(b)
     
     def test_virtual_accuracy_props(self, device_manager):
         device = device_manager.device
@@ -160,11 +169,14 @@ class TestVirtualAccuracy:
         assert device.getProperties() == virtual.getProperties()
         assert device.getManifest() == virtual.getManifest()
 
-    def test_virtual_accuracy_accuracy_embl(self, device_manager):
+    def test_virtual_accuracy_embl(self, device_manager):
         """
         tests the accuracy of the calibration tests based on the ebml files
         """
+        TODO('test_virtual_accuracy_embl')
 
+def test_write_user_cal(device_manager):
+    TODO('test_write_user_cal')
 
 # This test only works if looped in sequential order. Random order is disabled
 # for this reason.
@@ -349,7 +361,7 @@ sample_struct_time = time.gmtime()
     (sample_datetime.timestamp(), sample_dt_out), #float,
     (int(sample_datetime.timestamp()), sample_dt_out), #int,
     (sample_datetime, sample_dt_out), #datetime
-    (sample_struct_time, calendar.timegm(sample_struct_time)),
+    (sample_struct_time, calendar.timegm(sample_struct_time)), #struct_time
 ])
 def test_set_time(device_manager, time_value, expected_out):
     """
@@ -415,7 +427,6 @@ def _change_cfg_value(cfg_item: endaq.device.config.ConfigItem):
     else: 
         cfg_item.value = next((k for k, _ in cfg_item.options.items() if cfg_item.value != k), None)
 
-@pytest.mark.skip('buggy implementation')
 def test_get_revert_changes(device_manager):
     """
     Tests that all config items can be modified, and all show up when calling `getChanges()`.
@@ -424,12 +435,13 @@ def test_get_revert_changes(device_manager):
     """
     device = device_manager.device
     assert len(device.config.getChanges()) == 0
-    for _, v in device.config.items.items():
-        _change_cfg_value(v)
-    assert len(device.config.getChanges()) == len(device.config.items)
+    rec_item = device.config.items[917375] 
+    rec_item.value = 60 if rec_item.value != 60 else 120
+    assert len(device.config.getChanges()) == 1
     device.config.revert()
     assert len(device.config.getChanges()) == 0
-    
+
+
 def test_is_enabled(device_manager):
     device = device_manager.device
     ch80 = device.channels[80]

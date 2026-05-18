@@ -40,6 +40,7 @@ def setupTeardownSession(device_manager):
             False otherwise. Set in command line.
     """
     # Put the device in default configuration
+    device = device_manager.device
     has_wifi = device_manager.device.hasWifi
     print(f"Setting up session")
     config_dict = {
