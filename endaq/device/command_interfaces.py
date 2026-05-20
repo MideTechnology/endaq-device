@@ -2746,7 +2746,7 @@ class SerialCommandInterface(CommandInterface):
               callback: Optional[Callable] = None) -> bool:
         """ Reset (reboot) the recorder.
 
-            :param wait: If `True`, wait for the recorer to respond and/or
+            :param wait: If `True`, wait for the recorder to respond and/or
                 disconnect, indicating the reset has started.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
@@ -2759,6 +2759,32 @@ class SerialCommandInterface(CommandInterface):
         return self._runSimpleCommand({'EBMLCommand': {'Reset': {}}},
                                       statusCode=DeviceStatusCode.RESET_PENDING,
                                       timeoutMsg="Timed out waiting for device to reset",
+                                      wait=wait,
+                                      timeout=timeout,
+                                      callback=callback)
+
+
+    def shutdown(self,
+                 wait: bool = True,
+                 timeout: Union[int, float] = 5,
+                 callback: Optional[Callable] = None) -> bool:
+        """ Shut down/power off the device. Not supported on all devices.
+
+            :param wait: If `True`, wait for the device to respond and/or
+                disconnect, indicating it is shutting down.
+            :param timeout: Time (in seconds) to wait for the device to
+                respond. 0 will return immediately.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a response
+                will be cancelled. The callback function should require no
+                arguments.
+            :returns: `True` if the command was successful.
+        """
+        if not self.device.getInfo('RecorderTypeUID', 0) & 0xa0000000:
+            raise UnsupportedFeature('Device cannot be shut down by command')
+
+        return self._runSimpleCommand({'EBMLCommand': {'Shutdown': {}}},
+                                      timeoutMsg="Timed out waiting for device to shut down",
                                       wait=wait,
                                       timeout=timeout,
                                       callback=callback)

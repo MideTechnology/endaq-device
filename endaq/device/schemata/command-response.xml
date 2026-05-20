@@ -174,6 +174,7 @@
                 0x03: CONNECTED_CLOUD, Connected to Wi-Fi with cloud connection
             </UIntegerElement>
             <StringElement name="Hostname" id="0x5404" multiple="0" mandatory="0"> For Gateway hardware: the network hostname. </StringElement>
+            <StringElement name="Interface" id="0x5405" multiple="0" mandatory="0" />
         </MasterElement>
 		<BinaryElement name="ClockTime" id="0x5501" multiple="0" mandatory="0">Serial and Wireless only. 10 byte RTC clock time. Comparable to reading the CLOCK file.</BinaryElement>
 		<UIntegerElement name="BatteryState" id="0x5601" multiple="0" mandatory="0">Serial and Wireless only. uint16 (big endian), low byte is charge level, high byte is bit flags.
