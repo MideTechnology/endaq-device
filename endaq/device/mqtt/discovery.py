@@ -56,7 +56,7 @@ def parseInfo(info: ServiceInfo) -> Dict[str, Any]:
 def getBroker(name: str = DEFAULT_NAME,
               timeout: float = 5) -> Dict[str, Any]:
     """
-    Find a specific enDAQ-advertized MQTT Broker. In the best case, this may
+    Find a specific enDAQ-advertised MQTT Broker. In the best case, this may
     be marginally faster than `findBrokers()` when looking for a specific
     broker.
 
@@ -84,7 +84,7 @@ def findBrokers(*patterns,
                 timeout: float = 5,
                 callback: Optional[Callable] = None) -> List[Dict[str, Any]]:
     """
-    Find enDAQ-advertized MQTT Brokers.
+    Find enDAQ-advertised MQTT Brokers.
 
     :param patterns: Zero or more MQTT Broker names (multiple positional
         arguments). Glob-like wildcards may be used (case-sensitive).

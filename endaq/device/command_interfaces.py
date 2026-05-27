@@ -538,7 +538,7 @@ class CommandInterface:
                 the acknowledgement (if the interface supports one). May also
                 be a list if success could generate different responses (e.g.,
                 in different firmware versions).
-            :param wait: If `True`, wait for the recorer to respond and/or
+            :param wait: If `True`, wait for the recorder to respond and/or
                 dismount.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a `DeviceTimeout` exception. `None` or -1 will wait
@@ -610,7 +610,7 @@ class CommandInterface:
                        callback: Optional[Callable] = None) -> bool:
         """ Start the device recording, if supported.
 
-            :param wait: If `True`, wait for the recorer to respond and/or
+            :param wait: If `True`, wait for the recorder to respond and/or
                 dismount, indicating the recording has started.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a `DeviceTimeout` exception. `None` or -1 will wait
@@ -630,7 +630,7 @@ class CommandInterface:
                       callback: Optional[Callable] = None):
         """ Stop a device that is recording, if supported.
 
-            :param wait: If `True`, wait for the recorer to respond and/or
+            :param wait: If `True`, wait for the recorder to respond and/or
                 remount, indicating the recording has stopped.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
@@ -650,7 +650,7 @@ class CommandInterface:
         """ Reset (reboot) the recorder.
             Must be implemented in every subclass.
 
-            :param wait: If `True`, wait for the recorer to respond and/or
+            :param wait: If `True`, wait for the recorder to respond and/or
                 disconnect, indicating the reset has started.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately; `None` or -1 will wait
@@ -969,7 +969,7 @@ class CommandInterface:
 
             :param secure: if `True`, use the secure update command (requires
                 encrypted firmware).
-            :param wait: If `True`, wait for the recorer to dismount,
+            :param wait: If `True`, wait for the recorder to dismount,
                 indicating the update has started.
             :param timeout: Time (in seconds) to wait for the recorder to
                 dismount, implying the updates are being applied. 0 will
@@ -2709,7 +2709,7 @@ class SerialCommandInterface(CommandInterface):
                       callback: Optional[Callable] = None):
         """ Stop a device that is recording.
 
-            :param wait: If `True`, wait for the recorer to respond and/or
+            :param wait: If `True`, wait for the recorder to respond and/or
                 remount, indicating the recording has stopped.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
@@ -2825,7 +2825,7 @@ class SerialCommandInterface(CommandInterface):
 
             :param secure: if `True`, use the secure update command (requires
                 encrypted firmware).
-            :param wait: If `True`, wait for the recorer to dismount,
+            :param wait: If `True`, wait for the recorder to dismount,
                 indicating the update has started.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately. `None` or -1 will wait
@@ -3434,7 +3434,7 @@ class FileCommandInterface(CommandInterface):
                 Only the first 2 bytes will be sent.
             :param statusCode: The ``<CommandResponseCode>`` expected in the
                 acknowledgement (if the interface supports one).
-            :param wait: If `True`, wait for the recorer to respond and/or
+            :param wait: If `True`, wait for the recorder to respond and/or
                 dismount.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a `DeviceTimeout` exception. 0 will return
@@ -3468,7 +3468,7 @@ class FileCommandInterface(CommandInterface):
 
             :param secure: If `True`, use the `"SecureUpdateAll"` command
                 instead of `"LegacyAll"`.
-            :param wait: If `True`, wait for the recorer to dismount,
+            :param wait: If `True`, wait for the recorder to dismount,
                 indicating the command has executed.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a `DeviceTimeout` exception. 0 will return
@@ -3493,7 +3493,7 @@ class FileCommandInterface(CommandInterface):
                        callback: Optional[Callable] = None) -> bool:
         """ Start the device recording, if supported.
 
-            :param wait: If `True`, wait for the recorer to dismount,
+            :param wait: If `True`, wait for the recorder to dismount,
                 indicating the recording has started.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a `DeviceTimeout` exception. 0 will return
@@ -3527,7 +3527,7 @@ class FileCommandInterface(CommandInterface):
               callback: Optional[Callable] = None) -> bool:
         """ Reset (reboot) the recorder.
 
-            :param wait: If `True`, wait for the recorer to dismount,
+            :param wait: If `True`, wait for the recorder to dismount,
                 indicating the reset has taken effect.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a `DeviceTimeout` exception. 0 will return
