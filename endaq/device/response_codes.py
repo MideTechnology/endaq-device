@@ -86,6 +86,7 @@ class WiFiConnectionStatus(IntEnum):
     IDLE = 0x00  #: Wi-Fi is inactive (and/or disconnected).
     PENDING = 0x01  #: The device is in the process of connecting to the Wi-Fi AP.
     CONNECTED = 0x02  #: The device is connected to the Wi-Fi AP.
+    CHANGING = 0x04  #: For Gateway hardware: The device is changing Wi-Fi mode.
 
     MODE_AP = 0x10  #: For Gateway hardware: Device operating as a Wi-Fi access point.
     MODE_4G = 0x20  #: For Gateway hardware: Connected to an AP and 4G data.
