@@ -86,8 +86,8 @@ class WiFiConnectionStatus(IntEnum):
     IDLE = 0x00  #: Wi-Fi is inactive (and/or disconnected).
     PENDING = 0x01  #: The device is in the process of connecting to the Wi-Fi AP.
     CONNECTED = 0x02  #: The device is connected to the Wi-Fi AP.
-    CHANGING = 0x04  #: For Gateway hardware: The device is changing Wi-Fi mode.
 
+    CHANGING = 0x08  #: For Gateway hardware: The device is changing Wi-Fi mode (e.g., station to AP).
     MODE_AP = 0x10  #: For Gateway hardware: Device operating as a Wi-Fi access point.
     MODE_4G = 0x20  #: For Gateway hardware: Connected to an AP and 4G data.
     MODE_AP4G = 0x30  #: For Gateway hardware: Gateway is operating as AP and 4G bridge.
@@ -167,3 +167,6 @@ class WiFiConnectionError(IntEnum):
     ERR_NO_AP_FOUND_W_COMPATIBLE_SECURITY = 210
     ERR_NO_AP_FOUND_IN_AUTHMODE_THRESHOLD = 211
     ERR_NO_AP_FOUND_IN_RSSI_THRESHOLD = 212
+
+    # Non-ESP32 errors, outside its range of error codes
+    ERR_GATEWAY_MODE_CHANGE_FAILED = 100001

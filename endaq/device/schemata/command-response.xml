@@ -153,15 +153,17 @@
             Else if PENDING then read nothing else in this data structure besides SSID as they are not guaranteed to be valid.
             <UnicodeElement name="SSID" id="0x4201" multiple="0" mandatory="1">Network SSID</UnicodeElement>
             <UIntegerElement name="WiFiConnectionStatus" id="0x5301" multiple="0" mandatory="1">Integer enum.
-                0x00: IDLE, no connection is in process, error fields are valid.
-                0x01: PENDING, connection is in process,
+                0x00: IDLE, no connection is in progress, error fields are valid.
+                0x01: PENDING, connection is in progress.
                 0x02: CONNECTED, error fields will all be 0, RSSI tag is present in this data structure and represents the strength of the connected net
+                0x08: CHANGING, the device is changing Wi-Fi/network modes (e.g., station to AP).
                 0x10: MODE_AP, the device is running as an access point. Not applicable to enDAQ data recorders.
                 0x20: MODE_4G, the device is connected to a wireless data network.
                 0x30: MODE_AP4G, the device is running as an access point and bridge to a 4G data network. Not applicable to enDAQ data recorders.
             </UIntegerElement>
             <UIntegerElement name="WiFiConnectionError" id="0x5304" multiple="0" mandatory="0">Integer enum. Holds ESP32 error codes, found in https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/wifi.html#wi-fi-reason-code</UIntegerElement>
-            <IntegerElement name="RSSI" id="0x5205" multiple="0" mandatory="0">Signal Strength, 0-100, where 100 is perfect. Only present if CONNECTED</IntegerElement>
+            <UnicodeElement name="WiFiStatusMessage" id="0x5303" multiple="0" mandatory="0">An optional message string detailing the current state (typically, explaining an error). Generally returned only by Gateway devices.</UnicodeElement>
+            <IntegerElement name="RSSI" id="0x5205" multiple="0" mandatory="0">Signal Strength, 0-100, where 100 is perfect. Only present if CONNECTED.</IntegerElement>
             <StringElement name="APN" id="0x42A5" multiple="0" mandatory="1"/>
         </MasterElement>
         <MasterElement name="NetworkStatusResponse" id="0x5400" multiple="0" mandatory="0">
