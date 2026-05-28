@@ -1,0 +1,131 @@
+import time
+import pytest
+from datetime import datetime, timezone as tz
+"""
+A test file dedicated to testing the communication between
+the config interface and the device.
+"""
+
+def test_set_config(session_manager):
+    """
+    Test that basic config info is stored across reboots. 
+    """
+    device = session_manager.device
+    
+    old_name = device.name
+    test_name = f"T{time.time()}"
+    
+    device.config.items[0x8FF7F].value = test_name
+    
+    device.config.applyConfig()
+    device.command.reset()
+    
+    session_manager.dememomize_device()
+    dev = session_manager.device
+    
+    initial_dev_name = dev.name
+    dev.refresh()
+    reload_dev_name = dev.config.items[0x8FF7F].value
+    
+    dev.config.items[0x8FF7F].value = old_name
+    dev.config.applyConfig()
+    error_list = []
+    if test_name != initial_dev_name:
+        error_list.append(f"Weird, reloaded device name did not reflect test name. Expected {test_name} got "
+                          f"{initial_dev_name}. Initial name was {old_name}")
+    if test_name != reload_dev_name:
+        error_list.append(f"After rebooting the device, it did not keep the newly configured name. This probably means "
+                          f"config.cfg was not flushed out to the device. Try mounting with the 'flush' option, or "
+                          f"waiting up to 6 seconds between applying config and disconnecting. Expected {test_name} got "
+                          f"{reload_dev_name}, initial name was {old_name}")
+    assert len(error_list) == 0, "\n".join(error_list)
+
+def test_get_revert_changes(session_manager):
+    """
+    Tests that all config items can be modified, and all show up when calling `getChanges()`.
+    Additionally tests that `device.config.revert()` reverts all of the changes
+    made.
+    """
+    device = session_manager.device
+    assert len(device.config.getChanges()) == 0
+    rec_item = device.config.items[917375] 
+    rec_item.value = 60 if rec_item.value != 60 else 120
+    assert len(device.config.getChanges()) == 1
+    device.config.revert()
+    assert len(device.config.getChanges()) == 0
+
+
+def test_is_enabled(session_manager):
+    device = session_manager.device
+    ch80 = device.channels[80]
+    device.config.enableChannel(ch80, enabled=True)
+    assert device.config.isEnabled(ch80) == True
+    device.config.enableChannel(ch80, enabled=False)
+    assert device.config.isEnabled(ch80) == False
+    
+def test_set_get_trigger(session_manager):
+    """
+    Tests that the triggers set in `getTrigger` is reflected in getTrigger
+    """
+    device = session_manager.device  
+    
+    ch80 = device.channels[80]
+    device.config.setTrigger(ch80, enabled=True, high = 10)
+    device.config.applyConfig()
+    device.config.getTrigger(ch80) == {'enabled': 1, 'high': 10}
+    
+    device.config.setTrigger(ch80, enabled=False)
+    device.config.applyConfig()
+    device.config.getTrigger(ch80) == {'enabled': 0, 'high': 10}
+
+def test_get_config_values(session_manager):
+    """
+    Tests that getConfigValues reflects the values present in `device.config.items`.
+    """
+    device = session_manager.device
+    config_vals = device.config.getConfigValues()
+    for k,v in config_vals.items():
+        if k in device.config.items: 
+            assert device.config.items[k].value == v
+
+@pytest.mark.parametrize('sample_rate, is_valid', [
+    *[(k, True) for k in [4000, 2000, 1000, 500, 250, 125, 63, 32, 16]],
+    *[(k, False) for k in [3000, 1500, 780, 200]]
+])
+def test_sample_rate(session_manager, sample_rate, is_valid):
+    """
+    Tests that applying all of the allowed sample rates work, and non-valid 
+    sample_rates throw the correct error.
+    """
+    device = session_manager.device
+    if is_valid:
+        device.config.setSampleRate(device.channels[80], sample_rate)
+        assert device.config.getSampleRate(device.channels[80]) == sample_rate
+    else:
+        with pytest.raises(ValueError):
+            device.config.setSampleRate(device.channels[80], sample_rate)
+
+
+sample_datetime = datetime(2000,3,14,15,2,30, tzinfo=tz.utc)
+@pytest.mark.parametrize('attr_name, attr_id, attr_value, expected_out', [
+    ('retrigger', 0xEFF7F, 1, 1),
+    ('recordingStartTime', 0xFFF7F, sample_datetime.timestamp(), sample_datetime),
+    ('recordingSizeLimit', 0x11FF7F, 1, 1),
+    ('recordingPrefix', 0x15FF7F, 'recTMP', 'recTMP'),
+    ('recordingDir', 0x14FF7F, 'recTMP', 'recTMP'),
+    ('notes', 0x9FF7F, 'tmp', 'tmp'),
+    ('name', 0x8FF7F, 'tmp', 'tmp'),
+    ('buttonMode', 0x10FF7F, 1, 1)
+])
+def test_config_props(session_manager, attr_name, attr_id, attr_value, expected_out):
+    """
+    tests that the properties in `device.config` match the values that are assigned from the config.
+    """
+    device = session_manager.device
+
+    cfg_item = device.config.items[attr_id]
+    cfg_item.value = attr_value
+    device.config.applyConfig()
+    assert getattr(device.config, attr_name) == expected_out
+    
+   
