@@ -1,13 +1,18 @@
-from typing import Optional, Literal, Union, List, Dict, TYPE_CHECKING
+from typing import Optional, Literal, Union, List, Dict, Tuple, Any, TYPE_CHECKING
+import time
 import endaq.device
 from endaq.device import DeviceStatusCode as Status
+from endaq.device import Recorder
+from endaq.device.mqtt import MQTTConnector
 from test_hardware.helper_functions.general_config import GeneralConfig, GENERAL_CONFIG_IDS
 from test_hardware.helper_functions.hardware_interface import (
     HardwareInterface, MockInterface,
     TTYInterface, RaspiInterface
 )
 import time
-__all__ = ["DeviceManager", "safe_get_device"]
+from pathlib import Path
+
+__all__ = ["SessionManager", "safe_get_device"]
 type interface_types = Union[Literal[0, "none"],
                              Literal[1, "tty"],
                              Literal[2, "raspi"]
@@ -15,13 +20,12 @@ type interface_types = Union[Literal[0, "none"],
 if TYPE_CHECKING:
     from ebmlite.core import MasterElement
 
-#TODO: change name
-class DeviceManager:
+class SessionManager:
     """
     A class that is used to hold the testing device and perform common actions. 
     Note that while device is a mutable object, it is **not** a global object. 
-    It is **highly** recommended to use `DeviceManager.device.xxxx` rather than 
-    `device = DeviceManager.device; device.xxx`.
+    It is **highly** recommended to use `SessionManager.device.xxxx` rather than 
+    `device = SessionManager.device; device.xxx`.
 
     Even if device manager is not used beyond the first device getter, it is
     still recommended to use this, as it is used for post-test teardown.
@@ -94,12 +98,59 @@ class DeviceManager:
         a dedicated setter for device_sn, additionally setting the device parameter
         to the device with this device serial number.
         """
+        if not self.valid_sn(device_sn):
+            raise ValueError(f"device_sn {device_sn} is invalid")
         self._device_sn = device_sn
         self._device = safe_get_device(device_sn = device_sn)
+   
+    @staticmethod
+    def valid_sn(device_sn: Union[str, int]) -> bool:
+        """
+         Used internally when updating devices, but can be used 
+         as a static method.
+
+        :param device_sn: the serial number to check, either formated 
+            as [S|H|W]XXXXXXX (str) or XXXX (int)
+        
+        :return: boolean representing if the serial number is valid
+        """
+        #FUTURE: This will have to be updated as we release new "series" of products
+        if isinstance(device_sn, str):
+            if device_sn[0] in 'SHW':
+                if 2000 <= int(device_sn[1:]) <= 30000:
+                    return True
+        else:
+            if 2000 <= device_sn <= 30000:
+                return True
+
+        return False
+
+
+    @property
+    def wifi_state(self) -> Tuple[bool, bool]:
+        """
+        A dedicated getter for wifi_state, showing if WiFi can be and as
+        is set.
+        
+        Note that there is no "setter" for this property, this
+        is done in `self.toggle_wifi()`.
+
+        :return: a tuple of booleans, representing (wifi can be set, wifi is set)
+        """
+        has_wifi = self.device.has_wifi
+        return (has_wifi, False if not has_wifi else self._wifi_enabled)
 
     def dememomize_device(self):
         self._device = None
         self.init_conf = None
+
+    def same_device(self, other: Recorder) -> bool:
+        """
+        Checks to see if the device given is the same device as the device
+        held in the session manager, defined by having the same serial
+        :param other: The other recorder to compare against 
+        """
+        return self.device.serial == other.serial
 
     def apply_conf(self, conf: Optional[Dict], revert_to_base: bool = True):
         """
@@ -125,12 +176,13 @@ class DeviceManager:
         if changes:
             self.device.config.applyConfig()
             if conf.get('WifiEnable', 0):
-                self.device.command.awaitReconnect()
+                self.device.command.awaitReconnect(timeout=30)
                 self.device.command.reset()
-                self.device.command.awaitReconnect()
+                self.device.command.awaitReconnect(timeout=30)
         return changes
     
     def end_test(self, failed: bool):
+        self.device.command.awaitReconnect(timeout=30)
         self.optional_stop()
         self.device.command.setTime() #time isn't part of config ids, need way of resetting it
         self.device.config.recordingDir = "RECORD" #recordingDir isn't part of the config ids
@@ -154,11 +206,12 @@ class DeviceManager:
             device.config.loadConfig(device.config.config)
             device.config.applyConfig()
             self.device.command.reset()
+            device.command.awaitReconnect()
         #hold button for 18 seconds.
             
     def end_session(self):
         """
-        Note that this doesn't garbage collect the DeviceManager, as there is no way to delete
+        Note that this doesn't garbage collect the SessionManager, as there is no way to delete
         oneself. Rather, this is a counterpart to :func:`end_test`, for when all pytest tests
         are finished.
         """
@@ -166,6 +219,7 @@ class DeviceManager:
         device.command.awaitReconnect(30) #ensure access to pings
         self.optional_stop()
 
+    #=== RECORDING HELPERS ===#
 
     def start_recording(self, status: Union[Status, List[Status]] = Status.RECORDING):
         """
@@ -174,6 +228,7 @@ class DeviceManager:
         """
         self.device.command.startRecording()
         if isinstance(status, Status): status = [status]
+        #assert wait_for_status(device, status)
         self.device.command.awaitReconnect(30)
         self.device.command.ping()
         assert (self.device.command.status[1] in status
@@ -198,11 +253,12 @@ class DeviceManager:
             self.device.command.awaitReconnect(timeout=30)
             assert self.device.command.stopRecording() is True, "Device did not stop recording."
         
+        #TODO: need alternative for WiFi devices
         self.device.command.awaitRemount(timeout=30)
         self.device.command.awaitReconnect(timeout=30)
         self.device.command.ping()
         assert (self.device.command.status[1] == Status.IDLE or
-            self.device.command.status[1] == Status.IDLE_UNMOUNTED), "Device is not idle."
+                self.device.command.status[1] == Status.IDLE_UNMOUNTED), "Device is not idle."
 
     def optional_stop(self) -> bool:
         """
@@ -229,12 +285,12 @@ class DeviceManager:
             length: int = 5
             ):
         """
-        Follows the same rules as start_recording and stop_recording.
+        Follows the same rules as start_recording and stop_recording. 
+        And returns a path to the recording
         """
         self.start_recording(status)
         time.sleep(length)
         self.stop_recording()
-
 
 def safe_get_device(device_sn: str="", timeout: int=15, unmounted=False) -> endaq.device.Recorder:
     """

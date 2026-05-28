@@ -1,9 +1,8 @@
 """
 Contains fixtures used in device tests. Note that some fixtures are in `conftest.py`
 """
-from test_hardware.device_manager import DeviceManager, safe_get_device
+from test_hardware.session_manager import SessionManager, safe_get_device
 import pytest
-from functools import wraps
 import sys
 from test_hardware.helper_functions.hardware_interface import *
 from test_hardware.helper_functions.general_config import GeneralConfig
@@ -18,21 +17,20 @@ def device_sn(request) -> bool:
     return request.config.getoption("--device")
 
 @pytest.fixture(autouse=True)
-def test_cleanup(device_manager):
+def test_cleanup(session_manager):
     yield
-    device_manager.end_test(False)
+    session_manager.end_test(False)
 
 @pytest.fixture(scope="session", autouse=True)
-def device_manager(device_sn, is_raspi):
-    yield DeviceManager(
+def session_manager(device_sn, is_raspi):
+    yield SessionManager(
         device_sn = device_sn, 
         interface_mode = 2 if is_raspi else 1 if sys.stdin.isatty() else 0,
         get_on_init=True
         )
 
-
 @pytest.fixture(scope="session", autouse=True)
-def setupTeardownSession(device_manager):
+def setupTeardownSession(session_manager):
     """ Set up and teardown GPIO RasPi controls at the beginning and end
         of a session.
 
@@ -40,15 +38,16 @@ def setupTeardownSession(device_manager):
             False otherwise. Set in command line.
     """
     # Put the device in default configuration
-    device = device_manager.device
-    has_wifi = device_manager.device.hasWifi
+    session_manager._cleanup_failure() #in the case the previous run failed and never cleaned up
+    device = session_manager.device
+    has_wifi = device.hasWifi
     print(f"Setting up session")
     config_dict = {
         "WifiEnable": 1 if has_wifi else 0, 
         "PreRecordingDelay": 0, 
         "RecordingTimeLimit": 120
         }
-    hw = device_manager.hw_interface
+    hw = session_manager.hw_interface
     config = GeneralConfig(**config_dict)
     if config.set_configs(device, quick_config=True):
         print(f"Applying updated config")
@@ -57,7 +56,7 @@ def setupTeardownSession(device_manager):
         device = safe_get_device(timeout=30) # Wait for device to come back
 
     # Always update the device configuration
-    if isinstance(device_manager.hw_interface, RaspiInterface):
+    if isinstance(session_manager.hw_interface, RaspiInterface):
         print("\nSetting up RasPi...")
         hw.set_usb(True)
         hw.set_button(False)
@@ -71,6 +70,6 @@ def setupTeardownSession(device_manager):
         print("\nDone with RasPi tear down.")
     else:
         yield
-    device_manager.end_session()
+    session_manager.end_session()
     print(f"Finished session")
 

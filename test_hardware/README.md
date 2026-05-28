@@ -2,6 +2,12 @@
 The `test_hardware` folder in `endaq.device` is used to test the communication between a physical enDAQ device and a computer.
 Any testing that doesn't explicitly require a device can be found in the `tests` folder. 
 
+## Setup
+Beyond the packages that are required for `endaq.device`, there are test specific packages to install. Assuming you are in the `test_hardware` directory, this can be installed using
+```
+python -m pip install -r requirements.txt
+```
+
 ## Command Line Arguments
 These tests are run through pytest, which supports flags for testing customizability. These flags are ordered in importance.
 
@@ -27,11 +33,6 @@ This flag has no effect if `--raspi` is enabled.
 
 > If you are testing a device with firmware < 3.01.00, it is **highly** recommended to not use this option. Older firmwares require interaction to stop recording, which can cause issues if --no_tty is enabled.
 
-### random-order
-`random-order` is a 
-
-### rerun
-TODO
 ## Manual Testing
 If your computer is connected to an enDAQ with a **firmware version > 3.01.00**, these tests can be manually run using pytest:
 
@@ -45,17 +46,10 @@ directory to the command line. eg, for a test file named Foo and Bar
 python -m pytest ./Foo ./Bar
 ```
 
-```pytest .\test_device.py --device "S0000000" -s --verbose```
-
 If you want to run your tests in a random order, first install pytest-random-order using `pip install pytest-random-order`, and then add the `--random-order` flag to one of the pytest command line examples above.
 
-In the current state of testing, there is an ocassional serial-based error, ocassionally causing test failures due to TODO. It is highly encouraged to install pytest-rerunfailures using `pip install pytest-rerunfailures`, and add the following flags
-
-- `--reruns 10` to rerun the failed tests 
-- `--rerun-exepct AssertionError` to rerun the inconsistent failing tests
-- `--reruns-delay 30` to let the resync and clear any issues.
-
 All properties tested are checked using `assert`, so any non-`AssertionError` Exceptions are not being tested. Any tests written should follow this pattern, and try-catch statements should be used in case of any expected errors.
+
 ## Automatic Testing
 > **Automatic testing through GitHub Actions will only be available for approved MIDE users!**
 
@@ -73,21 +67,24 @@ Note that the yaml file has information specific to the device being tested, it 
 This subsection is only relevant to in-house raspberry pi's with the 
 custom hat.
 
-If testing manually, there is a chance that the USB on hat has not been enabled. This can be fixed by running the following command
+If testing manually, there is a chance that the USB on hat has not been enabled. 
+This can be fixed by running the following command
 ```
 python ./test_hardware/helper_functions/raspi_endaq_controller -u On
 ```
 Adjusting based on the current path of your terminal. 
 
-Additionally, confirm that the enDAQ device is plugged into the port in the raspberry pi's hat, otherwise, the device will not sucessfully plug / unplug when prompted to.
+Additionally, confirm that the enDAQ device is plugged into the port in the raspberry pi's hat,
+otherwise, the device will not react when prompted to.
+
 ### GPIO Bug Fix
 If upon running the test you get the following error, "RuntimeError: No access to /dev/mem.  Try running as root!", here's how to fix it. Run `ls -l /dev/gpiomem` in your terminal. If the output does not start with "crw-rw---- 1 root gpio", then run `sudo chown root:gpio /dev/gpiomem && sudo chmod g+rw /dev/gpiomem` which should fix it. Running `ls -l /dev/gpiomem` should now display the correct output. 
 
 ### Sudo may be required
 This subsection is specific to linux.
 
-When running sudo, linux enviornments ignore the virtual environments (venv) pathing. To fix this, we call python straight from the venv.
-Assuming a venv named `.venv`, run
+When running sudo, linux enviornments ignore the virtual environments (venv) pathing. 
+To fix this, we call python straight from the venv. Assuming a venv named `.venv`, run
 
 ```
 sudo .venv/bin/python -m pytest ...

@@ -11,7 +11,7 @@ from endaq.device.response_codes import WiFiConnectionStatus, WiFiConnectionErro
 
 # W Specific Tests
 @pytest.mark.wifi
-def test_get_network_address(device_manager):
+def test_get_network_address(session_manager):
     """ Test that 'getNetworkAddress()' returns a valid MAC Address on W
         devices.
 
@@ -21,7 +21,7 @@ def test_get_network_address(device_manager):
             enDAQ before and after every test.
     """
     # Set up
-    device = device_manager.device
+    device = session_manager.device
 
     # Gather the MAC and IP addresses
     mac_addr, _ = device.command.getNetworkAddress()
@@ -32,7 +32,7 @@ def test_get_network_address(device_manager):
 
 
 @pytest.mark.wifi
-def test_get_connected_network_status(device_manager):
+def test_get_connected_network_status(session_manager):
     """ Tests that 'getNetworkStatus()' returns the correct MAC and IP address
         for cases where the device is connected or disconnected from wifi.
 
@@ -42,7 +42,7 @@ def test_get_connected_network_status(device_manager):
             enDAQ before and after every test.
     """
     # Set up
-    device = device_manager.device
+    device = session_manager.device
     guest_wifi_pw = os.environ.get("GUEST_WIFI_PW", "nopwd")
 
     # Connected Case
@@ -82,7 +82,7 @@ def test_get_connected_network_status(device_manager):
 
 
 @pytest.mark.wifi
-def test_query_wifi(device_manager):
+def test_query_wifi(session_manager):
     """ Tests that 'queryWifi()' returns the correct SSID and connection status
         for cases where the device is connected or disconnected from wifi.
 
@@ -92,7 +92,7 @@ def test_query_wifi(device_manager):
             enDAQ before and after every test.
     """
     # Set up
-    device = device_manager.device
+    device = session_manager.device
     guest_wifi_pw = os.environ.get("GUEST_WIFI_PW", "nopwd")
 
     # Connected Case
@@ -118,7 +118,7 @@ def test_query_wifi(device_manager):
             WiFiConnectionError.ERR_NO_AP_FOUND), "Expected error not present"
 
 @pytest.mark.wifi
-def test_scan_wifi(device_manager):
+def test_scan_wifi(session_manager):
     """ Tests that 'scanWifi()' can find three MIDE wifi networks. Warns if the
         connection strength for any of the three are weak.
 
@@ -130,7 +130,7 @@ def test_scan_wifi(device_manager):
     # Set up
     LIST_OF_NETWORKS = ["MIDE-Corp", "Mide-LinuxNet", "MIDE-Guest"]
     STRENGTH_CUTOFF = -80
-    device = device_manager.device
+    device = session_manager.device
     network_indices = []
 
     # Find connected networks
@@ -152,7 +152,7 @@ def test_scan_wifi(device_manager):
 
 
 @pytest.mark.wifi
-def test_set_AP(device_manager):
+def test_set_AP(session_manager):
     """ Tests that 'setAP()' will establish a connection when given a valid SSID
         and password and will not if the SSID or password are invalid.
 
@@ -163,7 +163,7 @@ def test_set_AP(device_manager):
             enDAQ before and after every test.
     """
     # Set up
-    device = device_manager.device
+    device = session_manager.device
     guest_wifi_pw = os.environ.get("GUEST_WIFI_PW", "nopwd")
 
     # Valid PW case
@@ -176,8 +176,8 @@ def test_set_AP(device_manager):
             ), "Didn't connect to MIDE-Guest with valid PW."
 
 @pytest.mark.wifi
-def test_set_invalid_AP(device_manager):
-    device = device_manager.device
+def test_set_invalid_AP(session_manager):
+    device = session_manager.device
     device.command.setAP("invalid", password="invalid")
     device.command.awaitReconnect() #TODO: correct?
     query_wifi = device.command.queryWifi()
@@ -186,7 +186,7 @@ def test_set_invalid_AP(device_manager):
     
 @pytest.mark.skip
 @pytest.mark.wifi
-def test_set_wifi(device_manager):
+def test_set_wifi(session_manager):
     """
     Can probably be SKIPPED since 'setAP()' calls 'setWifi()'
     """
@@ -195,7 +195,7 @@ def test_set_wifi(device_manager):
 
 @pytest.mark.skip
 @pytest.mark.wifi
-def test_update_ESP32(device_manager):
+def test_update_ESP32(session_manager):
     """
     DON'T TEST
 
