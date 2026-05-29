@@ -195,7 +195,7 @@ class Recorder:
 
     @property
     @synchronized
-    def command(self) -> Union[None, command_interfaces.CommandInterface]:
+    def command(self) -> command_interfaces.CommandInterface:
         """ The device's "command interface," the means through which to
             directly control the device. Only applicable to non-virtual
             recorders (i.e., actual hardware, not instantiated from a
@@ -316,11 +316,11 @@ class Recorder:
         # devices) can be found anywhere. This will also update the paths
         # of known devices.
         if self.chipId:
-            dev = findDevice(chipId=self.chipId, update=True,
-                             unmounted=True, paths=paths, strict=strict)
+            dev: Recorder = findDevice(chipId=self.chipId, update=True,
+                                       unmounted=True, paths=paths, strict=strict)
         else:
-            dev = findDevice(sn=self.serialInt, update=True,
-                             unmounted=True, paths=paths, strict=strict)
+            dev: Recorder = findDevice(sn=self.serialInt, update=True,
+                                       unmounted=True, paths=paths, strict=strict)
 
         if dev and dev != self:
             # Device's DEVINFO has changed, change in place
