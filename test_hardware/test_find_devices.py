@@ -12,8 +12,9 @@ import endaq.device
 from test_hardware.session_manager import SessionManager
 TODO = lambda name: pytest.skip(f"Test {name} has not yet been implemented")
 
-pytest.skip(allow_module_level=True)
+#pytest.skip(allow_module_level=True)
 #==== Helper Functions ====#
+pytest.skip(allow_module_level=True)
 def validate_found_device(
         session_manager: SessionManager, 
         devices_found: List[Recorder], 

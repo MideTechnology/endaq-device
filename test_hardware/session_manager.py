@@ -66,6 +66,7 @@ class SessionManager:
         if self._device is None:
             self._device = safe_get_device(self.device_sn, 30)
             self.init_conf = self._device.config.getConfig()
+        self._device.command.awaitReconnect()
         return self._device
 
     @device.setter
@@ -140,7 +141,7 @@ class SessionManager:
         has_wifi = self.device.has_wifi
         return (has_wifi, False if not has_wifi else self._wifi_enabled)
 
-    def dememomize_device(self):
+    def dememoize_device(self):
         self._device = None
         self.init_conf = None
 

@@ -11,9 +11,6 @@ import calendar
 from datetime import datetime, timezone as tz
 
 
-class Payload:
-    payload = ''
-
 def test_standard_run(session_manager):
     """ Test a standard run of an enDAQ device."""
     # Set up; Confirm device is idle
@@ -115,20 +112,15 @@ def test_ping_payload(session_manager, index):
     # Connect to device
     device = session_manager.device
 
-    # Ensure the payload begins empty at start of loop
-    if index == 1:
-        Payload.payload == ''
-
-    # Increase the length of the payload and send it to ping()
-    Payload.payload += chr(index)
+    payload = "".join([chr(i) for i in range(index)])
     device.command.awaitReconnect(30)
-    returned_payload = device.command.ping(bytearray(Payload.payload, 'utf-8'))
-    print(f"\n{bytearray(Payload.payload, 'utf-8')} <-- Payload size {index}"
+    returned_payload = device.command.ping(bytearray(payload, 'utf-8'))
+    print(f"\n{bytearray(payload, 'utf-8')} <-- Payload size {index}"
           f"\n{returned_payload} <-- Returned Payload")
 
     # Confirm that ping() returns the same thing it was sent
     assert returned_payload == bytearray(
-        Payload.payload, 'utf-8'), f"ping() failed on size {index}."
+        payload, 'utf-8'), f"ping() failed on size {index}."
     
 def test_start_recording_wait(session_manager) :
     """ 

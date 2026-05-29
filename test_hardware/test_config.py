@@ -20,7 +20,7 @@ def test_set_config(session_manager):
     device.config.applyConfig()
     device.command.reset()
     
-    session_manager.dememomize_device()
+    session_manager.dememoize_device()
     dev = session_manager.device
     
     initial_dev_name = dev.name

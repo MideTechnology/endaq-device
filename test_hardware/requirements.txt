@@ -2,6 +2,4 @@ pytest
 pydantic
 endaq.ide>=1.1.0
 pytest-cov>=6.2.1
-pytest-random-order>=1.2.0
 pytest-json-report
-pytest-rerunfailures

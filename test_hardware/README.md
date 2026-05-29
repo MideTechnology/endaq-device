@@ -33,6 +33,15 @@ This flag has no effect if `--raspi` is enabled.
 
 > If you are testing a device with firmware < 3.01.00, it is **highly** recommended to not use this option. Older firmwares require interaction to stop recording, which can cause issues if --no_tty is enabled.
 
+### random-order / random-order-seed
+> **pytest-random-order** package is not compatible with this program. 
+
+It is good practice to run tests in random order, as to remove the possibility of tests
+passing because of other tests. This can be done with the  --random-order flag.
+
+To specify a seed, use --random-order-seed. Seeds are (typically large) integers, and allow
+the randomization to be "set", returning the same random results every run.
+
 ## Manual Testing
 If your computer is connected to an enDAQ with a **firmware version > 3.01.00**, these tests can be manually run using pytest:
 
@@ -90,3 +99,20 @@ To fix this, we call python straight from the venv. Assuming a venv named `.venv
 sudo .venv/bin/python -m pytest ...
 ```
 with the wanted parameters.
+
+### Conflicting Parameter --random-order / Runtime is unusally long
+In one of the earlier versions `pytest-random-order` was a required package. Now, it is explictly required to **not** have it installed. 
+This is intentional. Using `--random-order` from `pytest-random-order` invalidates some other pre-processing work done. `--random-order` was reimplemented directly, and `--random-order` / `--random-order-seed` still exist.
+
+To fix this, either remove the `pytest-random-order` package from pip, or make a new .venv with the
+following steps, relative to the `endaq-device` folder.
+```sh
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r ./requirements.txt
+python -m pip install -r ./test_hardware/requirements.txt
+```
+Replace step 2 with `.venv/Scripts/activate` (no source) in a powershell instance if you are on Windows.
+
+If the runtime is unusally long, it is most likely due to some other random ordering package. Steps
+to follow are same as above.

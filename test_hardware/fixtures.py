@@ -1,7 +1,3 @@
-"""
-Contains fixtures used in device tests. Note that some fixtures are in `conftest.py`
-"""
-from test_hardware.session_manager import SessionManager, safe_get_device
 import pytest
 import sys
 from test_hardware.helper_functions.hardware_interface import *
@@ -23,12 +19,8 @@ def test_cleanup(session_manager):
 
 @pytest.fixture(scope="session", autouse=True)
 def session_manager(device_sn, is_raspi):
-    yield SessionManager(
-        device_sn = device_sn, 
-        interface_mode = 2 if is_raspi else 1 if sys.stdin.isatty() else 0,
-        get_on_init=True
-        )
-
+    from test_hardware.conftest import SESSION_MANAGER
+    yield SESSION_MANAGER
 @pytest.fixture(scope="session", autouse=True)
 def setupTeardownSession(session_manager):
     """ Set up and teardown GPIO RasPi controls at the beginning and end
@@ -51,9 +43,12 @@ def setupTeardownSession(session_manager):
     config = GeneralConfig(**config_dict)
     if config.set_configs(device, quick_config=True):
         print(f"Applying updated config")
+        session_manager.dememoize_device()
+        device = session_manager.device
         device.config.applyConfig()
         device.command.reset()  # Need to reset the device to turn the wifi on
-        device = safe_get_device(timeout=30) # Wait for device to come back
+        session_manager.dememoize_device()
+        device = session_manager.device
 
     # Always update the device configuration
     if isinstance(session_manager.hw_interface, RaspiInterface):
@@ -73,3 +68,12 @@ def setupTeardownSession(session_manager):
     session_manager.end_session()
     print(f"Finished session")
 
+@pytest.fixture
+def disable_wifi(session_manager):
+    #TODO
+    yield
+
+@pytest.fixture
+def enable_wifi(session_manager):
+    #TODO
+    yield
