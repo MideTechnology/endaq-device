@@ -32,6 +32,7 @@ class DeviceStatusCode(IntEnum):
     WAKING = 101  #: Device is waking from sleep. This is currently intended for use only by the MQTT Device Manager.
     SLEEPING = 100  #: Device is currently in sleep mode, or will enter sleep mode soon after this response is received. *For future use.*
     OFFLINE = 110  #: Command Interface is going (or is currently) offline, for reason other than sleep.
+    SHUTDOWN = 111  #: Device is shutting down/powering off, or has shut down. Like `OFFLINE`, but the device will require explicit startup afterwards.
     RECORDING_PERIODIC = 310  #: Device is currently recording, checking Wi-Fi periodically.
     TRIGGERING_PERIODIC = 340  #: Device is currently triggering, checking Wi-Fi periodically.
     RECORDING_OFFLINE = 410  #: Device is currently recording, Wi-Fi disconnected.

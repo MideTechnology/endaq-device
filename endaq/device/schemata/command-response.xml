@@ -81,7 +81,7 @@
                 <UnicodeElement name="Password" />
             </MasterElement>
             <MasterElement name="MobileData" id="0x42A4" multiple="0" mandatory="0"> Gateway is connected to mobile data network (e.g., 4G)
-                <StringElement name="APN" id="0x42A5" multiple="0" mandatory="1"/>
+                <StringElement name="APN" id="0x42A5" multiple="0" mandatory="1"> Mobile data Access Point Name </StringElement>
                 <StringElement name="SIMPin" id="0x42A6" multiple="0" mandatory="1"/>
                 <StringElement name="MobileDataType" id="0x42A7" multiple="0" mandatory="0">The mobile data network type, e.g., "4G" (default)</StringElement>
             </MasterElement>
@@ -200,6 +200,7 @@
 	        410: Device is currently recording, Wi-Fi disconnected.
 	        340: Device is currently triggering, checking Wi-Fi periodically
 	        310: Device is currently recording, checking Wi-Fi periodically
+            111: Device is shutting down/powering off, or has shut down. Like `OFFLINE` (110), but the device will require explicit startup afterwards.
             110: Command Interface is going (or is currently) offline (for reason other than sleep)
             101: Device is waking from sleep. This is currently intended for use only by the MQTT Device Manager.
             100: Device is currently in sleep mode, or will enter sleep mode soon after this response is received.
