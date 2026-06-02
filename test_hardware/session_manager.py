@@ -1,10 +1,10 @@
 from typing import Optional, Literal, Union, List, Dict, Tuple, Any, TYPE_CHECKING
+from test_hardware.helper_functions.general_config import ConfigHelper
 import time
 import endaq.device
 from endaq.device import DeviceStatusCode as Status
 from endaq.device import Recorder
 from endaq.device.mqtt import MQTTConnector
-from test_hardware.helper_functions.general_config import GeneralConfig, GENERAL_CONFIG_IDS
 from test_hardware.helper_functions.hardware_interface import (
     HardwareInterface, MockInterface,
     TTYInterface, RaspiInterface
@@ -47,6 +47,8 @@ class SessionManager:
         self.hw_interface = self._determine_hardware_interface(interface_mode)
         if get_on_init:
             self._device = safe_get_device(device_sn)
+            ConfigHelper.reset_device_config(self._device)
+            self._device.config.loadConfig()
             self.init_conf = self._device.config.getConfig()
     
     def _determine_hardware_interface(self, interface_mode):
@@ -58,8 +60,6 @@ class SessionManager:
             return RaspiInterface()
         
         raise ValueError('interface_mode needs to be one of ("none", "tty", "raspi"), or (0,1,2), index respective')
-        
-        
 
     @property
     def device(self) -> endaq.device.base.Recorder:
@@ -138,6 +138,11 @@ class SessionManager:
 
         :return: a tuple of booleans, representing (wifi can be set, wifi is set)
         """
+        return (False, False)
+        """
+        This code has been truncated, as the current PR does not support wifi-enabled tests. 
+        This is restored in the wifi_device_tests_branch
+        """
         has_wifi = self.device.has_wifi
         return (has_wifi, False if not has_wifi else self._wifi_enabled)
 
@@ -183,16 +188,22 @@ class SessionManager:
         return changes
     
     def end_test(self, failed: bool):
-        self.device.command.awaitReconnect(timeout=30)
+        device = self.device
+        device.command.awaitReconnect(timeout=30)
         self.optional_stop()
-        self.device.command.setTime() #time isn't part of config ids, need way of resetting it
-        self.device.config.recordingDir = "RECORD" #recordingDir isn't part of the config ids
         if failed:
+            breakpoint()
             return self._cleanup_failure()
-        if self.device.config.getConfig() != self.init_conf:
-            self.device.config.loadConfig(self.init_conf)
-            self.device.config.applyConfig()
-        #revert all triggers to be disabled.
+        self._revert_cfg(device)
+
+    def _revert_cfg(self, device):
+        if not ConfigHelper.equal_cfg(device.config.config, self.init_conf):
+            device.command.awaitReconnect(timeout=15)
+            device.config.loadConfig(self.init_conf)
+            device.command.awaitReconnect(timeout=15)
+            device.config.applyConfig()
+            device.command.reset()
+            device.command.awaitReconnect(timeout = 60)
 
     def _cleanup_failure(self):
         """a "private" helper to deal with test failures."""
@@ -203,12 +214,7 @@ class SessionManager:
         self.optional_stop()
 
         #if config change, revert config
-        if device.config.config != self.init_conf:
-            device.config.loadConfig(device.config.config)
-            device.config.applyConfig()
-            self.device.command.reset()
-            device.command.awaitReconnect()
-        #hold button for 18 seconds.
+        self._revert_cfg(device)
             
     def end_session(self):
         """
@@ -243,6 +249,7 @@ class SessionManager:
         An AssertionError is raised if a Mock Interface is passed in. 
         """ 
         # Confirm device stopped recording
+        device = self.device
         if 20000 <= self.device.firmwareVersion <= 30100:
             #assert stopRecOldFW(device, is_raspi) is None
             if isinstance(self.hw_interface, MockInterface):
@@ -251,15 +258,15 @@ class SessionManager:
             else:
                 self.hw_interface.timed_button_press(0.5)
         else:
-            self.device.command.awaitReconnect(timeout=30)
-            assert self.device.command.stopRecording() is True, "Device did not stop recording."
+            device.command.awaitReconnect(timeout=30)
+            assert device.command.stopRecording() is True, "Device did not stop recording."
         
         #TODO: need alternative for WiFi devices
-        self.device.command.awaitRemount(timeout=30)
-        self.device.command.awaitReconnect(timeout=30)
-        self.device.command.ping()
-        assert (self.device.command.status[1] == Status.IDLE or
-                self.device.command.status[1] == Status.IDLE_UNMOUNTED), "Device is not idle."
+        device.command.awaitRemount(timeout=30)
+        device.command.awaitReconnect(timeout=30)
+        device.command.ping()
+        assert (device.command.status[1] == Status.IDLE or
+                device.command.status[1] == Status.IDLE_UNMOUNTED), "Device is not idle."
 
     def optional_stop(self) -> bool:
         """

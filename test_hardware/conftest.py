@@ -28,8 +28,13 @@ def _apply_wifi_toggles(items) -> List:
     for item in items:    
         matches = pattern.search(item.name)
         if matches:
+            """
+            The two lines of code below are temporarily disabled for the current PR.
+            This is actively being developed in the wifi_device_tests branch
+            
             item.fixturenames = copy(item.fixturenames)
             item.fixturenames.append(matches.group(1))
+            """
             if matches.group(1) == "enable_wifi":
                 item.add_marker(pytest.mark.wifi)
             else:
@@ -59,10 +64,6 @@ def pytest_addoption(parser):
         "-R", "--raspi", action="store_true", default=False, help="Include if running on a RasPi"
     )
     parser.addoption('--no_tty', action="store_true", default=False, help="")
-    parser.addoption(
-        "-N", "--num_attempts", type=int, default = 3, help="Sets the number of times to retry a test "\
-            "in case of a unexpected error."
-    )
     parser.addoption('--random-order', action="store_true", default=False, help=(
         "Include to randomize test execution order"
     ))
@@ -89,7 +90,7 @@ def pytest_generate_tests(metafunc):
     parametrize_with = []
     
     if "no_wifi" in marker_names:
-        parametrize_with.append('disable_wifi')    
+        parametrize_with.append('disable_wifi')
     elif "wifi" in marker_names:
         parametrize_with.append('enable_wifi')
         
@@ -98,7 +99,7 @@ def pytest_generate_tests(metafunc):
         if has_wifi:
             parametrize_with.append('enable_wifi')
 
-    metafunc.parametrize('wifi_toggle', parametrize_with)    
+    metafunc.parametrize('wifi_toggle', parametrize_with)
 
 def pytest_exception_interact(node, call, report):
     """
@@ -116,6 +117,8 @@ def pytest_collection_modifyitems(config, items):
     Defines how to treat tests with device type marks depending on the device 
     command line input.
     """
+    if config.getoption('--verbose'):
+        print('duplicating and seperating tests')
     is_raspi: bool = config.getoption('--raspi')
     no_tty: bool = ((config.getoption('-s') != "no" or config.getoption('--no_tty'))
                     and not is_raspi)
@@ -135,14 +138,20 @@ def pytest_collection_modifyitems(config, items):
     wifi_out = _seperate_by_cond(selected, lambda item: ('wifi' in item.keywords))
     #random output
     if config.getoption('--random-order'):
+        if config.getoption('--verbose'):
+            print('randomizing tests')
         shuffler = random.Random(config.getoption('--random-order-seed')).shuffle
         shuffler(wifi_out[0])
         shuffler(wifi_out[1])
     selected = wifi_out[0]
-    if wifi_compatible: 
-        selected += wifi_out[1]
-    else:
+    #This if block is used for the current non-wifi PR. This will be restored in wifi-device-tests
+    if True: 
         deselected += wifi_out[1]
+    else: 
+        if wifi_compatible: 
+            selected += wifi_out[1]
+        else:
+            deselected += wifi_out[1]
     config.hook.pytest_deselected(items = deselected)
     selected.sort(key = lambda item: 'wifi' in item.keywords)
     items[:] = selected

@@ -21,7 +21,6 @@ def test_standard_run(session_manager):
     assert device.serial == serial_number, "Did not reconnect to the same device."
     session_manager.stop_recording()
 
-@pytest.mark.skip('erroring on linux')
 class TestAwait:
     """
     Tests the 4 await functions in the device's command library

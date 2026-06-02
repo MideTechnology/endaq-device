@@ -1,128 +1,120 @@
-from pydantic import BaseModel, ConfigDict, PositiveInt, PositiveFloat, model_validator, NonNegativeInt, NonNegativeFloat
-import endaq.device as ed
-from typing_extensions import Self
+from ebmlite.core import loadSchema
+from typing import Union, Dict, Optional, TYPE_CHECKING
+from copy import deepcopy
+from pathlib import Path
 
-GENERAL_CONFIG_IDS = {  
-                'Name': 0x8FF7F,
-                'Notes': 0x9FF7F,
-                'CustomRecordingTags': 0x17FF7F,
-                'FileNameStyle': 0x16FF7F,
-                'RecordingDirectory': 0x14FF7F,
-                'RecordingFilePrefix': 0x15FF7F,
-                'PlugInAction': 0xAFF7F,
-                'ButtonMode': 0x10FF7F,
-                'UTCOffset': 0xBFF7F,
+from ebmlite.core import MasterElement
 
-                # WIFI
-                'WifiEnable': 0x18FF7F,
-                'WifiWhileAsleep': 0x28FF7F,
-                'WifiWhileTriggering': 0x29FF7F,
-                'WifiWhileRecording': 0x2AFF7F,
-                'WifiBrokerIPAddress': 0x25FF7F,
-                'WifimDNSInstanceName': 0x2BFF7F,
-                'WifiStreamRecordingData': 0x26FF7F,
-                'WifiUploadFile': 0x19FF7F,
+__ALL__ = ["ConfigHelper"]
 
-                # Triggers
-                'TriggerMode': 0x12FF7F,
-                'StartAtTime': 0xFFF7F,
-                'PreRecordingDelay': 0xCFF7F,
-                'RecordingTimeLimit': 0xDFF7F,
-                'RecordingFileSizeLimit': 0x11FF7F,
-                'Retrigger': 0xEFF7F,
-                'WaitforAllSensorConditions': 0x13FF7F,
-                'CtrlPadPressureTrigger': 0x50027, 
-                'CtrlPadPressureTriggerLow': 0x30027, 
-                'CtrlPadPressureTriggerHigh': 0x40027, 
-                'InternalPressureTrigger': 0x50024, 
-                'InternalPressureTriggerLow': 0x30024, 
-                'InternalPressureTriggerHigh': 0x40024, 
-                'CtrlPadTemperatureTrigger': 0x50127,
-                'CtrlPadTemperatureTriggerLow': 0x30127,
-                'CtrlPadTemperatureTriggerHigh': 0x40127,
-                'InternalTemperatureTrigger': 0x50124,
-                'InternalTemperatureTriggerLow': 0x30124,
-                'InternalTemperatureTriggerHigh': 0x40124,
-                'MainAccelerationTriggerLow': 0x3FF08,
-                'MainAccelerationTriggerHigh': 0x4FF08,
-                'AdxlAccelerationThreshold': 0x4FF50,
-                'AdxlAccelerationTriggerEnable': 0x5FF50,
-            }
+class ConfigHelper:
+    """
+    Both config options include a built-in time limit of 120 seconds. 
+    Wifi information contains the same as the base config, with the addition of
+    enabled wifi when idle, triggering, and recording, no endaq-cloud settings, and 
+    . the ip address is set to user preference
+    
+    """
+    @staticmethod
+    def to_master_element(p: Path):
+        with open(p, 'rb') as cfg:
+            return loadSchema('mide_ide.xml').loads(cfg.read())
 
+    @staticmethod
+    def get_config(
+            prefix: Optional[str] = None, 
+            path: Optional[Path] = None,
+            ipaddr: str = ""
+            ) -> Union[Dict, Path]:
+        """
 
-class GeneralConfig(BaseModel):
-    model_config = ConfigDict(extra='allow')
-    WifiEnable: NonNegativeInt = 0
-    WifiUploadFile: NonNegativeInt = 0
-    PlugInAction: NonNegativeInt = 0
-    ButtonMode: NonNegativeInt = 0
-    TriggerMode: NonNegativeInt = 0
-    PreRecordingDelay: NonNegativeInt = 0
-    RecordingTimeLimit: NonNegativeInt = 0
-    RecordingFileSizeLimit: NonNegativeInt = 0
-    Retrigger: NonNegativeInt = 0
-    WaitforAllSensorConditions: NonNegativeInt = 0
-    CtrlPadPressureTrigger: NonNegativeInt = 0
-    CtrlPadPressureTriggerLow: NonNegativeInt = 0
-    CtrlPadPressureTriggerHigh: NonNegativeInt = 119999
-    InternalPressureTrigger: NonNegativeInt = 0
-    InternalPressureTriggerLow: NonNegativeInt = 0
-    InternalPressureTriggerHigh: NonNegativeInt = 119999
-    CtrlPadTemperatureTrigger: NonNegativeInt = 0
-    CtrlPadTemperatureTriggerLow: int = -40
-    CtrlPadTemperatureTriggerHigh: int = 80
-    InternalTemperatureTrigger: NonNegativeInt = 0
-    InternalTemperatureTriggerLow: int = -40
-    InternalTemperatureTriggerHigh: int = 80
-    MainAccelerationTriggerLow: NonNegativeInt = 0
-    MainAccelerationTriggerHigh: NonNegativeInt = 0
-    AdxlAccelerationThreshold: NonNegativeInt = 0
-    AdxlAccelerationTriggerEnable: NonNegativeInt = 0
+        :param prefix: populates fields with a prefix, typically used to differentiate between sessions.
+            This prefix will populate: The device name, notes, and recording directory.
+            If left blank, the defaults will be maintained.
+        :param path: Note that this will overwrite any contents if it already exists.
+        :param wifi: a string 
 
-    @model_validator(mode='after')
-    def max_min_checker(self) -> Self:
-        if self.CtrlPadPressureTriggerLow > self.CtrlPadPressureTriggerHigh:
-            print(f"Warning! CtrlPad Press Trigger low/high values are swapped. Unswapping them")
-            self.CtrlPadPressureTriggerLow, self.CtrlPadPressureTriggerHigh = self.CtrlPadPressureTriggerHigh, self.CtrlPadPressureTriggerLow
-        if self.CtrlPadTemperatureTriggerLow > self.CtrlPadTemperatureTriggerHigh:
-            print(f"Warning! CtrlPad Temperature Trigger low/high values are swapped. Unswapping them")
-            self.CtrlPadTemperatureTriggerLow, self.CtrlPadTemperatureTriggerHigh = self.CtrlPadTemperatureTriggerHigh, self.CtrlPadTemperatureTriggerLow
-        if self.InternalPressureTriggerLow > self.InternalPressureTriggerHigh:
-            print(f"Warning! Internal Press Trigger low/high values are swapped. Unswapping them")
-            self.InternalPressureTriggerLow, self.InternalPressureTriggerHigh = self.InternalPressureTriggerHigh, self.InternalPressureTriggerLow
-        if self.InternalTemperatureTriggerLow > self.InternalTemperatureTriggerHigh:
-            print(f"Warning! Internal Temperature Trigger low/high values are swapped. Unswapping them")
-            self.InternalTemperatureTriggerLow, self.InternalTemperatureTriggerHigh = self.InternalTemperatureTriggerHigh, self.InternalTemperatureTriggerLow
-        if self.MainAccelerationTriggerLow > self.MainAccelerationTriggerHigh:
-            print(f"Warning! Main Accel Trigger low/high values are swapped. Unswapping them")
-            self.MainAccelerationTriggerLow, self.MainAccelerationTriggerHigh = self.MainAccelerationTriggerHigh, self.MainAccelerationTriggerLow
-        return self
-
-    def set_configs(self, dev: ed.Recorder, quick_config: bool=False, verbose: bool=False) -> bool:
-        item_dict = self.model_dump()
-        config_changed = False
-        dev.config.revert()     # Remove any unsaved changes
-        for key, value in item_dict.items():
-            if key in GENERAL_CONFIG_IDS:
-                cfg_id = GENERAL_CONFIG_IDS[key] 
-                if cfg_id not in dev.config.items:
-                    if verbose: print(f'setting {cfg_id} ({key}) does not exist')
-                    continue    # Setting does not exist for the device
-                if quick_config:
-                    if dev.config.items[GENERAL_CONFIG_IDS[key]].value == value:
-                        if verbose:
-                            print(f"{key} is already at the target value ({value})")
-                        continue
-                try:
-                    config_changed = True
-                    dev.config.items[GENERAL_CONFIG_IDS[key]].value = value
-                    if verbose:
-                        print(f"Updating config {key} from {dev.config.items[GENERAL_CONFIG_IDS[key]].value=} to {value=}") 
-                except KeyError:
-                    print(f"Could not set {key} ({GENERAL_CONFIG_IDS[key]}) to {value}. Probably fine")
-                except ValueError as ve:
-                    print(f"WARNING! Value Error Could not set {key} ({GENERAL_CONFIG_IDS[key]}) to {value}. Error:\n{ve}")
+        :return: a Dict following `mide.xml` formatting in ebmlite, otherwise returing
+            the path given in the :param:path variable
+        """
+        new_cfg = deepcopy([_base_no_wifi_config, _base_wifi_config][ipaddr == ""].dump())
+        modification_values = []
+        new_cfg_rci = new_cfg['RecorderConfigurationList']['RecorderConfigurationItem']
+        ids_in_list = map(lambda x: x['ConfigID'], new_cfg_rci)
+        if prefix is not None:
+            modification_values += [
+                (0x8ff7f, 'TextValue', prefix), 
+                (0x9ff7f, "TextValue", "note: " + prefix), #notes
+                (0x0dff7f,'UIntValue', 120), #Recording time limit
+                (0x14ff7f, "ASCIIValue", prefix + "_RECORD") #recdir
+                ]
+        if ipaddr:
+            modification_values.append((0x25ff7f, 'ASCIIValue', ipaddr))
+        for id, v_type, change_to in modification_values:
+            if id in ids_in_list:
+                new_cfg_rci[ids_in_list.index(id)][v_type] = change_to
             else:
-                print(f"Unrecognized configuration element: {key=}, {value=}")
-        return config_changed
+                new_cfg_rci.append({'ConfigID': id, v_type: change_to})
 
+        if path is None:
+            return new_cfg
+            
+        with open(path, 'wb') as f:
+            loadSchema('mide_ide.xml').encode(f, new_cfg)
+            
+    @staticmethod
+    def reset_device_config(
+        device, 
+        prefix: Optional[str] = None,
+        ipaddr: str=None
+        ) -> bool:
+        """
+        resets the device configuration to the "base"
+
+        :return: a boolean, dictating if the operation was successful
+        """
+        try:
+            device.config.revert()
+            devsyspath = Path(device.path) / Path('SYSTEM/config.cfg') 
+            ConfigHelper.get_config(prefix, devsyspath, ipaddr)
+            device.config.loadConfig() 
+            device.command.reset()
+            device.command.awaitReconnect(timeout = 60)
+            return True
+        except:
+            return False
+
+    @staticmethod
+    def equal_cfg(
+        cfg_a : Union[dict, MasterElement, Path], 
+        cfg_b: Union[dict, MasterElement, Path]
+        ) -> Optional[bool]:
+        """
+        Determines if two cfg instances are equal, defined in params.
+        
+        :param cfg_a: configuration information, either as a path, 
+            or the dumped output from dev.config.config.dump()
+        :param cfg_b: configuration information, either as a path, 
+            or the dumped output from dev.config.config.dump()
+
+        :return: None if the operation was unable to be performed, otherwise a boolean.
+        """
+        #NOTE: the implementation of ebml document equivalence is not what we want,
+        #      instead, we convert it down to a dictionary, which has our wanted equality checks
+        try:
+            if isinstance(cfg_a, Path): cfg_a = ConfigHelper.to_master_element(cfg_a)
+            if isinstance(cfg_b, Path): cfg_b = ConfigHelper.to_master_element(cfg_b)
+            if isinstance(cfg_a, MasterElement): cfg_a = cfg_a.dump()
+            if isinstance(cfg_b, MasterElement): cfg_b = cfg_b.dump()
+        except:
+            #most likely due to a path not existing / not being a "MasterElement" path.
+            return None
+
+        return cfg_a == cfg_b
+    
+_base_no_wifi_config = ConfigHelper.to_master_element(
+    Path("./test_hardware/helper_functions/no_wifi.cfg")
+    ) #TODO: update both to contain a rec time limit of 120
+_base_wifi_config: MasterElement = ConfigHelper.to_master_element(
+    Path("./test_hardware/helper_functions/wifi.cfg")
+    )

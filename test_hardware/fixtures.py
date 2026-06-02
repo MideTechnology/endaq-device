@@ -1,7 +1,6 @@
 import pytest
 import sys
 from test_hardware.helper_functions.hardware_interface import *
-from test_hardware.helper_functions.general_config import GeneralConfig
 
 #===   ===#
 @pytest.fixture(scope="session")
@@ -34,22 +33,7 @@ def setupTeardownSession(session_manager):
     device = session_manager.device
     has_wifi = device.hasWifi
     print(f"Setting up session")
-    config_dict = {
-        "WifiEnable": 1 if has_wifi else 0, 
-        "PreRecordingDelay": 0, 
-        "RecordingTimeLimit": 120
-        }
     hw = session_manager.hw_interface
-    config = GeneralConfig(**config_dict)
-    if config.set_configs(device, quick_config=True):
-        print(f"Applying updated config")
-        session_manager.dememoize_device()
-        device = session_manager.device
-        device.config.applyConfig()
-        device.command.reset()  # Need to reset the device to turn the wifi on
-        session_manager.dememoize_device()
-        device = session_manager.device
-
     # Always update the device configuration
     if isinstance(session_manager.hw_interface, RaspiInterface):
         print("\nSetting up RasPi...")
