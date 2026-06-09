@@ -18,6 +18,8 @@ from .mqtt_interface import MQTT_BROKER, MQTT_PORT
 from .discovery import DEFAULT_NAME, splitServiceName, findBrokers
 from ..util import getMyIP
 
+from endaq.device import __version__
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,6 +33,7 @@ class Advertiser(Thread):
                  rename: bool = True,
                  address: Optional[str] = MQTT_BROKER,
                  port: int = MQTT_PORT,
+                 notes: Optional[str] = None,
                  properties: Optional[Dict[str, Any]] = None):
         """
         A thread that does mDNS service advertising of the MQTT broker.
@@ -39,6 +42,8 @@ class Advertiser(Thread):
         :param address: The broker's address. Defaults to the machine running
             the advertising thread.
         :param port: The broker's port number.
+        :param notes: An optional description of the broker/manager; if
+            provided, the notes will be included in the service advertising.
         :param properties: An optional dictionary of additional data to be
             included in the service advertising.
         """
@@ -47,6 +52,11 @@ class Advertiser(Thread):
         self.serviceName, self.serviceType = splitServiceName(name)
         self.properties = properties or {}
         self.fullName = f'{self.serviceName}.{self.serviceType}'
+
+        self.properties['manager_version'] = __version__
+
+        if notes:
+            self.properties['notes'] = notes
 
         # TODO: IPv6 support?
         self.address = address or getMyIP()
