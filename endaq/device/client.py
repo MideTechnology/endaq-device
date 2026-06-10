@@ -134,19 +134,19 @@ class CommandClient:
 
     @synchronized
     def setStatus(self,
-                  stateCode: Union[DeviceStatusCode, int],
-                  stateMsg: Optional[str] = None):
+                  statusCode: Union[DeviceStatusCode, int],
+                  statusMsg: Optional[str] = None):
         """ Set the client's system state code (and, optionally, message).
             Use this method instead of setting `stateCode` or `stateMsg`
             directly, in order to ensure responses don't get mismatched
             codes and messages.
 
-            :param stateCode: The client's `DeviceStatusCode`.
-            :param stateMsg: An optional description of the current state.
+            :param statusCode: The client's `DeviceStatusCode`.
+            :param statusMsg: An optional description of the current state.
         """
-        stateCode = DeviceStatusCode.IDLE_UNMOUNTED if self.statusCode is None else stateCode
-        self.statusCode = int(stateCode) if stateCode is not None else None
-        self.statusMsg = stateMsg
+        statusCode = DeviceStatusCode.IDLE_UNMOUNTED if self.statusCode is None else statusCode
+        self.statusCode = int(statusCode) if statusCode is not None else None
+        self.statusMsg = statusMsg
 
 
     @synchronized
@@ -202,7 +202,7 @@ class CommandClient:
         if self.statusCode is not None:
             response['DeviceStatusCode'] = self.statusCode
             if self.statusMsg:
-                response['DeviceStatusMsg'] = self.statusMsg
+                response['DeviceStatusMessage'] = self.statusMsg
         if self.lockId:
             response['LockID'] = self.lockId
 

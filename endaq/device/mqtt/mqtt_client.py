@@ -211,6 +211,23 @@ class MQTTClient(CommandClient):
 
 
     @synchronized
+    def setStatus(self,
+                  statusCode: Union[DeviceStatusCode, int],
+                  statusMsg: Optional[str] = None):
+        """ Set the client's system state code (and, optionally, message).
+            Use this method instead of setting `stateCode` or `stateMsg`
+            directly, in order to ensure responses don't get mismatched
+            codes and messages. The MQTT version will also publish a
+            state update.
+
+            :param statusCode: The client's `DeviceStatusCode`.
+            :param statusMsg: An optional description of the current state.
+        """
+        super().setStatus(statusCode, statusMsg)
+        self.updateState()
+
+
+    @synchronized
     def sendResponse(self,
                      recipient: Any,
                      packet: ByteString,
