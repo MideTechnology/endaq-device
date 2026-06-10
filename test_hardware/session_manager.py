@@ -4,6 +4,7 @@ import time
 import endaq.device
 from endaq.device import DeviceStatusCode as Status
 from endaq.device import Recorder
+from ebmlite.core import MasterElement
 from endaq.device.mqtt import MQTTConnector
 from test_hardware.helper_functions.hardware_interface import (
     HardwareInterface, MockInterface,
@@ -11,14 +12,14 @@ from test_hardware.helper_functions.hardware_interface import (
 )
 import time
 from pathlib import Path
+from tempfile import TemporaryDirectory
+import glob
 
 __all__ = ["SessionManager", "safe_get_device"]
 type interface_types = Union[Literal[0, "none"],
                              Literal[1, "tty"],
                              Literal[2, "raspi"]
                              ]
-if TYPE_CHECKING:
-    from ebmlite.core import MasterElement
 
 class SessionManager:
     """
@@ -36,6 +37,7 @@ class SessionManager:
     _device: Optional[endaq.device.base.Recorder]
     init_conf: Optional["MasterElement"] 
     hw_interface: HardwareInterface
+    _wifi_dir: Optional[Path]
 
     def __init__(
             self, 
@@ -103,7 +105,7 @@ class SessionManager:
             raise ValueError(f"device_sn {device_sn} is invalid")
         self._device_sn = device_sn
         self._device = safe_get_device(device_sn = device_sn)
-   
+    
     @staticmethod
     def valid_sn(device_sn: Union[str, int]) -> bool:
         """
@@ -126,7 +128,6 @@ class SessionManager:
 
         return False
 
-
     @property
     def wifi_state(self) -> Tuple[bool, bool]:
         """
@@ -138,14 +139,39 @@ class SessionManager:
 
         :return: a tuple of booleans, representing (wifi can be set, wifi is set)
         """
-        return (False, False)
-        """
-        This code has been truncated, as the current PR does not support wifi-enabled tests. 
-        This is restored in the wifi_device_tests_branch
-        """
+
         has_wifi = self.device.has_wifi
         return (has_wifi, False if not has_wifi else self._wifi_enabled)
 
+    def _setup_wifi_info(self, wifi_env_kwargs: dict[str, Any]) -> Optional[MQTTConnector]:
+        """
+        This method does nothing if the attached device does not support WiFi
+
+        :return: MQTTConnector if the device attached is WiFi compatible, otherwise nothing
+        """
+        if not self.device.hasWifi:
+            return
+        setup_wifi_environment(**wifi_env_kwargs)
+        #create tmp dir
+        raise NotImplementedError("tmpDir still needs to be created")
+
+    @property
+    def recordingDirectory(self) -> Path:
+        """
+        The recording directory where the files are stored.
+
+        :return: the device path if a serial test is performed, the directory with the
+            streamed data if a remote test is performed
+
+        :raises ValueError: if a directory does not exist, either due to a physical device being unmounted,
+        or no path was set for remote recordings.
+        """ 
+        if self.wifi_state[1]: return self._wifi_dir
+        device = self.device
+        if device.path is None: raise ValueError("device is not connected, remotely or serially")
+        return Path(device.path) / Path(device.config.recordingDir + r"/RECORD/")
+        
+        
     def dememoize_device(self):
         self._device = None
         self.init_conf = None
@@ -158,34 +184,6 @@ class SessionManager:
         """
         return self.device.serial == other.serial
 
-    def apply_conf(self, conf: Optional[Dict], revert_to_base: bool = True):
-        """
-        Intended to be used During test startup. For singular values, it is recommended to instead
-        use `device.config.items[Foo].value = Bar`. It'll be marginally faster, but significantly
-        easier to parse at a glance.
-
-        :param conf: The values to change
-        :param revert_to_base: If set to true, the default config will be used in conjunction
-            with the set values in :param:`conf`. If set to False, only the items set in 
-            :param:`conf` will be changed. 
-            
-        """
-        if conf is None: conf = {}
-
-        if revert_to_base:
-            changes = GeneralConfig(**conf).set_configs(self.device)
-        else:
-            changes = len(conf) != 0
-            for k, v in conf.items():
-                self.device.items[GENERAL_CONFIG_IDS[k]].value = v
-
-        if changes:
-            self.device.config.applyConfig()
-            if conf.get('WifiEnable', 0):
-                self.device.command.awaitReconnect(timeout=30)
-                self.device.command.reset()
-                self.device.command.awaitReconnect(timeout=30)
-        return changes
     
     def end_test(self, failed: bool):
         device = self.device
@@ -235,7 +233,6 @@ class SessionManager:
         """
         self.device.command.startRecording()
         if isinstance(status, Status): status = [status]
-        #assert wait_for_status(device, status)
         self.device.command.awaitReconnect(30)
         self.device.command.ping()
         assert (self.device.command.status[1] in status
@@ -261,9 +258,7 @@ class SessionManager:
             device.command.awaitReconnect(timeout=30)
             assert device.command.stopRecording() is True, "Device did not stop recording."
         
-        #TODO: need alternative for WiFi devices
-        device.command.awaitRemount(timeout=30)
-        device.command.awaitReconnect(timeout=30)
+        device.command.awaitReconnect(timeout=60)
         device.command.ping()
         assert (device.command.status[1] == Status.IDLE or
                 device.command.status[1] == Status.IDLE_UNMOUNTED), "Device is not idle."
@@ -296,10 +291,25 @@ class SessionManager:
         Follows the same rules as start_recording and stop_recording. 
         And returns a path to the recording
         """
+
         self.start_recording(status)
+        if self.wifi_state[1]: self.device.command.saveStream(self.recordingDirectory)
         time.sleep(length)
+        if self.wifi_state[1]: self.device.command.closeStream()
         self.stop_recording()
 
+    def get_newest_rec(self) -> Optional[Path]:
+        """
+        newest is **not** dictated by timestamp, as that is relevant on system time, which can 
+        be changed. Instead, we get the prefix, then find the recording with the latest number
+        attached to it.
+        """
+        directory = self.recordingDirectory
+        prefix = self.device.config.items[0x15ff7f].value
+        prefixed_files = filter(lambda x: x.startswith(prefix), glob.glob(directory))
+        latest = max(prefixed_files) if prefixed_files is not [] else None
+        return latest
+            
 def safe_get_device(device_sn: str="", timeout: int=15, unmounted=False) -> endaq.device.Recorder:
     """
     
@@ -322,3 +332,15 @@ def safe_get_device(device_sn: str="", timeout: int=15, unmounted=False) -> enda
     devices = endaq.device.getDevices()
     raise endaq.device.exceptions.CommunicationError(f"Could not find device {device_sn} in "\
                                                      f"{timeout} seconds. Attached Devices: {devices}")
+
+def setup_wifi_environment(
+        port: int = 1883,
+        start_mosquitto_broker: bool = False,
+        mosquitto_conf: Optional[Path] = None) -> MQTTConnector:
+    """
+
+    :param mosquitto_conf: defaults to 1883.
+    :param: start_mosquitto_broker: .
+    """
+    raise NotImplementedError("setup_wifi_environment has not yet been implemented")
+

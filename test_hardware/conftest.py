@@ -8,6 +8,7 @@ import random
 import re
 import sys
 from copy import copy 
+from pathlib import Path
 
 pytest_plugins = [
     'test_hardware.fixtures'
@@ -69,6 +70,9 @@ def pytest_addoption(parser):
     ))
     parser.addoption("--random-order-seed", type=int, default=None, help=(
         "Included to give the randomizer a set seed."
+    ))
+    parser.addoption("-C", "--config", default="./endaq-device/mosquitto.conf", help= ("Specifies a "
+    "mosquitto config file, for wifi tests (if applicable). Defaults to endaq-device/mosquitto.conf"
     ))
 
 def pytest_configure(config):
@@ -144,14 +148,10 @@ def pytest_collection_modifyitems(config, items):
         shuffler(wifi_out[0])
         shuffler(wifi_out[1])
     selected = wifi_out[0]
-    #This if block is used for the current non-wifi PR. This will be restored in wifi-device-tests
-    if True: 
+    if wifi_compatible: 
+        selected += wifi_out[1]
+    else:
         deselected += wifi_out[1]
-    else: 
-        if wifi_compatible: 
-            selected += wifi_out[1]
-        else:
-            deselected += wifi_out[1]
     config.hook.pytest_deselected(items = deselected)
     selected.sort(key = lambda item: 'wifi' in item.keywords)
     items[:] = selected
