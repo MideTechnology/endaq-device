@@ -1233,7 +1233,7 @@ class Recorder:
             if c is not None:
                 return c
 
-        self.getSensors()
+        self.getCalibration(user)
         if self._calPolys is None:
             self._calPolys = self._parsePolynomials(self._calData)
 
