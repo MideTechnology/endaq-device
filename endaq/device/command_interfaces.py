@@ -648,7 +648,6 @@ class CommandInterface:
               timeout: Union[int, float] = 5,
               callback: Optional[Callable] = None) -> bool:
         """ Reset (reboot) the recorder.
-            Must be implemented in every subclass.
 
             :param wait: If `True`, wait for the recorder to respond and/or
                 disconnect, indicating the reset has started.
@@ -659,6 +658,25 @@ class CommandInterface:
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
                 require no arguments.
+            :returns: `True` if the command was successful.
+        """
+        raise NotImplementedError
+
+
+    def shutdown(self,
+                 wait: bool = True,
+                 timeout: Union[int, float] = 5,
+                 callback: Optional[Callable] = None) -> bool:
+        """ Shut down/power off the device. Not supported on all devices.
+
+            :param wait: If `True`, wait for the device to respond and/or
+                disconnect, indicating it is shutting down.
+            :param timeout: Time (in seconds) to wait for the device to
+                respond. 0 will return immediately.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a response
+                will be cancelled. The callback function should require no
+                arguments.
             :returns: `True` if the command was successful.
         """
         raise NotImplementedError
