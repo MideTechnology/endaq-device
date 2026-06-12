@@ -1,6 +1,11 @@
-from typing import Optional, Literal, Union, List, Dict, Tuple, Any, TYPE_CHECKING
-from test_hardware.helper_functions.general_config import ConfigHelper
+from typing import Optional, Literal, Union, List, Tuple, Any
+from test_hardware.helper_functions.general_config import (
+        equal_cfg, to_master_element,
+        ConfigLocker
+        )
 import time
+import string
+import uuid
 import endaq.device
 from endaq.device import DeviceStatusCode as Status
 from endaq.device import Recorder
@@ -14,6 +19,10 @@ import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import glob
+import subprocess
+import platform
+import logging
+
 
 __all__ = ["SessionManager", "safe_get_device"]
 type interface_types = Union[Literal[0, "none"],
@@ -35,10 +44,11 @@ class SessionManager:
     """
     _device_sn: str
     _device: Optional[endaq.device.base.Recorder]
-    init_conf: Optional["MasterElement"] 
+    _config_locker: ConfigLocker
     hw_interface: HardwareInterface
     _wifi_dir: Optional[Path]
-
+    _session_prefix: str
+    
     def __init__(
             self, 
             device_sn: str, 
@@ -47,12 +57,13 @@ class SessionManager:
             ):
         self.device_sn = device_sn
         self.hw_interface = self._determine_hardware_interface(interface_mode)
+        self._session_prefix = uuid.uuid4().hex[:5] #set to 5 for readability
+        self._config_locker = ConfigLocker(self._session_prefix)
         if get_on_init:
             self._device = safe_get_device(device_sn)
-            ConfigHelper.reset_device_config(self._device)
             self._device.config.loadConfig()
-            self.init_conf = self._device.config.getConfig()
-    
+            self._config_locker.revert_to_base(self._device, False)
+
     def _determine_hardware_interface(self, interface_mode):
         if interface_mode == 0 or interface_mode == "none":
             return MockInterface()
@@ -67,7 +78,6 @@ class SessionManager:
     def device(self) -> endaq.device.base.Recorder:
         if self._device is None:
             self._device = safe_get_device(self.device_sn, 30)
-            self.init_conf = self._device.config.getConfig()
         self._device.command.awaitReconnect()
         return self._device
 
@@ -75,7 +85,6 @@ class SessionManager:
     def device(self, device: endaq.device.base.Recorder):
         self.device_sn = device.serial
         self._device = device
-        self.init_conf = device.config.getConfig()
 
     @property
     def device_sn(self):
@@ -105,7 +114,7 @@ class SessionManager:
             raise ValueError(f"device_sn {device_sn} is invalid")
         self._device_sn = device_sn
         self._device = safe_get_device(device_sn = device_sn)
-    
+   
     @staticmethod
     def valid_sn(device_sn: Union[str, int]) -> bool:
         """
@@ -140,23 +149,22 @@ class SessionManager:
         :return: a tuple of booleans, representing (wifi can be set, wifi is set)
         """
 
-        has_wifi = self.device.has_wifi
+        has_wifi = self.device.hasWifi
         return (has_wifi, False if not has_wifi else self._wifi_enabled)
 
-    def _setup_wifi_info(self, wifi_env_kwargs: dict[str, Any]) -> Optional[MQTTConnector]:
+    def _setup_wifi_info(self) -> Optional[MQTTConnector]:
         """
-        This method does nothing if the attached device does not support WiFi
+        This method does nothing if the attached device does not support WiFi.
 
-        :return: MQTTConnector if the device attached is WiFi compatible, otherwise nothing
+        :return: MQTTConnector if the device attached is WiFi compatible, otherwise None
         """
         if not self.device.hasWifi:
             return
-        setup_wifi_environment(**wifi_env_kwargs)
-        #create tmp dir
-        raise NotImplementedError("tmpDir still needs to be created")
+        self._wifi_dir = TemporaryDirectory()
+        return setup_wifi_environment()
 
     @property
-    def recordingDirectory(self) -> Path:
+    def recordingDirectory(self) -> str:
         """
         The recording directory where the files are stored.
 
@@ -169,12 +177,23 @@ class SessionManager:
         if self.wifi_state[1]: return self._wifi_dir
         device = self.device
         if device.path is None: raise ValueError("device is not connected, remotely or serially")
-        return Path(device.path) / Path(device.config.recordingDir + r"/RECORD/")
-        
+        device.config.loadConfig()
+        return str(Path(device.path) / Path(r"DATA/" + device.config.recordingDir + r"/RECORD/"))
+    
+    @property
+    def session_prefix(self):
+        """
+        The session prefix is a UUID4 responsible for creating unique
+        values, including: name (prefix_name), notes (prefix_notes), recording prefix (prefix_rec).
+        """
+        return self._session_prefix
+
+    @session_prefix.setter
+    def session_prefix(self, prefix):
+        self._session_prefix = prefix
         
     def dememoize_device(self):
         self._device = None
-        self.init_conf = None
 
     def same_device(self, other: Recorder) -> bool:
         """
@@ -190,19 +209,16 @@ class SessionManager:
         device.command.awaitReconnect(timeout=30)
         self.optional_stop()
         if failed:
-            breakpoint()
             return self._cleanup_failure()
         self._revert_cfg(device)
 
     def _revert_cfg(self, device):
-        if not ConfigHelper.equal_cfg(device.config.config, self.init_conf):
-            device.command.awaitReconnect(timeout=15)
-            device.config.loadConfig(self.init_conf)
-            device.command.awaitReconnect(timeout=15)
-            device.config.applyConfig()
-            device.command.reset()
-            device.command.awaitReconnect(timeout = 60)
-
+        base_config = self._config_locker.get_config(self.wifi_state[1])
+        if not equal_cfg(
+                device.config.config, 
+                base_config
+                ):
+            self._config_locker.revert_to_base(device, self.wifi_state[1])
     def _cleanup_failure(self):
         """a "private" helper to deal with test failures."""
         device = self.device
@@ -226,12 +242,17 @@ class SessionManager:
 
     #=== RECORDING HELPERS ===#
 
-    def start_recording(self, status: Union[Status, List[Status]] = Status.RECORDING):
+    def start_recording(self, status: Optional[Union[Status, List[Status]]] = Status.RECORDING):
         """
         Runs through the starting process of a device, using device.command.startRecording(),
         regardless of the hardware interface, and asserting that the right values are set.
         """
         self.device.command.startRecording()
+        if status is None: 
+            if self.wifi_state[1]:
+                status = [Status.START_PENDING, Status.STREAMING]
+            else: 
+                status = [Status.RECORDING] 
         if isinstance(status, Status): status = [status]
         self.device.command.awaitReconnect(30)
         self.device.command.ping()
@@ -248,7 +269,6 @@ class SessionManager:
         # Confirm device stopped recording
         device = self.device
         if 20000 <= self.device.firmwareVersion <= 30100:
-            #assert stopRecOldFW(device, is_raspi) is None
             if isinstance(self.hw_interface, MockInterface):
                 assert self.hw_interface != MockInterface, "Recording can only be stopped with a " \
                 "Interactively, through -s or --raspi."
@@ -261,7 +281,8 @@ class SessionManager:
         device.command.awaitReconnect(timeout=60)
         device.command.ping()
         assert (device.command.status[1] == Status.IDLE or
-                device.command.status[1] == Status.IDLE_UNMOUNTED), "Device is not idle."
+                device.command.status[1] == Status.IDLE_UNMOUNTED or
+                device.command.status[1] == Status.SLEEPING), "Device is not idle."
 
     def optional_stop(self) -> bool:
         """
@@ -291,12 +312,14 @@ class SessionManager:
         Follows the same rules as start_recording and stop_recording. 
         And returns a path to the recording
         """
-
         self.start_recording(status)
-        if self.wifi_state[1]: self.device.command.saveStream(self.recordingDirectory)
+        if self.wifi_state[1]:
+            self.device.command.saveStream(self.recordingDirectory)
         time.sleep(length)
-        if self.wifi_state[1]: self.device.command.closeStream()
+        if self.wifi_state[1]: 
+            self.device.command.closeStream()
         self.stop_recording()
+        return self.get_newest_rec()
 
     def get_newest_rec(self) -> Optional[Path]:
         """
@@ -306,7 +329,7 @@ class SessionManager:
         """
         directory = self.recordingDirectory
         prefix = self.device.config.items[0x15ff7f].value
-        prefixed_files = filter(lambda x: x.startswith(prefix), glob.glob(directory))
+        prefixed_files = filter(lambda x: x.startswith(prefix), glob.glob(directory + r"/*"))
         latest = max(prefixed_files) if prefixed_files is not [] else None
         return latest
             
@@ -336,11 +359,22 @@ def safe_get_device(device_sn: str="", timeout: int=15, unmounted=False) -> enda
 def setup_wifi_environment(
         port: int = 1883,
         start_mosquitto_broker: bool = False,
-        mosquitto_conf: Optional[Path] = None) -> MQTTConnector:
+        mosquitto_conf: Optional[Path] = None,
+        supress_logging: bool = True) -> MQTTConnector:
     """
+    
 
     :param mosquitto_conf: defaults to 1883.
-    :param: start_mosquitto_broker: .
+    :param start_mosquitto_broker: To start the.
+    :param : . default is None, which retreives the mosquitto.conf from 
+        endaq-device root.
+    :param supress_logging: . 
     """
-    raise NotImplementedError("setup_wifi_environment has not yet been implemented")
+    mosquitto_caller = "mosquitto" if platform.system() == "Linux" else ...
+    subprocess.call([mosquitto_caller, "-c", mosquitto_conf or "./mosquitto.conf"])
+    if supress_logging:
+        logging.disable(logging.CRITICAL)
+        
+    endaq.device.mqtt.manager.start(background=True)
+    return MQTTConnector.find()
 
