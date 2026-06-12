@@ -329,7 +329,7 @@ class SessionManager:
         """
         directory = self.recordingDirectory
         prefix = self.device.config.items[0x15ff7f].value
-        prefixed_files = filter(lambda x: x.startswith(prefix), glob.glob(directory + r"/*"))
+        prefixed_files = glob.glob(directory + f"/{prefix}*")
         latest = max(prefixed_files) if prefixed_files is not [] else None
         return latest
             

@@ -161,5 +161,6 @@ class ConfigLocker:
         if equal_cfg(device.config.getConfig, base_config):
             return False
         device.config.loadConfig(base_config)
-        pass
+        device.config.applyConfig()
+        device.command.awaitReconnect(timeout=30)
 

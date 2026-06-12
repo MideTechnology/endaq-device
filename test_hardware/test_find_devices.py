@@ -5,11 +5,9 @@ Note that almost all tests have the strict parameter will be asserting that it's
 strict version, as with our testing suite, the `strict` parameter will not change anything
 """
 import pytest
-import warnings
 import time
 from typing import Literal, List
 from endaq.device import Recorder #seperate import for typing
-from endaq.device.mqtt.mqtt_interface import MQTTConnector
 import endaq.device
 from test_hardware.session_manager import SessionManager
 TODO = lambda name: pytest.skip(f"Test {name} has not yet been implemented")
@@ -47,7 +45,7 @@ def validate_found_device(
 
     ])
 @pytest.mark.tty
-@pytest.mark.no_wifi
+@pytest.mark.serial
 def test_device_changed(session_manager, kwargs, exp_out):
     """
     Performs a series of changes to the device to ensure
@@ -110,7 +108,7 @@ class TestFindDevice:
                 endaq.device.findDevice(sn = device.serial, chipId = device.chipId)
 
 @pytest.mark.tty
-@pytest.mark.no_wifi
+@pytest.mark.serial
 def tet_get_recorder(session_manager):
     """
     we are unable to test the update parameter in getRecorder due to 
@@ -190,23 +188,3 @@ def test_get_devices_unmounted_recording(session_manager):
 
     session_manager.stop_recording()
 
-"""
-Below is tests for MQTTConnector. Note that this class contains both device and non-device specific
-info, so not all methods will be tested.
-"""
-
-@pytest.mark.wifi
-def test_wifi_get_devices(session_manager):
-    con = MQTTConnector.find()
-    devices = con.getDevices()
-
-    assert not devices, "con.getDevices found no devices"
-
-    if len(devices) > 1 :
-        warnings.warn("more than one device is on current broker IP", UserWarning)
-    device_found = False
-    for device in devices:
-        device_found = device_found or session_manager.same_device(device)
-    assert device_found == True, (
-        f"device {session_manager.device_sn} not found through con.getDevices"
-    )

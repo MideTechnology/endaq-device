@@ -45,7 +45,7 @@ class TestAwait:
         device.command.awaitReconnect(timeout = 30)
     
     #wifi devices can never dismount because they aren't mounted
-    @pytest.mark.no_wifi
+    @pytest.mark.serial
     def test_await_dismount(self, session_manager):
         """
     
@@ -81,7 +81,7 @@ class TestAwait:
         device.command.awaitRemount()
 
     #wifi devices can never remount because they aren't mounted
-    @pytest.mark.no_wifi
+    @pytest.mark.serial
     def test_await_remount(self, session_manager):
         """
         Tests that waiting for a remount is near instantaneous when the device is
@@ -98,6 +98,9 @@ class TestAwait:
         device.command.awaitRemount(timeout = 30)
         device.command.awaitRemount(timeout = 2)
 
+# This test only works if looped in sequential order. Random order is disabled
+# for this reason.
+@pytest.mark.random_order(disabled=True)
 @pytest.mark.parametrize("index", range(1, 31))
 def test_ping_payload(session_manager, index):
     """ 
@@ -225,15 +228,3 @@ class TestLock:
         #tests that clearing non-existant lockID doesn't break
         assert device.command.clearLockID()
 
-@pytest.mark.no_wifi
-@pytest.mark.parametrize("cmd_name", [])
-def test_no_wifi_invalid_commands(session_manager, cmd_name):
-    """
-    Tests that the commands on devices with no wifi connection raise the correct error.
-    """
-
-    device = session_manager.device
-    if not hasattr(device.command, cmd_name):
-        pytest.fail(f"Command interface expected to have {cmd_name}, but wasn't present")
-    with pytest.raises(Exception): #TODO: get the proper Exception
-        getattr(device.command, cmd_name)()
