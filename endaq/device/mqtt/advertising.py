@@ -34,7 +34,8 @@ class Advertiser(Thread):
                  address: Optional[str] = MQTT_BROKER,
                  port: int = MQTT_PORT,
                  notes: Optional[str] = None,
-                 properties: Optional[Dict[str, Any]] = None):
+                 properties: Optional[Dict[str, Any]] = None,
+                 **kwargs):
         """
         A thread that does mDNS service advertising of the MQTT broker.
 
@@ -47,6 +48,8 @@ class Advertiser(Thread):
         :param properties: An optional dictionary of additional data to be
             included in the service advertising.
         """
+        if kwargs:
+            logger.debug(f'Starting Advertiser, ignoring extra kwargs {kwargs}')
         self.port = port
         self.rename = rename
         self.serviceName, self.serviceType = splitServiceName(name)
@@ -200,6 +203,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     kwargs = vars(args)
+    kwargs.pop('config')
 
     if args.config:
         with open(args.config, 'r') as f:
