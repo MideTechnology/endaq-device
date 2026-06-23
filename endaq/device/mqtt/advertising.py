@@ -202,7 +202,7 @@ if __name__ == '__main__':
                              "to start the device manager; extra arguments will be ignored.")
 
     args = parser.parse_args()
-    kwargs = vars(args)
+    kwargs = vars(args).copy()
     kwargs.pop('config')
 
     if args.config:

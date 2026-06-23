@@ -149,8 +149,15 @@ class CommandInterface:
     @property
     def canRecord(self) -> bool:
         """ Can the device record on command? """
+        if not self.device or self.device.isVirtual:
+            return False
+
+        # Device is a Gateway, can't record
+        if self.device.getInfo('RecorderTypeUID', 0) & 0xa0000000:
+            return False
+
         # Modern devices can record on command, assume True as default
-        return self.device and not self.device.isVirtual
+        return True
 
 
     @property
