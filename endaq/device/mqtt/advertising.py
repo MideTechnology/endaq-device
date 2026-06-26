@@ -182,8 +182,8 @@ class Advertiser(Thread):
 if __name__ == '__main__':
     import argparse
 
-    desc = __doc__ + ("\n\nDo not run if the MQTTDeviceManager is already advertising "
-                      "(e.g., endaq.device.mqtt.manager run without the '--silent' option).")
+    desc = (f"{__doc__}\n\nDo not run if the MQTTDeviceManager is already advertising "
+            "(e.g., endaq.device.mqtt.manager run without the '--silent' option).")
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument('-a', '--address', type=str, default=None,
