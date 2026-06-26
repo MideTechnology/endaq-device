@@ -51,10 +51,15 @@ def test_get_revert_changes(session_manager):
     assert len(device.config.getChanges()) == 0
     rec_item = device.config.items[917375] 
     rec_item.value = 60 if rec_item.value != 60 else 120
-    assert len(device.config.getChanges()) == 1
+    changes = device.config.getChanges() 
+    assert len(changes) == 1, (
+            f"expected one change, got {changes}"
+            ) 
     device.config.revert()
-    assert len(device.config.getChanges()) == 0
-
+    changes = device.config.getChanges()
+    assert len(changes) == 0, (
+            f"after revert, expected zero changes, got {changes}"
+            )
 
 def test_is_enabled(session_manager):
     device = session_manager.device

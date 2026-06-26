@@ -5,6 +5,7 @@ There are a few different test boards, so make sure you're using the right one
 import subprocess
 import time
 from abc import ABC, abstractmethod
+
 class HardwareInterface(ABC):
     @abstractmethod
     def set_usb(self, on: bool) -> None:
@@ -122,4 +123,32 @@ class RaspiInterface(HardwareInterface):
             print("STDOUT:", e.stdout)
             print("STDERR:", e.stderr)
             raise e
+
+class NoInteractInterface(HardwareInterface):
+    """
+
+    """
+
+    _exc_type: Exception
+
+    def __init__(self, exc_type):
+        """
+        
+        :param exc_type: an exception / error type that will be called when 
+            the interface was attempted to be called upon
+
+        """
+        self._exc_type = exc_type
+
+    def set_usb(self, on: bool) -> None:
+        raise self._exc_type(f"set_usb {on} was called against a NoInteractInterface")
+
+    def set_button(self, on: bool) -> None:
+        raise self._exc_type(f"set_button {on} was called against a NoInteractInterface")
+
+    def timed_button_press(self, period: int) -> None:
+        raise self._exc_type(f"timed_button_press {period} was called against a NoInteractInterface")
+
+    def unplug_replug(self, period: int) -> None:
+        raise self._exc_type(f"unplug_replug {period} was called against a NoInteractInterface")
 
