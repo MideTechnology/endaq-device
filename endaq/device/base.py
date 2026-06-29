@@ -1153,19 +1153,17 @@ class Recorder:
         """ Get the recorder's user-defined calibration data as a dictionary
             of parameters.
         """
-        if self.isVirtual or (self._userCalDict and not filename):
+        if self.isVirtual or (self._userCalDict is not None and not filename):
             return self._userCalDict
 
         data = self._readCalFile(filename)
-
-        if data:
-            self._userCalDict = data.dump().get('CalibrationList', None)
+        self._userCalDict = data.dump().get('CalibrationList', {}) if data else {}
 
         return self._userCalDict
 
 
     def getUserCalPolynomials(self,
-                              filename: Optional[Filename] = None) -> Union[Dict[int, Transform], None]:
+                              filename: Optional[Filename] = None) -> Dict[int, Transform]:
         """ Get the recorder's user-defined calibration data as a dictionary
             of `idelib.transforms.Transform` subclass instances, keyed by ID.
 
@@ -1173,18 +1171,16 @@ class Recorder:
                 `.dat` file to read (as opposed to the device's standard
                 user calibration).
         """
-        if self.isVirtual or (self._userCalPolys and not filename):
+        if self.isVirtual or (self._userCalPolys is not None and not filename):
             return self._userCalPolys
 
         data = self._readCalFile(filename)
-
-        if data:
-            self._userCalPolys = self._parsePolynomials(data)
+        self._userCalPolys = self._parsePolynomials(data) if data else {}
 
         return self._userCalPolys
 
 
-    def getCalibration(self, user: bool = True) -> Union[Dict[str, Any], None]:
+    def getCalibration(self, user: bool = True) -> Dict[str, Any]:
         """ Get the recorder's current calibration information. User-supplied
             calibration, if present, takes priority (as it is what will be
             applied in recordings).
@@ -1210,10 +1206,11 @@ class Recorder:
                 self._calibration = self._calData[0].dump()
             except IndexError:
                 logger.warning(f'No system calibration for {self}!')
-                self._calibration = None
+                self._calibration = {}
         else:
             logger.warning(f'No system calibration for {self}!')
-            self._calData = self._calibration = None
+            self._calData = None
+            self._calibration = {}
 
         return self._calibration
 
@@ -1267,7 +1264,7 @@ class Recorder:
     def _getCalExpiration(self, data) -> Union[Epoch, None]:
         """ Get the expiration date of the recorder's factory calibration.
         """
-        if data is None:
+        if not data:
             return None
         caldate = data.get('CalibrationDate', None)
         calexp = data.get('CalibrationExpiry', None)
