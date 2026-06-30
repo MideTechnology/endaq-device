@@ -74,18 +74,12 @@ class Advertiser:
         self.zeroconf = None
 
 
-    def stop(self,
-             timeout: float = 10,
-             callback: Optional[Callable] = None) -> bool:
+    def stop(self) -> bool:
         """
         Stop advertising the MQTT broker.
-
-        :param timeout: Not used without threading
-        :param callback: Not used without threading
         :return: True if the advertisement was stopped.
         """
         logger.debug('Attempting to stop advertising...')
-        timeout = -1 if timeout is None else timeout
         if self.zeroconf is None:
             return True
         self.zeroconf.unregister_service(self.info)
