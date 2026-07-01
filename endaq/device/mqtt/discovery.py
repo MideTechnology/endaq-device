@@ -10,73 +10,55 @@ from threading import Lock
 
 from zeroconf import Zeroconf, ServiceBrowser, ServiceInfo, ServiceStateChange
 
-# from ..util import levenshtein
-
-def _on_service_state_change(zeroconf: Zeroconf,
-                             service_type: str,
-                             name: str,
-                             state_change: ServiceStateChange):
-    print(f"Called {name} ({service_type}), {state_change}")
-    if state_change == ServiceStateChange.Removed:
-        # with cls.lock:
-        #     if name in cls._mdns_list:
-        #         cls._mdns_list.remove(name)
-        return
-    info = zeroconf.get_service_info(service_type, name)
-    if not info:
-        print(f"getinfo failed for {name} ({service_type}) ")
-        return
-    # with cls.lock:
-    #     if name not in cls._mdns_list:
-    #         cls._mdns_list.append(name)
-
+from ..util import levenshtein
 
 class MDNSFinder:
+    _zc = None
+    lock = Lock()
+    _mdns_list = []
 
-    def __init__(self):
-        self._zc = None
-        self.lock = Lock()
-        self._mdns_list = []
-
-    def _on_service_state_change(self, zeroconf: Zeroconf,
+    @classmethod
+    def _on_service_state_change(cls, zeroconf: Zeroconf,
                                 service_type: str,
                                 name: str,
                                 state_change: ServiceStateChange):
         print(f"Called {name} ({service_type}), {state_change}")
         if state_change == ServiceStateChange.Removed:
-            with self.lock:
-                if name in self._mdns_list:
-                    self._mdns_list.remove(name)
+            with cls.lock:
+                if name in cls._mdns_list:
+                    cls._mdns_list.remove(name)
             return
         info = zeroconf.get_service_info(service_type, name)
         if not info:
             print(f"getinfo failed for {name} ({service_type}) ")
             return
-        with self.lock:
-            if name not in self._mdns_list:
-                self._mdns_list.append(name)
+        with cls.lock:
+            if name not in cls._mdns_list:
+                cls._mdns_list.append(name)
 
-    def start(self):
-        if self._zc is not None:
+    @classmethod
+    def start(cls):
+        if cls._zc is not None:
             return
-        self._zc = Zeroconf()
-        self.browser = ServiceBrowser(
-            self._zc,
+        cls._zc = Zeroconf()
+        cls.browser = ServiceBrowser(
+            cls._zc,
             "_endaq._tcp.local.",
-            handlers=[self._on_service_state_change],
+            handlers=[cls._on_service_state_change],
         )
 
-    # def close(self):
-    #     self._zc.close()
-    #     self._zc = None
-    #     with cls.lock:
-    #         cls._mdns_list = []
+    @classmethod
+    def close(cls):
+        cls._zc.close()
+        cls._zc = None
+        with cls.lock:
+            cls._mdns_list = []
 
-    def get_brokers(self):
-        with self.lock:
-            brokers = self._mdns_list
+    @classmethod
+    def get_brokers(cls):
+        # with cls.lock:
+        brokers = cls._mdns_list
         return brokers
-
 
 # ===========================================================================
 #
@@ -215,12 +197,37 @@ def findBrokers(*patterns,
     finally:
         zeroconf.close()
 
+from threading import Thread, active_count
+from random import randint
+
+def run_ad(name, delay, lifetime):
+    from .advertising import Advertiser
+    ad = Advertiser(name, rename=False)
+    sleep(delay)
+    ad.start()
+    sleep(lifetime)
+    ad.stop()
+
 if __name__ == '__main__':
     finder = MDNSFinder()
+    threads = []
+    for i in range(20):
+        threads.append(Thread(target=run_ad, args=(f"t{i:02}t{i:02}t{i:02}t{i:02}t{i:02}t{i:02}t{i:02}t{i:02}!!", randint(2,6), randint(4,20))))
     finder.start()
-    while True:
-        print(f"{finder.get_brokers()}")
-        sleep(2)
+    start = time()
+    print(f"Readt: {start}")
+    for t in threads:
+        t.start()
+    print(f"starting: {time()}")
+    started = False
+    while started == False or active_count() > 1:
+        if active_count() > 1:
+            started = True
+        found = finder.get_brokers()
+        if any(not s.endswith('.local.') for s in found):
+            print(f"Partial: {found}")
+
+    print(f"done: {time()}")
     # def on_service_state_change(zeroconf, service_type, name, state_change):
     #     print(state_change, name)
     #
