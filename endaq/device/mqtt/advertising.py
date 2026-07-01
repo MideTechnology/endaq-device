@@ -70,6 +70,8 @@ class Advertiser:
                 addresses=[socket.inet_aton(self.address)],
                 port=self.port,
                 properties=self.properties,
+                host_ttl=60,
+                other_ttl=60
         )
         self.zeroconf = None
 
@@ -111,12 +113,15 @@ class Advertiser:
                         self.fullName,
                         addresses=[socket.inet_aton(self.address)],
                         port=self.port,
-                        properties=self.properties)
+                        properties=self.properties,
+                        host_ttl=60,
+                        other_ttl=60
+                )
                 try:
                     # Duplicate names (apparently) allowed on different
                     # segments of same network (e.g., ethernet adn Wi-Fi);
                     # explicitly check for duplicates
-                    if not any(broker['name'] == self.serviceName for broker in existing):
+                    if not any(broker.name == self.serviceName for broker in existing):
                         self.zeroconf.register_service(self.info)
                         break
                 except NonUniqueNameException:
@@ -126,7 +131,7 @@ class Advertiser:
                 self.fullName = f'{self.serviceName}.{self.serviceType}'
                 logger.info(f'Name not unique, trying {self.fullName}')
         else:
-            if any(broker['name'] == self.serviceName for broker in existing):
+            if any(broker.name == self.serviceName for broker in existing):
                 raise NonUniqueNameException
             self.zeroconf.register_service(self.info)
 
