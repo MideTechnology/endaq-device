@@ -6,10 +6,76 @@ from fnmatch import fnmatchcase
 import re
 from time import sleep, time
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from threading import Lock
 
 from zeroconf import Zeroconf, ServiceBrowser, ServiceInfo, ServiceStateChange
 
-from ..util import levenshtein
+# from ..util import levenshtein
+
+def _on_service_state_change(zeroconf: Zeroconf,
+                             service_type: str,
+                             name: str,
+                             state_change: ServiceStateChange):
+    print(f"Called {name} ({service_type}), {state_change}")
+    if state_change == ServiceStateChange.Removed:
+        # with cls.lock:
+        #     if name in cls._mdns_list:
+        #         cls._mdns_list.remove(name)
+        return
+    info = zeroconf.get_service_info(service_type, name)
+    if not info:
+        print(f"getinfo failed for {name} ({service_type}) ")
+        return
+    # with cls.lock:
+    #     if name not in cls._mdns_list:
+    #         cls._mdns_list.append(name)
+
+
+class MDNSFinder:
+
+    def __init__(self):
+        self._zc = None
+        self.lock = Lock()
+        self._mdns_list = []
+
+    def _on_service_state_change(self, zeroconf: Zeroconf,
+                                service_type: str,
+                                name: str,
+                                state_change: ServiceStateChange):
+        print(f"Called {name} ({service_type}), {state_change}")
+        if state_change == ServiceStateChange.Removed:
+            with self.lock:
+                if name in self._mdns_list:
+                    self._mdns_list.remove(name)
+            return
+        info = zeroconf.get_service_info(service_type, name)
+        if not info:
+            print(f"getinfo failed for {name} ({service_type}) ")
+            return
+        with self.lock:
+            if name not in self._mdns_list:
+                self._mdns_list.append(name)
+
+    def start(self):
+        if self._zc is not None:
+            return
+        self._zc = Zeroconf()
+        self.browser = ServiceBrowser(
+            self._zc,
+            "_endaq._tcp.local.",
+            handlers=[self._on_service_state_change],
+        )
+
+    # def close(self):
+    #     self._zc.close()
+    #     self._zc = None
+    #     with cls.lock:
+    #         cls._mdns_list = []
+
+    def get_brokers(self):
+        with self.lock:
+            brokers = self._mdns_list
+        return brokers
 
 
 # ===========================================================================
@@ -148,3 +214,21 @@ def findBrokers(*patterns,
 
     finally:
         zeroconf.close()
+
+if __name__ == '__main__':
+    finder = MDNSFinder()
+    finder.start()
+    while True:
+        print(f"{finder.get_brokers()}")
+        sleep(2)
+    # def on_service_state_change(zeroconf, service_type, name, state_change):
+    #     print(state_change, name)
+    #
+    # zc = Zeroconf()
+    # browser = ServiceBrowser(
+    #     zc,
+    #     "_endaq._tcp.local.",
+    #     handlers=[on_service_state_change],
+    # )
+    # while True:
+    #     sleep(1)
