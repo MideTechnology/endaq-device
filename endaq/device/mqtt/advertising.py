@@ -65,15 +65,7 @@ class Advertiser:
         self.address = address or getMyIP()
         self.ipVersion = IPVersion.V4Only
 
-        self.info = ServiceInfo(
-                self.serviceType,
-                self.fullName,
-                addresses=[socket.inet_aton(self.address)],
-                port=self.port,
-                properties=self.properties,
-                host_ttl=60,
-                other_ttl=60
-        )
+        self.info = None
         self.zeroconf = None
 
 
@@ -115,8 +107,8 @@ class Advertiser:
                         addresses=[socket.inet_aton(self.address)],
                         port=self.port,
                         properties=self.properties,
-                        host_ttl=60,
-                        other_ttl=60
+                        host_ttl=1125,                                  # NOTE: Zeroconf has a min refresh time of 1125
+                        other_ttl=1125
                 )
                 try:
                     # Duplicate names (apparently) allowed on different
@@ -134,6 +126,15 @@ class Advertiser:
         else:
             if any(broker.name == self.serviceName for broker in existing):
                 raise NonUniqueNameException
+            self.info = ServiceInfo(
+                self.serviceType,
+                self.fullName,
+                addresses=[socket.inet_aton(self.address)],
+                port=self.port,
+                properties=self.properties,
+                host_ttl=1125,  # NOTE: Zeroconf has a min refresh time of 1125
+                other_ttl=1125
+            )
             self.zeroconf.register_service(self.info)
 
 

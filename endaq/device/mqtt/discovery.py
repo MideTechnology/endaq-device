@@ -81,7 +81,6 @@ class MDNSFinder:
         Called by Zeroconf serviceBrowser when an mDNS is added, removed, or updated
         Do not change these parameters or names! They are required by Zeroconf
         """
-        print(f"Called {name} ({service_type}), {state_change}")
         if state_change == ServiceStateChange.Removed:
             with self.lock:
                 if name in self._mdns:
@@ -108,7 +107,6 @@ class MDNSFinder:
                 services = [SERVICE_TYPE]
             else:
                 services = [splitServiceName(n)[1] for n in self._patterns]
-        print(f"Starting discovery with {services=}")
         self.browser = ServiceBrowser(
             zc=self._zc,
             type_=services,
