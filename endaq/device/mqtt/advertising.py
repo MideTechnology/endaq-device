@@ -38,7 +38,8 @@ class Advertiser:
         """
         An object to manage mDNS service advertising of the MQTT broker.
 
-        :param name: The name of the service. Must be unique.
+        :param name: The name of the service. Must be unique if rename is set to False.
+        :param rename: If True, try to use the name '{name} {count}' if the name is already taken
         :param address: The broker's address. Defaults to the machine running
             the Advertiser.
         :param port: The broker's port number.
@@ -103,7 +104,7 @@ class Advertiser:
 
         self.zeroconf = Zeroconf(ip_version=self.ipVersion)
 
-        existing = findBrokers(None)
+        existing = findBrokers()
         basename = self.serviceName
 
         if self.rename:
@@ -170,7 +171,7 @@ if __name__ == '__main__':
         with open(args.config, 'r') as f:
             config = json.load(f)
             kwargs.update(config)
-
+    kwargs['rename'] = False
     advertiser = Advertiser(**kwargs)
     print(f'Advertising "{advertiser.fullName}" ({advertiser.address} port {advertiser.port})')
     advertiser.start()
