@@ -43,7 +43,7 @@ class MDNSInfo:
     serviceType: str
     host: list[str]
     port: int
-    properties: dict[bytes, bytes | None]
+    properties: dict[bytes, Optional[bytes]]
 
 
 class MDNSFinder:
@@ -69,7 +69,7 @@ class MDNSFinder:
             patterns = list(patterns)
             for i, n in enumerate(patterns):
                 patterns[i] = '{}.{}'.format(*splitServiceName(n))
-        self._patterns: list[str] | None = patterns       # TODO: Validate Patterns
+        self._patterns: Optional[list[str]] = patterns       # TODO: Validate Patterns
         self._timeout_ms = int(timeout * 1000)
         self.start_time = 0
 
@@ -153,6 +153,8 @@ class MDNSFinder:
         See if the specified patterns match what this broker is using
         """
         with self.lock:
+            if self._patterns is None and patterns is None:
+                return True
             my_patterns = set(self._patterns)
         return my_patterns == set(patterns)
 
@@ -283,7 +285,7 @@ if __name__ == '__main__':
         if active_count() > 1:
             started = True
         found = finder.getBrokerList()
-        if any(not s.endswith('.local.') for s in found):
+        if any(not s.name.endswith('.local.') for s in found):
             print(f"Partial: {found}")
 
     print(f"done: {time()}")
