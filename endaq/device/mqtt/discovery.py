@@ -23,7 +23,7 @@ DEFAULT_NAME = "Data Collection Box Interface._endaq._tcp.local."
 DEFAULT_NAMES = ["enDAQ Remote Interface*._endaq._tcp.local.",
                  "Data Collection Box Interface*._endaq._tcp.local."]
 SERVICE_TYPE = "_endaq._tcp.local."
-mdns_finders: list["MDNSFinder"] = []
+MDNS_FINDERS: list["MDNSFinder"] = []
 
 # ===========================================================================
 #
@@ -114,7 +114,7 @@ class MDNSFinder:
         )
         self.start_time = time()
 
-    def close(self):
+    def stop(self):
         """
         Close out the search and delete all results
         """
@@ -165,7 +165,7 @@ class MDNSFinder:
         """
         if time()-self.start_time < min_lifetime:
             return
-        self.close()
+        self.stop()
         self.start()
 
 
@@ -232,7 +232,7 @@ def findBrokers(*patterns: str,
     deadline = 0
     scanDeadline = time() + scantime
     keep_open = False
-    for broker in mdns_finders:
+    for broker in MDNS_FINDERS:
         if broker.patternsMatch(patterns):
             finder = broker
             keep_open = True
@@ -240,7 +240,7 @@ def findBrokers(*patterns: str,
     if finder is None:
         finder = MDNSFinder(*patterns, timeout=timeout)
         if persistent:
-            mdns_finders.append(finder)
+            MDNS_FINDERS.append(finder)
             keep_open = True
         finder.start()
         deadline = time() + timeout
@@ -254,49 +254,5 @@ def findBrokers(*patterns: str,
         sleep(0.1)
     broker_list = finder.getBrokerList()
     if not keep_open:
-        finder.close()
+        finder.stop()
     return broker_list
-
-
-if __name__ == '__main__':
-    from threading import Thread, active_count
-    from random import randint
-
-    def run_ad(name, delay, lifetime):
-        from .advertising import Advertiser
-        ad = Advertiser(name, rename=False)
-        sleep(delay)
-        ad.start()
-        sleep(lifetime)
-        ad.stop()
-
-    finder = MDNSFinder()
-    threads = []
-    for i in range(20):
-        threads.append(Thread(target=run_ad, args=(f"t{i:02}t{i:02}t{i:02}t{i:02}t{i:02}t{i:02}t{i:02}t{i:02}!!", randint(2,6), randint(10, 30))))
-    finder.start()
-    start = time()
-    print(f"Readt: {start}")
-    for t in threads:
-        t.start()
-    print(f"starting: {time()}")
-    started = False
-    while started == False or active_count() > 1:
-        if active_count() > 1:
-            started = True
-        found = finder.getBrokerList()
-        if any(not s.name.endswith('.local.') for s in found):
-            print(f"Partial: {found}")
-
-    print(f"done: {time()}")
-    # def on_service_state_change(zeroconf, service_type, name, state_change):
-    #     print(state_change, name)
-    #
-    # zc = Zeroconf()
-    # browser = ServiceBrowser(
-    #     zc,
-    #     "_endaq._tcp.local.",
-    #     handlers=[on_service_state_change],
-    # )
-    # while True:
-    #     sleep(1)
