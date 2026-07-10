@@ -148,11 +148,7 @@ class MDNSFinder:
         Copy the list of brokers
         :returns: list of the brokers:
         """
-        brokers = []
-        with self.lock:
-            for k, v in self._mdns.items():
-                brokers.append(copy.deepcopy(v))
-        return brokers
+        return list(self.getBrokerDict().values())
 
 
     def patternsMatch(self, *patterns) -> bool:
