@@ -1,7 +1,9 @@
 """
-Response codes to various commands. Responses from the device are all
-integers; these enumerations give them some context. This is important, as
-some common numbers have different meanings in different types of response.
+Response codes to various commands and other enumerations.
+
+Responses from the device are all integers; these enumerations give them
+some context. This is important, as some common numbers have different
+meanings in different types of response.
 
 All response code values are interchangeable with `int`, and function as
 if they are subclasses of `int`. They can be used with integers in
@@ -171,3 +173,20 @@ class WiFiConnectionError(IntEnum):
 
     # Non-ESP32 errors, outside its range of error codes
     ERR_GATEWAY_MODE_CHANGE_FAILED = 100001
+
+
+# ===========================================================================
+# Non-response enums
+# ===========================================================================
+
+class RecorderTypeUID(IntEnum):
+    """
+    Bit flags for special-case identification of device features. These are
+    primarily used by non-recorders and software entities. The lower 24 bits
+    are reserved and should be ignored; they were used by very early
+    enDAQ/SlamStick device firmware. Note: unlike the response codes, this
+    element is in the ``mide_ide`` schema.
+    """
+    NOT_RECORDER = 0b10000000 << 24  #: Device is not a data recorder
+    SIMULATION = 0b01000000 << 24  #: Device is not actual recorder hardware
+    GATEWAY = 0b00100000 << 24  #: Device is a Gateway
