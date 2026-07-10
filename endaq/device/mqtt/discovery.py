@@ -256,3 +256,24 @@ def findBrokers(*patterns: str,
     if not keep_open:
         finder.stop()
     return broker_list
+
+if __name__ == "__main__":
+    """
+    Just print added and removed mDNS items.
+    """
+    finder = MDNSFinder(None)
+    finder.start()
+    hosts = {}
+    print(f"Scanning for mDNS Hosts:")
+    while True:
+        old_hosts = hosts
+        hosts, _ = finder.getBrokerDict()
+        alive = []
+        for host_id in hosts:
+            if host_id in old_hosts:
+                alive.append(host_id)
+            else:
+                print(f"Found new host: {host_id} at {hosts[host_id].host}")
+        dead = [x for x in old_hosts if x not in alive]
+        for host_id in dead:
+            print(f"Host removed: {host_id} at {old_hosts[host_id].host}")
