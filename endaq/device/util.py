@@ -172,19 +172,24 @@ def levenshtein(a: str, b: str) -> int:
 # ===========================================================================
 
 def getMyIP(iface: Optional[str] = None,
-            timeout: Optional[int] = 3) -> str:
+            timeout: Optional[int] = 3,
+            default: str = '127.0.0.1') -> str:
     """ Retrieve the computer's IP address (v4).
 
-        :param iface: The name of a specific network interface to use. If
-            `iface` is a regular expression, the first match will be used
-            (e.g., ``"wlan0|mlan0"`` will return the IP of ``wlan0`` if both
-            are connected).
+        :param iface: The name of a specific network interface/adapter to
+            use. If `iface` is a regular expression, the first match will
+            be used (e.g., ``"wlan0|mlan0"`` will return the IP of ``wlan0``
+            if both are connected).
         :param timeout: The amount of time, in seconds, to wait for the
             specified `iface` to become available (if not immediately
             present). If `None`, wait indefinitely. Only applicable when
             `iface` is specified.
+        :param default: The default network interface to use if none
+            could be found.
     """
     # FUTURE: Multiple interfaces/IPs and/or IPv6
+
+    # Find a specific interface/adapter
     if iface:
         timeout = float('inf') if timeout is None else timeout
         deadline = time() + timeout
@@ -200,17 +205,28 @@ def getMyIP(iface: Optional[str] = None,
                         if isinstance(ip.ip, str):
                             return ip.ip
             if time() >= deadline:
+                logger.debug(f'Could not find network interface {iface!r}, '
+                             "attempting to get active interface's IP")
                 break
             sleep(.5)
 
+    # Get the primary interface's IP
     try:
+        # More accurate, but may fail in some conditions
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.settimeout(0)
             s.connect(("8.8.8.8", 80))
             return s.getsockname()[0]
-    except (socket.error, TimeoutError) as err:
-        logger.error(f'Failed to get IP address, using localhost: {err!r}')
-
-    return '127.0.0.1'
+    except (socket.error, OSError):
+        try:
+            # Alternate method (safer, but may return loopback on some systems)
+            name = socket.gethostname()
+            return socket.gethostbyname(name)
+        except (socket.error, OSError) as err:
+            if default is None:
+                raise
+            logger.error(f"Could not get IP, defaulting to {default} ({err!r})")
+            return default
 
 
 def makeClientID(base: str) -> str:
