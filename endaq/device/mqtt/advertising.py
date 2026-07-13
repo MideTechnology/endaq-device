@@ -48,6 +48,7 @@ class Advertiser:
         :param properties: An optional dictionary of additional data to be
             included in the service advertising.
         """
+        print(f"{name=}\n{rename=}\n{address=}\n{port=}\n{notes=}\n{properties=}")
         if kwargs:
             logger.debug(f'Starting Advertiser, ignoring extra kwargs {kwargs}')
         self.port = port
@@ -172,7 +173,6 @@ if __name__ == '__main__':
         with open(args.config, 'r') as f:
             config = json.load(f)
             kwargs.update(config)
-    kwargs['rename'] = False
     advertiser = Advertiser(**kwargs)
     print(f'Advertising "{advertiser.fullName}" ({advertiser.address} port {advertiser.port})')
     advertiser.start()
