@@ -51,6 +51,11 @@ class MDNSInfo:
     properties: Dict[bytes, Optional[bytes]]
 
 
+    def __getitem__(self, k):
+        # For backwards compatibility with earlier version that got brokers as dicts
+        return self.__dict__[k]
+
+
 class MDNSFinder:
     def __init__(self, *patterns, timeout: float = 5.0):
         """
@@ -209,9 +214,7 @@ def parseServiceInfo(info: ServiceInfo) -> MDNSInfo:
 def getBroker(name: str = DEFAULT_NAME,
               timeout: float = 5) -> MDNSInfo:
     """
-    Find a specific enDAQ-advertised MQTT Broker. In the best case, this may
-    be marginally faster than `findBrokers()` when looking for a specific
-    broker.
+    Find a specific enDAQ-advertised MQTT Broker.
 
     :param name: The name of the broker.
     :param timeout: The timeout, in seconds.

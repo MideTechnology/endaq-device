@@ -48,7 +48,7 @@ class Advertiser:
         :param properties: An optional dictionary of additional data to be
             included in the service advertising.
         """
-        print(f"{name=}\n{rename=}\n{address=}\n{port=}\n{notes=}\n{properties=}")
+        # print(f"{name=}\n{rename=}\n{address=}\n{port=}\n{notes=}\n{properties=}")
         if kwargs:
             logger.debug(f'Starting Advertiser, ignoring extra kwargs {kwargs}')
         self.port = port
