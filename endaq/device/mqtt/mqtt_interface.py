@@ -30,6 +30,7 @@ from threading import Event, Thread
 from time import sleep, time
 from typing import Any, BinaryIO, Callable, Dict, List, Optional, Tuple, Union
 from weakref import WeakValueDictionary
+from dataclasses import asdict
 
 import paho.mqtt.client as mqtt
 from serial import PortNotOpenError
@@ -191,7 +192,7 @@ class MQTTConnector:
         if not brokers:
             raise NameError(f'No brokers found matching name pattern(s) {patterns!r}')
 
-        broker = brokers[0]
+        broker = asdict(brokers[0])
         broker.update(kwargs)
         return cls(**broker)
 

@@ -7,7 +7,6 @@ import itertools
 import json
 import logging
 import socket
-from threading import Event, Thread
 from time import time, sleep
 from typing import Any, Callable, Dict, Optional
 
@@ -23,9 +22,9 @@ from endaq.device import __version__
 logger = logging.getLogger(__name__)
 
 
-class Advertiser(Thread):
+class Advertiser:
     """
-    A thread that does mDNS service advertising of the MQTT broker.
+    A object that does mDNS service advertising of the MQTT broker.
     """
 
     def __init__(self,
@@ -37,17 +36,19 @@ class Advertiser(Thread):
                  properties: Optional[Dict[str, Any]] = None,
                  **kwargs):
         """
-        A thread that does mDNS service advertising of the MQTT broker.
+        An object to manage mDNS service advertising of the MQTT broker.
 
-        :param name: The name of the service. Must be unique.
+        :param name: The name of the service. Must be unique if rename is set to False.
+        :param rename: If True, try to use the name '{name} {count}' if the name is already taken
         :param address: The broker's address. Defaults to the machine running
-            the advertising thread.
+            the Advertiser.
         :param port: The broker's port number.
         :param notes: An optional description of the broker/manager; if
             provided, the notes will be included in the service advertising.
         :param properties: An optional dictionary of additional data to be
             included in the service advertising.
         """
+        # print(f"{name=}\n{rename=}\n{address=}\n{port=}\n{notes=}\n{properties=}")
         if kwargs:
             logger.debug(f'Starting Advertiser, ignoring extra kwargs {kwargs}')
         self.port = port
@@ -65,70 +66,38 @@ class Advertiser(Thread):
         self.address = address or getMyIP()
         self.ipVersion = IPVersion.V4Only
 
-        self.info = ServiceInfo(
-                self.serviceType,
-                self.fullName,
-                addresses=[socket.inet_aton(self.address)],
-                port=self.port,
-                properties=self.properties,
-        )
-
-        self._stopEvent = Event()
-        super().__init__(daemon=True)
-        self.name = self.name.replace("Thread", type(self).__name__)
+        self.info = None
+        self.zeroconf = None
 
 
-    def stop(self,
-             timeout: float = 10,
-             callback: Optional[Callable] = None) -> bool:
+    def stop(self) -> bool:
         """
         Stop advertising the MQTT broker.
-
-        :param timeout: Time to wait for the thread to shut down. 0 will
-            return immediately. `None` will wait indefinitely.
-        :param callback: A function to call repeatedly while waiting for the
-            thread to stop. If the callback returns `True`, the wait will be
-            cancelled. The callback function should require no arguments.
-        :return: Whether the thread was stopped. Note: if `timeout` is 0,
-            a false negative may occur.
+        :return: True if the advertisement was stopped.
         """
         logger.debug('Attempting to stop advertising...')
-        timeout = -1 if timeout is None else timeout
-        deadline = timeout + time()
-
-        self._stopEvent.set()
-        sleep(0.01)
-
-        while timeout != 0 and self.is_alive():
-            if timeout > 0 and time() > deadline:
-                raise TimeoutError('Timed out trying to shut down advertiser')
-            if callback and callback():
-                break
-            sleep(0.01)
-
-        stopped = not self.is_alive()
-        if stopped:
-            logger.debug('Advertiser shut down.')
-        else:
-            logger.warning('Failed to shut down advertiser within {timeout} seconds!')
-
-        return stopped
+        if self.zeroconf is None:
+            return True
+        self.zeroconf.unregister_service(self.info)
+        self.zeroconf.close()
+        self.zeroconf = None
+        return True
 
 
     def start(self) -> None:
-        """ Start the advertising thread's activity.
-
-        It must be called at most once per thread object. It arranges for the
-        object's run() method to be invoked in a separate thread of control.
+        """ Start the advertising activity.
 
         This method will raise a `RuntimeError` if called more than once on the
         same `Advertiser` object.
         """
         logger.debug(f'Starting zeroconf advertising of {self.fullName} '
                      f'on {self.address}:{self.port}.')
+        if self.zeroconf is not None:
+            raise RuntimeError('Advertising already started.')
+
         self.zeroconf = Zeroconf(ip_version=self.ipVersion)
 
-        existing = findBrokers(None)
+        existing = findBrokers()
         basename = self.serviceName
 
         if self.rename:
@@ -138,12 +107,15 @@ class Advertiser(Thread):
                         self.fullName,
                         addresses=[socket.inet_aton(self.address)],
                         port=self.port,
-                        properties=self.properties)
+                        properties=self.properties,
+                        host_ttl=1125,                                  # NOTE: Zeroconf has a min refresh time of 1125
+                        other_ttl=1125
+                )
                 try:
                     # Duplicate names (apparently) allowed on different
                     # segments of same network (e.g., ethernet adn Wi-Fi);
                     # explicitly check for duplicates
-                    if not any(broker['name'] == self.serviceName for broker in existing):
+                    if not any(broker.name == self.serviceName for broker in existing):
                         self.zeroconf.register_service(self.info)
                         break
                 except NonUniqueNameException:
@@ -153,26 +125,18 @@ class Advertiser(Thread):
                 self.fullName = f'{self.serviceName}.{self.serviceType}'
                 logger.info(f'Name not unique, trying {self.fullName}')
         else:
-            if any(broker['name'] == self.serviceName for broker in existing):
+            if any(broker.name == self.serviceName for broker in existing):
                 raise NonUniqueNameException
+            self.info = ServiceInfo(
+                self.serviceType,
+                self.fullName,
+                addresses=[socket.inet_aton(self.address)],
+                port=self.port,
+                properties=self.properties,
+                host_ttl=1125,  # NOTE: Zeroconf has a min refresh time of 1125
+                other_ttl=1125
+            )
             self.zeroconf.register_service(self.info)
-
-        super().start()
-
-
-    def run(self):
-        """
-        Main thread.
-        """
-        try:
-            while not self._stopEvent.is_set():
-                sleep(0.25)
-
-        finally:
-            logger.debug(f'Ending zeroconf advertising of {self.fullName} '
-                         f'on {self.address}:{self.port}.')
-            self.zeroconf.unregister_service(self.info)
-            self.zeroconf.close()
 
 
 # ===========================================================================
@@ -209,7 +173,6 @@ if __name__ == '__main__':
         with open(args.config, 'r') as f:
             config = json.load(f)
             kwargs.update(config)
-
     advertiser = Advertiser(**kwargs)
     print(f'Advertising "{advertiser.fullName}" ({advertiser.address} port {advertiser.port})')
     advertiser.start()
