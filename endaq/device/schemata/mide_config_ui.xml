@@ -849,6 +849,8 @@
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
+
+
         </MasterElement> <!-- Group -->
 
         <MasterElement name="CheckGroup" global="1" id="0x4018" multiple="1">

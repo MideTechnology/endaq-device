@@ -33,7 +33,7 @@ def requires_lock(method):
     def wrapped(instance,
                 payload: Any,
                 lockId: Optional[int] = None
-            ) -> Tuple[Union[Dict[str, Any], ByteString],
+                ) -> Tuple[Union[Dict[str, Any], ByteString],
                        Optional[DeviceStatusCode],
                        Optional[str]]:
         if lockId != instance.lockId:
@@ -53,7 +53,7 @@ def optional_lock(method):
     def wrapped(instance,
                 payload: Any,
                 lockId: Optional[int] = None
-            ) -> Tuple[Union[Dict[str, Any], ByteString],
+                ) -> Tuple[Union[Dict[str, Any], ByteString],
                        Optional[DeviceStatusCode],
                        Optional[str]]:
         if not instance.checkLock(lockId):
@@ -99,7 +99,8 @@ class CommandClient:
         if command is None:
             command = SerialCommandInterface(None, make_crc=make_crc,
                                              ignore_crc=ignore_crc)
-        self.command = command
+
+        self.command: SerialCommandInterface = command
 
         # Collect all the class' implemented command methods. See comments
         # near the end for more information.
@@ -320,10 +321,11 @@ class CommandClient:
     # =======================================================================
 
     # noinspection PyUnusedLocal
-    def command_SendPing(self,
-                         payload: Any,
-                         lockId: Optional[ByteString] = None
-            ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+    def command_SendPing(
+            self,
+            payload: Dict[str, Any],
+            lockId: Optional[ByteString] = None
+    ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
         """ Handle a ``SendPing`` command (EBML ID 0x5700).
 
             :param payload: The command element's value.
@@ -336,10 +338,11 @@ class CommandClient:
     
 
     # noinspection PyUnusedLocal
-    def command_GetLockID(self,
-                          payload: ByteString,
-                          lockId: Optional[ByteString] = None
-            ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+    def command_GetLockID(
+            self,
+            payload: Dict[str, Any],
+            lockId: Optional[ByteString] = None
+    ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
         """ Handle a `<GetLockID>` command (EBML ID 0x5B00).
 
             :param payload: The command element's value.
@@ -352,10 +355,11 @@ class CommandClient:
 
 
     # noinspection PyUnusedLocal
-    def command_SetLockID(self,
-                          payload: Dict[str, Any],
-                          lockId: Optional[ByteString] = None
-            ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+    def command_SetLockID(
+            self,
+            payload: Dict[str, Any],
+            lockId: Optional[ByteString] = None
+    ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
         """ Handle a `<SetLockID>` command (EBML ID 0x5B07).
 
             :param payload: The command element's value.
@@ -376,20 +380,22 @@ class CommandClient:
 
 
     # noinspection PyUnusedLocal
-    def command_GetClock(self,
-                         payload: Dict[str, Any],
-                         lockId: Optional[ByteString] = None
-                         ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+    def command_GetClock(
+            self,
+            payload: Dict[str, Any],
+            lockId: Optional[ByteString] = None
+    ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
         """ Handle a `<GetClock>` command (EBML ID 0x5500).
         """
         return ({'ClockTime': self.command._TIME_PARSER.pack(int(time()))},
                 None, None)
 
 
-    def command_GetInfo(self,
-                        payload: int,
-                        lockId: Optional[ByteString] = None
-            ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+    def command_GetInfo(
+            self,
+            payload: Dict[str, Any],
+            lockId: Optional[ByteString] = None
+    ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
         """ Main handler for the `<GetInfo>` command (EBML ID 0x5B00).
         """
         try:
@@ -404,10 +410,11 @@ class CommandClient:
         return response, statusCode, statusMsg
 
 
-    def command_SetInfo(self,
-                        payload: Dict[str, Any],
-                        lockId: Optional[ByteString] = None
-            ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+    def command_SetInfo(
+            self,
+            payload: Dict[str, Any],
+            lockId: Optional[ByteString] = None
+    ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
         """ Main handler for the `<SetInfo>` command (EBML ID 0x5B07).
         """
         try:
@@ -423,16 +430,18 @@ class CommandClient:
             logger.warning(f'No SetInfo for idx {idx!r}')
             return {}, DeviceStatusCode.ERR_BAD_INFO_INDEX, None
 
-        return setter(info, lockId)
+        _payload, statusCode, statusMsg = setter(info, lockId)
+        return {}, statusCode, statusMsg
 
 
     # =======================================================================
 
     # noinspection PyUnusedLocal
-    def command_GetInfo_0(self,
-                          payload: ByteString,
-                          lockId: Optional[int] = None
-            ) -> Tuple[ByteString, Optional[DeviceStatusCode], Optional[str]]:
+    def command_GetInfo_0(
+            self,
+            payload: ByteString,
+            lockId: Optional[int] = None
+    ) -> Tuple[ByteString, Optional[DeviceStatusCode], Optional[str]]:
         """ Example of a `GetInfo` (0: `DEVINFO`) that does not require the
             lock be set. This should be overridden by subclasses. This
             implementation returns the same `ERR_BAD_INFO_INDEX` as is
@@ -448,10 +457,11 @@ class CommandClient:
 
     # noinspection PyUnusedLocal
     @requires_lock
-    def command_GetInfo_5(self,
-                          payload: ByteString,
-                          lockId: Optional[int] = None
-            ) -> Tuple[ByteString, Optional[DeviceStatusCode], Optional[str]]:
+    def command_GetInfo_5(
+            self,
+            payload: ByteString,
+            lockId: Optional[int] = None
+    ) -> Tuple[ByteString, Optional[DeviceStatusCode], Optional[str]]:
         """ Example of a `GetInfo` (5: `config.cfg`) that requires the lock
             be set. Note the use of the `requires_lock` decorator. This
             should be overridden in subclasses.  This implementation returns

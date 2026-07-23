@@ -6,7 +6,7 @@ eliminate circular dependencies.
 __author__ = "dstokes"
 
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import errno
 import logging
 import os
@@ -195,7 +195,7 @@ class Recorder:
 
     @property
     @synchronized
-    def command(self) -> Union[None, command_interfaces.CommandInterface]:
+    def command(self) -> command_interfaces.CommandInterface:
         """ The device's "command interface," the means through which to
             directly control the device. Only applicable to non-virtual
             recorders (i.e., actual hardware, not instantiated from a
@@ -316,11 +316,11 @@ class Recorder:
         # devices) can be found anywhere. This will also update the paths
         # of known devices.
         if self.chipId:
-            dev = findDevice(chipId=self.chipId, update=True,
-                             unmounted=True, paths=paths, strict=strict)
+            dev: Recorder = findDevice(chipId=self.chipId, update=True,
+                                       unmounted=True, paths=paths, strict=strict)
         else:
-            dev = findDevice(sn=self.serialInt, update=True,
-                             unmounted=True, paths=paths, strict=strict)
+            dev: Recorder = findDevice(sn=self.serialInt, update=True,
+                                       unmounted=True, paths=paths, strict=strict)
 
         if dev and dev != self:
             # Device's DEVINFO has changed, change in place
@@ -678,12 +678,19 @@ class Recorder:
     @synchronized
     def name(self) -> str:
         """ The recording device's (user-assigned) name. """
-        if self._name:
-            return self._name
-        try:
-            return self.getInfo('UserDeviceName', '') or self.config.name
-        except (AttributeError, KeyError, UnsupportedFeature):
-            return ''
+        if self._name is None:
+            try:
+                # If name isn't in DEVINFO, get it from config
+                name = self.getInfo('UserDeviceName', None)
+                if name is None:
+                    name = self.config.name
+                self._name = name
+            except (AttributeError, KeyError, UnsupportedFeature):
+                return ''
+            except TimeoutError:
+                logger.debug('Timed out getting name from config')
+                return ''
+        return self._name
 
 
     @property
@@ -801,7 +808,7 @@ class Recorder:
         """ The recorder's date of manufacture. """
         bd = self.getInfo('DateOfManufacture')
         if bd is not None:
-            return util.utcfromtimestamp(bd)
+            return datetime.fromtimestamp(bd, timezone.utc)
         return None
 
     
@@ -1226,7 +1233,7 @@ class Recorder:
             if c is not None:
                 return c
 
-        self.getSensors()
+        self.getCalibration(user)
         if self._calPolys is None:
             self._calPolys = self._parsePolynomials(self._calData)
 
@@ -1252,7 +1259,7 @@ class Recorder:
         if data:
             cd = data.get('CalibrationDate', None)
             if cd is not None and not epoch:
-                return util.utcfromtimestamp(cd)
+                return datetime.fromtimestamp(cd, timezone.utc)
             return cd
         return None
 
@@ -1289,7 +1296,7 @@ class Recorder:
         """
         ce = self._getCalExpiration(self.getCalibration(user=user))
         if ce is not None and not epoch:
-            return util.utcfromtimestamp(ce)
+            return datetime.fromtimestamp(ce, timezone.utc)
         return ce
 
 
@@ -1615,6 +1622,9 @@ class NonRecorder(Recorder):
 
 
     def __repr__(self):
-        if self._name:
-            return f'<{type(self).__name__} "{self._name}">'
+        try:
+            if self._name:
+                return f'<{type(self).__name__} "{self._name}">'
+        except AttributeError:
+            pass
         return object.__repr__(self)

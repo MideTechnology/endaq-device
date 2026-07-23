@@ -11,12 +11,12 @@ Starting an :class:`MQTTDeviceManager` is typically done via the
 """
 
 from collections import defaultdict
-# import inspect
+from contextlib import suppress
 from io import BytesIO
 import os.path
 from pathlib import Path
 import struct
-import sys
+import threading
 from time import time
 from typing import Any, ByteString, Dict, List, Optional, Tuple, Union
 from weakref import WeakSet
@@ -36,22 +36,24 @@ from ..exceptions import CommandError, CRCError, DeviceError, ValidationError
 from ..util import getMyIP, makeClientID, synchronized, dump
 from .mqtt_interface import MQTT_BROKER, MQTT_PORT
 from .advertising import Advertiser
-from .caching import BaseCache, FileCache
+from .caching import CACHE_PATH, BaseCache, FileCache
 from .discovery import DEFAULT_NAME
 from .mqtt_client import MQTTClient
-from .mqtt_interface import STATE_TOPIC, HEADER_TOPIC, MEASUREMENT_TOPIC, COMMAND_TOPIC
+from .mqtt_interface import (STATE_TOPIC, HEADER_TOPIC,
+                             MEASUREMENT_TOPIC, COMMAND_TOPIC,
+                             EBML_ID_BYTES)
 
 __all__ = ('MQTTDeviceManager', 'start', 'stop')
 
 # ===========================================================================
 # 'Constants'
+# Unless otherwise specified, time-related values are in seconds.
 # ===========================================================================
 
 CDB_ID = 0xA1  # EBML ID of IDE ChannelDataBlock element
 
 # Raw bytes of EBML IDs for quickly identifying elements in streams without
 # needing to parse the data.
-EBML_ID_BYTES = b'\x1A\x45\xDF\xA3'  # To identify `EBML` elements in stream
 NEWLOCKID_ID_BYTES = b'\x5A\x02'  # Raw `NewLockID`, to identify `SetLockID` commands
 
 DEVICE_TIMEOUT = 60 * 5  # seconds
@@ -61,11 +63,13 @@ DEVICE_TIMEOUT = 60 * 5  # seconds
 # considered untrustworthy.
 MAX_DRIFT = 60 * 60
 
-# Paths for cached data (IDE headers, etc.)
-if sys.platform == 'win32':
-    CACHE_PATH = os.path.expandvars(r'%APPDATA%\endaq\mqtt_manager')
-else:
-    CACHE_PATH = os.path.expanduser('~/.endaq/mqtt_manager')
+# Minimum interval between MQTTDeviceManager state updates, to prevent
+# rapid device state updates from each triggering a flood of manager updates.
+MIN_INTERVAL = 2
+
+# Maximum interval between scheduled MQTTDeviceManager state updates.
+# Manager updates triggered by device updates reset the interval.
+MAX_INTERVAL = 45
 
 
 # ===========================================================================
@@ -78,7 +82,8 @@ class MQTTDevice:
     presenting itself as an enDAQ recorder over MQTT. It handles capturing and
     caching metadata. Not to be confused with `endaq.device.Recorder`, which
     is a more thorough representation of the device itself, for configuration
-    and control purposes; this class is more abstract.
+    and control purposes; this class is more abstract and part of the manager's
+    internal mechanisms.
     """
 
     def __init__(self,
@@ -140,11 +145,9 @@ class MQTTDevice:
 
 
     def __del__(self):
-        try:
+        with suppress(AttributeError, TypeError, RuntimeError):
             self.manager.client.unsubscribe(self.measurementTopic)
             self.manager.client.unsubscribe(self.commandTopic)
-        except (AttributeError, TypeError, RuntimeError):
-            pass
 
 
     # =======================================================================
@@ -214,6 +217,7 @@ class MQTTDevice:
         """ Handle a command message to the device, scraping any change to
             the `LockID`.
         """
+        # TODO: Put this in a separate thread, to reduce time spent blocking message handler?
         self.lastCommand = time()
         msg = message.payload
 
@@ -256,6 +260,7 @@ class MQTTDevice:
         """ Handle an incoming chunk of IDE data. If the message completes
             an element, it is handled.
         """
+        # TODO: Put this in a separate thread, to reduce time spent blocking message handler?
         self.totalMsgs += 1
         self.lastMeasurement = self.lastContact = time()
         if self.stateInfo:
@@ -397,7 +402,8 @@ class MQTTDevice:
                 file, or `None` if no cached header is available.
         """
         header = self.manager.cache.get(self.sn, 'header')
-        logger.debug(f'Loaded cached header for {self.sn} ({len(header)} bytes)')
+        if header:
+            logger.debug(f'Loaded cached header for {self.sn} ({len(header)} bytes)')
         return header
 
 
@@ -450,7 +456,8 @@ class MQTTDeviceManager(MQTTClient):
                  client: paho.mqtt.client.Client,
                  make_crc: bool = True,
                  ignore_crc: bool = False,
-                 interval: int = 45,
+                 interval: float = MAX_INTERVAL,
+                 minInterval: float = MIN_INTERVAL,
                  cache: Union[str, Path, BaseCache] = CACHE_PATH,
                  shutdown: bool = False):
         """ A client that monitors several MQTT topics, providing additional
@@ -461,8 +468,11 @@ class MQTTDeviceManager(MQTTClient):
                 and responses.
             :param ignore_crc: If `False`, do not validate incoming commands
                 or responses.
-            :param interval: The time between published `state` updates. If
-                0, no `state` updates will be published.
+            :param interval: The maximum time between scheduled `state`
+                updates, in seconds. If 0, `state` updates from the manager
+                will only be published when devices publish their states.
+            :param minInterval: The minimum time between published `state`
+                updates, in seconds.
             :param cache: The location for cached device data, either a
                 directory or an instance of a `BaseCache` storage handler.
             :param shutdown: If `True`, the manager can be shut down remotely
@@ -479,6 +489,7 @@ class MQTTDeviceManager(MQTTClient):
         else:
             self.cachePath = cache
 
+        self.minInterval = minInterval
         self.allowShutdown = shutdown
 
         self.knownDevices: dict[int, MQTTDevice] = {}
@@ -493,6 +504,7 @@ class MQTTDeviceManager(MQTTClient):
         self.client.message_callback_add(self.stateSubTopic, self.onStateMessage)
 
         self.advertiser: Optional[Advertiser] =  None
+        self.stateUpdater = threading.Timer(1, lambda: None)  # dummy initial value, not run
 
 
     def __repr__(self):
@@ -533,10 +545,8 @@ class MQTTDeviceManager(MQTTClient):
             raise ValueError(f'Could not get SN from topic {topic!r}')
         sn = parts[1]
 
-        try:
+        with suppress(TypeError, ValueError):
             sn = int(sn.lstrip('SWXC0'))
-        except (TypeError, ValueError):
-            pass
 
         return sn
 
@@ -556,11 +566,16 @@ class MQTTDeviceManager(MQTTClient):
     def updateState(self):
         """ Publish an updated set of data to the 'state' topic.
         """
-        # curframe = inspect.currentframe()
-        # calframe = inspect.getouterframes(curframe, 2)
-        # caller = calframe[2][3]
-        # logger.debug(f'Updating state topic {self.stateTopic} ({caller})')
+        if self.stateUpdater.is_alive():
+            return
+        self.stateUpdater = threading.Timer(MIN_INTERVAL, self._updateState)
+        self.stateUpdater.daemon = True
+        self.stateUpdater.start()
 
+
+    def _updateState(self):
+        """ Publish an updated set of data to the 'state' topic.
+        """
         # Schedule the next automatic update
         self.nextUpdate = time() + self.interval
 
@@ -751,7 +766,8 @@ def start(host: Optional[str] = MQTT_BROKER,
           connectArgs: Dict[str, Any] = None,
           advertArgs: Dict[str, Any] = None,
           managerArgs: Dict[str, Any] = None,
-          clean: Optional[int] = None):
+          clean: Optional[int] = None,
+          **_kwargs):
     """
     Start the Device Manager and (optionally) the mDNS advertiser.
     This is a temporary implementation and will be refactored.
@@ -793,6 +809,7 @@ def start(host: Optional[str] = MQTT_BROKER,
                 f'for broker on {host}:{port}')
     client = paho.mqtt.client.Client(paho.mqtt.client.CallbackAPIVersion.VERSION2,
                                      **clientArgs)
+    client.will_set(STATE_TOPIC.format(sn='manager'), MQTTDeviceManager.makeLWT())
     client.connect(host, port, 60, **connectArgs)
 
     # logger.info('Instantiating MQTTDeviceManager')
@@ -820,11 +837,11 @@ def start(host: Optional[str] = MQTT_BROKER,
     try:
         client.loop_forever()
     except KeyboardInterrupt as err:
-        logger.debug(f'{err!r}')
+        logger.info(f'{err!r}')
+        manager.stop()
     finally:
-        if advertise:
-            logger.debug('stopping advertiser')
-            manager.stop()
+        with suppress(AttributeError, TimeoutError):
+            manager.advertiser.stop()
 
     logger.debug('exited loop')
 
