@@ -8,11 +8,17 @@ import errno
 from functools import wraps
 import os.path
 import pathlib
+import re
 import shutil
 from threading import get_native_id, RLock
 from time import sleep, time
 from typing import Any, ByteString, Callable, Dict, Optional, Tuple, Union
 import socket
+
+import ifaddr
+
+from .response_codes import CommandResponseCode
+from .exceptions import DeviceError
 
 import logging
 logger = logging.getLogger(__name__)
@@ -139,18 +145,6 @@ def formatFwRev(rev: int) -> str:
         return str(rev)
 
 
-# noinspection PyDeprecation
-def utcfromtimestamp(timestamp: int) -> datetime.datetime:
-    """ Convert an Epoch timestamp to a UTC datetime, getting around
-        deprecated `datetime.datetime.utcfromtimestamp` needed for
-        Python 3.9. To be removed once Python 3.9 is sunsetted.
-    """
-    try:
-        return datetime.datetime.fromtimestamp(timestamp, datetime.UTC)
-    except AttributeError:
-        return datetime.datetime.utcfromtimestamp(timestamp)
-
-
 def levenshtein(a: str, b: str) -> int:
     """Calculates the Levenshtein distance between a and b.
     """
@@ -177,12 +171,62 @@ def levenshtein(a: str, b: str) -> int:
 #
 # ===========================================================================
 
-def getMyIP() -> str:
+def getMyIP(iface: Optional[str] = None,
+            timeout: Optional[int] = 3,
+            default: str = '127.0.0.1') -> str:
     """ Retrieve the computer's IP address (v4).
+
+        :param iface: The name of a specific network interface/adapter to
+            use. If `iface` is a regular expression, the first match will
+            be used (e.g., ``"wlan0|mlan0"`` will return the IP of ``wlan0``
+            if both are connected).
+        :param timeout: The amount of time, in seconds, to wait for the
+            specified `iface` to become available (if not immediately
+            present). If `None`, wait indefinitely. Only applicable when
+            `iface` is specified.
+        :param default: The default network interface to use if none
+            could be found.
     """
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        s.connect(("8.8.8.8", 80))
-        return s.getsockname()[0]
+    # FUTURE: Multiple interfaces/IPs and/or IPv6
+
+    # Find a specific interface/adapter
+    if iface:
+        timeout = float('inf') if timeout is None else timeout
+        deadline = time() + timeout
+        regex = re.compile(iface)
+
+        while True:
+            for adapter in ifaddr.get_adapters():
+                if not adapter.ips:
+                    continue
+                for ip in adapter.ips:
+                    if regex.match(ip.nice_name):
+                        # Get IPv4 address (IPv6 is a tuple)
+                        if isinstance(ip.ip, str):
+                            return ip.ip
+            if time() >= deadline:
+                logger.debug(f'Could not find network interface {iface!r}, '
+                             "attempting to get active interface's IP")
+                break
+            sleep(.5)
+
+    # Get the primary interface's IP
+    try:
+        # More accurate, but may fail in some conditions
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.settimeout(0)
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+    except (socket.error, OSError):
+        try:
+            # Alternate method (safer, but may return loopback on some systems)
+            name = socket.gethostname()
+            return socket.gethostbyname(name)
+        except (socket.error, OSError) as err:
+            if default is None:
+                raise
+            logger.error(f"Could not get IP, defaulting to {default} ({err!r})")
+            return default
 
 
 def makeClientID(base: str) -> str:
@@ -227,6 +271,29 @@ def waitfor(func: Callable,
 
     raise TimeoutError
 
+
+def decodeAttr(data: Dict[str, Any], obj: Any):
+    """ Decode an EBML `Attribute` element (defined in several enDAQ/Mide
+        schemata) and update an object's `attributes` attribute. Used to
+        process some special-case metadata.
+    """
+    name = data.pop('AttributeName')
+
+    attrs = getattr(obj, 'attributes', None)
+    if attrs is None:
+        attrs = obj.attributes = {}
+
+    for k, v in data.items():
+        if k.name.endswith('Attribute'):
+            try:
+                attrs[name].append(v)
+            except KeyError:
+                attrs[name] = [v]
+
+
+# ===========================================================================
+# Decorators
+# ===========================================================================
 
 def synchronized(method):
     """ Decorator for making methods use a lock, modeled after the one in
@@ -314,3 +381,24 @@ def _device_synchronized(method):
                 if 'waiting' not in str(method):
                     logger.debug(f'<<< exiting synchronized method {method} (thread {get_native_id()})')
     return wrapped
+
+
+def info_lock_required(func: Callable,
+                       what: str = 'Function/method call') -> Optional[bytes]:
+    """ Convenience function for getting/setting info requiring the device's
+        Lock ID match the host's. It turns ERR_BAD_LOCK_ID errors into a
+        more useful message, since .
+
+        :param func: The function to be called, e.g., a `functools.partial`
+            that calls `CommandInterface._getInfo()` or
+            `CommandInterface._setInfo()` with the required parameters.
+        :param what: The name or short description of the function called.
+    """
+    try:
+        return func()
+    except DeviceError as err:
+        if err.errno == CommandResponseCode.ERR_BAD_LOCK_ID:
+            err.args = (err.args[0],
+                        f'{what} requires a matching lock ID '
+                        'set with Recorder.command.setLockID()')
+        raise

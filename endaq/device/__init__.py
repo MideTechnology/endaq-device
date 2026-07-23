@@ -6,6 +6,7 @@ data-logging devices.
 __author__ = "David Stokes"
 __copyright__ = "Copyright 2025 Mide Technology Corporation"
 
+from contextlib import suppress
 import os
 from pathlib import Path
 import string
@@ -35,7 +36,7 @@ from .types import Drive, Filename, Epoch
 #
 # ============================================================================
 
-__version__ = "1.4.1b4"
+__version__ = "1.4.1b5"
 
 __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'DeviceError', 'DeviceTimeout', 'UnsupportedFeature',
@@ -235,9 +236,11 @@ def getDevices(paths: Optional[List[Filename]] = None,
     result = set()
 
     for path in paths:
-        dev = getRecorder(path, update=update, strict=strict)
-        if dev is not None:
-            result.add(dev)
+        with suppress(IOError):
+            # Can fail in edge case where device unplugged at wrong moment
+            dev = getRecorder(path, update=update, strict=strict)
+            if dev is not None:
+                result.add(dev)
 
     if unmounted:
         for dev in getSerialDevices(known=RECORDERS_BY_SN):
@@ -400,7 +403,7 @@ def getSerialDevices(known: Optional[Dict[int, Recorder]] = None,
     devices = []
 
     # Dummy recorder and command interface to retrieve DEVINFO
-    fake = NonRecorder()
+    fake = NonRecorder(name='getSerialDevices')
     fake.command = SerialCommandInterface(fake)
 
     for port, sn in SerialCommandInterface._possibleRecorders(strict=strict):

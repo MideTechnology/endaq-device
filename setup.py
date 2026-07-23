@@ -22,6 +22,7 @@ INSTALL_REQUIRES = [
     'ebmlite>=3.3.0',
     # 'idelib>=3.2.9',
     'idelib @ git+https://github.com/MideTechnology/idelib.git@develop',
+    'ifaddr>=0.1.7',
     'numpy>=1.19.4',
     'paho-mqtt>=2.1.0',
     'psutil >=5.5.0; sys_platform == "linux" or sys_platform=="darwin"',

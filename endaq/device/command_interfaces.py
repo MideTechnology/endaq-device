@@ -4,7 +4,7 @@ and control the recording device.
 """
 
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timezone
 import errno
 import os.path
 from pathlib import Path
@@ -190,8 +190,8 @@ class CommandInterface:
         ebml = self.schema.encodes(data, headers=False)
 
         if checkSize and self.maxCommandSize and len(ebml) > self.maxCommandSize:
-            raise CommandError("Command too large ({}); max size is {}".format(
-                    len(ebml), self.maxCommandSize))
+            raise CommandError(CommandResponseCode.ERR_BAD_PACKET,
+                               f"Command too large ({len(ebml)}); max size is {self.maxCommandSize}")
 
         return ebml
 
@@ -381,8 +381,8 @@ class CommandInterface:
         if epoch:
             return sysTime, devTime
 
-        return (util.utcfromtimestamp(sysTime),
-                util.utcfromtimestamp(devTime))
+        return (datetime.fromtimestamp(sysTime, timezone.utc),
+                datetime.fromtimestamp(devTime, timezone.utc))
 
 
     @device_synchronized
@@ -1086,7 +1086,7 @@ class CommandInterface:
             if up_ext != '.bin':
                 raise ValueError("Userpage update file must be type .bin")
             if validate:
-                updating.validateUserpage(self, userpage)
+                updating.validateUserpage(self.device, userpage)
 
         hasFw = self._copyUpdateFile(firmware, fw, clean)
         hasUp = self._copyUpdateFile(userpage, up, clean)
@@ -1416,11 +1416,11 @@ class CommandInterface:
             raise UnsupportedFeature('{!r} has no network adapter'.format(self.device))
 
 
-        response = self._sendCommand({'EBMLCommand': {'NetworkStatus': None}},
-                                 response=True,
-                                 timeout=timeout,
-                                 interval=interval,
-                                 callback=callback)
+        response: dict = self._sendCommand({'EBMLCommand': {'NetworkStatus': None}},
+                                           response=True,
+                                           timeout=timeout,
+                                           interval=interval,
+                                           callback=callback)
 
         return self._encodeResponseCodes(response.get('NetworkStatusResponse'))
 
@@ -1590,64 +1590,49 @@ class CommandInterface:
         return False
 
 
-    def startStream(self,
-                    filename: Union[str, Path],
-                    wait: bool = True,
-                    timeout: Union[int, float] = 10,
-                    callback: Optional[Callable] = None,
-                    streamCallback: Optional[Callable] = None) -> bool:
-        """ Start a device recording/streaming and save the data it sends
-            to a file.
+    def saveStream(self,
+                   path: Union[str, Path],
+                   streamCallback: Optional[Callable] = None) -> bool:
+        """ Start receiving and writing data streamed from the device. Note
+            that this does not send the start command to the device; that
+            `startRecording()` must be done explicitly before calling
+            `saveStream()`.
 
             This command is only applicable to wireless devices (i.e., the
             enDAQ W-series) on an MQTT network running an enDAQ MQTT
             Device Manager.
 
-            :param filename: The name of the file to which to write the
-                streamed data (e.g., an ``.IDE``).
-            :param wait: If `True`, wait for the recorer to respond and/or
-                disconnect, indicating the streaming has started.
-            :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately; `None` or -1 will wait
-                indefinitely.
-            :param callback: A function to call each response-checking
-                cycle. If the callback returns `True`, the wait for a
-                response will be cancelled. The callback function should
-                require no arguments. Note that this only applies while
-                starting the stream; use :meth:`stopStreaming()` to
-                stop an active stream.
+            :param path: The name of the directory to which to save the
+                streamed data. The names of the individual ``.IDE``
+                filenames will consist of the device serial number and
+                the date/time (e.g., ``SERIALNO_yyyymmdd_HHMMSS.IDE``).
             :param streamCallback: A function to call each time a 'chunk'
                 of streamed data arrives. It should take two parameters:
                 the `Recorder` instance, and the number of bytes in the
                 chunk. Note: Unlike other callback functions, its return
                 value is ignored, so returning `False` does not cancel
                 the operation.
-            :returns: `True` if the command was successful.
+            :returns: `True` if opening the file and subscribing to the
+                stream was successful, `False` if streamed data is already
+                being received.
         """
-        raise UnsupportedFeature(self, self.startStream)
+        raise UnsupportedFeature(self, self.saveStream)
 
 
-    def stopStream(self,
-                   wait: bool = True,
-                   timeout: Union[int, float] = 5,
-                   callback: Optional[Callable] = None) -> bool:
-        """ Stop a device that is streaming data.
+    def closeStream(self) -> bool:
+        """ Stop receiving and writing data streamed from the device. Note
+            that this does not send the stop command to the device; that
+            must be done explicitly, either before or after calling
+            `closeStream()`.
 
             This command is only applicable to wireless devices (i.e., the
             enDAQ W-series) on an MQTT network running an enDAQ MQTT
             Device Manager.
 
-            :param wait: If `True`, wait for the recorer to respond
-                indicating the streaming has stopped.
-            :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
-            :param callback: A function to call each response-checking
-                cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should require no
-                arguments.
-            :returns: `True` if the command was successful.
+            :returns: `True` if the command was successful, `False` if
+                not already receiving/saving streamed data.
         """
-        raise UnsupportedFeature(self, self.stopStream)
+        raise UnsupportedFeature(self, self.closeStream)
 
 
     def streaming(self) -> bool:
@@ -1759,7 +1744,16 @@ class SerialCommandInterface(CommandInterface):
 
         self.make_crc = make_crc
         self.ignore_crc = ignore_crc
+        self.escaped = b''
         self.port = None
+
+        # Do additional setup based on device DEVINFO.
+        # `NonRecorder` fixture instances have no DEVINFO; skip
+        if type(device).__name__ != 'NonRecorder':
+            try:
+                self.escaped = self.device.getInfo('SerialCommandInterface')['EscapedCharacters']
+            except (AttributeError, KeyError, TypeError):
+                pass
 
         serial_kwargs.pop('port', None)
         self.portArgs = self.SERIAL_PARAMS.copy()
@@ -1798,7 +1792,7 @@ class SerialCommandInterface(CommandInterface):
         try:
             self.getSerialPort()
             return True
-        except CommandError as err:
+        except DeviceError as err:
             if 'No serial port found' in str(err):
                 return False
             raise
@@ -1867,7 +1861,7 @@ class SerialCommandInterface(CommandInterface):
     def getSerialPort(self,
                       reset: bool = False,
                       timeout: Union[int, float] = 1,
-                      kwargs: Optional[Dict[str, Any]] = None) -> Union[None, serial.Serial]:
+                      kwargs: Optional[Dict[str, Any]] = None) -> serial.Serial:
         """
         Connect to a device's serial port.
 
@@ -1926,6 +1920,7 @@ class SerialCommandInterface(CommandInterface):
 
         self.port = None
 
+        # TODO: This should really raise CommunicationError. Fix here and what calls this.
         if sys.platform == 'linux':
             raise CommandError('No serial port found for device '
                                "('sudo' may be required to access serial ports)")
@@ -1984,7 +1979,7 @@ class SerialCommandInterface(CommandInterface):
         # Header: address 0 (broadcast), EBML data, immediate write.
         packet = bytearray([0x80, 0x26, 0x00, 0x0A])
         packet.extend(ebml)
-        packet = hdlc_encode(packet, crc=self.make_crc)
+        packet = hdlc_encode(packet, crc=self.make_crc, escaped=self.escaped)
         return packet
 
 
@@ -2007,10 +2002,10 @@ class SerialCommandInterface(CommandInterface):
         responseCode = 0
 
         # Header: address 1 (host), EBML data, immediate write.
-        packet = bytearray([0x81, 0x00, responseCode])
-        packet.extend(ebml)
-        packet = hdlc_encode(packet, crc=self.make_crc)
-        return packet
+        out = bytearray([0x81, 0x00, responseCode])
+        out.extend(ebml)
+        out = hdlc_encode(out, crc=self.make_crc, escaped=self.escaped)
+        return out
 
 
     def _decode(self,
@@ -2022,21 +2017,26 @@ class SerialCommandInterface(CommandInterface):
             :param packet: A packet of response data.
             :return: The response, as nested dictionaries.
         """
-        # Messages are Corbus packets:
-        # HDLC escaped short header, payload, crc16
-        packet = hdlc_decode(packet, ignore_crc=self.ignore_crc)
-        if packet.startswith(b'\x81\x00'):
-            resultcode = packet[2]
-            if resultcode == 0:
-                return super()._decode(packet[3:-2])
-            else:
-                errname = {0x01: "Corbus command failed",
-                           0x07: "bad Corbus command"}.get(resultcode, "unknown error")
-                raise CommandError(f"Response header indicated an error "
-                                   f"(0x{resultcode:02x}: {errname})")
-        else:
+        # Messages are HDLC escaped Corbus packets: header, payload, crc16
+        # It may end with an HDLC BREAK character, the data after which
+        # should be ignored.
+        try:
+            # Trim any junk at start and end of the packet (could occur in
+            # some environments, or if the port is used for other data)
+            packet = packet[packet.index(b'\x81\x00'):].partition(b'~')[0]
+            packet = hdlc_decode(packet, ignore_crc=self.ignore_crc)
+        except (ValueError, CRCError):
             raise CommunicationError('Response was corrupted or incomplete; '
                                      'did not have expected Corbus header')
+
+        resultcode = packet[2]
+        if resultcode == 0:
+            return super()._decode(packet[3:-2])
+        else:
+            errname = {0x01: "Corbus command failed",
+                       0x07: "bad Corbus command"}.get(resultcode, "unknown error")
+            raise CommandError(f"Response header indicated an error "
+                               f"(0x{resultcode:02x}: {errname})")
 
 
     def _decodeCommand(self, packet: Union[bytearray, bytes]) -> Dict[str, Any]:
@@ -2048,12 +2048,16 @@ class SerialCommandInterface(CommandInterface):
                 additional coding (varying by interface type).
             :return: The command, as nested dictionaries.
         """
-        packet = hdlc_decode(packet, ignore_crc=self.ignore_crc)
-        if packet.startswith(b'\x80\x26\x00\x0A'):
-            return super()._decodeCommand(packet[4:-2])
-        else:
+        try:
+            # Trim any junk at start and end of the packet (could occur in
+            # some environments, or if the port is used for other data)
+            packet = packet[packet.index(b'\x80\x26\x00\x0A'):].partition(b'~')[0]
+            packet = hdlc_decode(packet, ignore_crc=self.ignore_crc)
+        except (ValueError, CRCError):
             raise CommunicationError('Received command was corrupted or incomplete; '
                                      'did not have expected Corbus header')
+
+        return super()._decodeCommand(packet[4:-2])
 
 
     def _writeCommand(self,
@@ -2373,7 +2377,7 @@ class SerialCommandInterface(CommandInterface):
                 t0 = time()
 
         self._sendCommand({'EBMLCommand': {'SetClock': payload}},
-                          response=False, timeout=timeout)
+                          response=False, timeout=timeout, lock=True)
 
         return t0, t
 
@@ -2673,6 +2677,7 @@ class SerialCommandInterface(CommandInterface):
         if self._statusChanged.is_set():
             self._statusChanged.clear()
             return self.status
+        # TODO: This should really be a DeviceError
         raise CommandError('Device responded but did not report its status')
 
 
@@ -2941,12 +2946,12 @@ class SerialCommandInterface(CommandInterface):
         # Note: Reading config or user calibration requires a LockID
         # lock = index in (5, 6)
         cmd = {'EBMLCommand': {'GetInfo': infoIdx}}
-        response = self._sendCommand(cmd,
-                                     response=True,
-                                     timeout=timeout,
-                                     lock=lock,
-                                     index=index,
-                                     callback=callback)
+        response: dict = self._sendCommand(cmd,
+                                           response=True,
+                                           timeout=timeout,
+                                           lock=lock,
+                                           index=index,
+                                           callback=callback)
 
         try:
             info = response['GetInfoResponse']['InfoPayload']

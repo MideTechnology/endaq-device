@@ -20,7 +20,10 @@ be found using the :meth:`getDevices()` method.
 
 """
 
+from contextlib import suppress
+from datetime import datetime
 import logging
+import os.path
 from pathlib import Path
 import string
 from threading import Event, Thread
@@ -66,6 +69,8 @@ RESPONSE_TOPIC = "endaq/{sn}/control/response"
 STATE_TOPIC = "endaq/{sn}/control/state"
 HEADER_TOPIC = "endaq/{sn}/header"
 MEASUREMENT_TOPIC = "endaq/{sn}/measurement"
+
+EBML_ID_BYTES = b'\x1A\x45\xDF\xA3'  # To identify `EBML` elements in stream
 
 
 # ===========================================================================
@@ -268,8 +273,8 @@ class MQTTConnector:
                 raise CommunicationError(f'Failed to connect to broker: {err!r}')
 
         result, _mid = self.subscribe(self._managerStateTopic, qos=0)
-        if result == mqtt.MQTT_ERR_SUCCESS:
-            self.client.message_callback_add(self._managerStateTopic, self._onMessage)
+        # if result == mqtt.MQTT_ERR_SUCCESS:
+        #     self.client.message_callback_add(self._managerStateTopic, self._onMessage)
 
         self.client.loop_start()
 
@@ -355,7 +360,12 @@ class MQTTConnector:
             self.lastUsedTime = time()
             self._ports[message.topic].append(message.payload)
         elif message.topic == self._managerStateTopic:
-            self._onManagerState(client, userdata, message)
+            # Handle state messages in a separate thread to prevent the paho
+            # client from blocking if a device is receiving a large response
+            # to a command.
+            # TODO: This is a simple implementation that may need more work
+            t = Thread(target=self._onManagerState, args=(client, userdata, message), daemon=True)
+            t.start()
         elif message.topic in self._streamers:
             self._streamers[message.topic]._writeStreamChunk(message.payload)
         else:
@@ -365,33 +375,39 @@ class MQTTConnector:
     def _onManagerState(self, _client, _userdata, message):
         """ MQTT event handler for ``endaq/manager/control/state`` updates.
         """
-        devman = self._getDevManager()
-        if not devman:
-            logger.error(f'Device manager not available')
-
         try:
-            response = devman.command._decode(message.payload)['EBMLResponse']
-            self._updateDeviceInfo(devman, response)
-        except KeyError as err:
-            logger.error(f'Device manager state message missing item: {err!r}')
-            return
+            devman = self._getDevManager()
+            if not devman:
+                logger.error(f'Device manager not available')
+                return
 
-        if self.autoupdate:
             try:
-                deviceList = response['DeviceList']['DeviceListItem']
-                for listItem in deviceList:
-                    sn = listItem.get('SerialNumber')
-                    if not sn or sn in self.exclude:
-                        continue
-                    elif sn in RECORDERS_BY_SN:
-                        self._updateDeviceInfo(RECORDERS_BY_SN[sn], listItem)
-                        # TODO: Exclude unchanged devices?
-            except KeyError:
-                pass
+                response = devman.command._decode(message.payload)['EBMLResponse']
+                self._updateDeviceInfo(devman, response)
+            except KeyError as err:
+                logger.error(f'Device manager state message missing item: {err!r}')
+                return
 
-        if self.updateCallback:
-            self.updateCallback(response)
+            if self.autoupdate:
+                try:
+                    deviceList = response['DeviceList']['DeviceListItem']
+                    for listItem in deviceList:
+                        sn = listItem.get('SerialNumber')
+                        if not sn or sn in self.exclude:
+                            continue
+                        elif sn in RECORDERS_BY_SN:
+                            self._updateDeviceInfo(RECORDERS_BY_SN[sn], listItem)
+                            # TODO: Exclude unchanged devices?
+                except KeyError:
+                    pass
 
+            if self.updateCallback:
+                self.updateCallback(response)
+
+        except Exception as err:
+            logger.error(f'Unexpected error updating manager state: {err!r}',
+                         exc_info=True)
+            raise
 
     # noinspection PyUnusedLocal
     def _onConnect(self, client, userdata, disconnect_flags, reason_code, properties):
@@ -857,7 +873,8 @@ class MQTTCommandInterface(SerialCommandInterface):
         self.manager = manager
 
         self.streamCallback: Optional[Callable] = None
-        self._stream: BinaryIO = None
+        self._streamPath: Union[str, Path, None] = None
+        self._stream: Optional[BinaryIO] = None
         self._streamStartTime: float = 0
         self._streamedBytes: int = 0
         self._lastStreamChunk: bytes = b''
@@ -1175,61 +1192,6 @@ class MQTTCommandInterface(SerialCommandInterface):
     #
     # =======================================================================
 
-    def startRecording(self,
-                       wait: bool = True,
-                       timeout: Union[int, float] = 5,
-                       callback: Optional[Callable] = None) -> bool:
-        """ Start the device recording, if supported.
-
-            :param wait: If `True`, wait for the recorer to respond
-                indicatingthe recording has started.
-            :param timeout: Time (in seconds) to wait for a response before
-                raising a `DeviceTimeout` exception. `None` or -1 will wait
-                indefinitely.
-            :param callback: A function to call each response-checking
-                cycle. If the callback returns `True`, the wait for a
-                response will be cancelled. The callback function should
-                require no arguments.
-            :returns: `True` if the command was successful.
-        """
-        # TODO: Implement `wait` actually waiting on change of status code
-        return super().startRecording(wait, timeout, callback)
-
-
-    def stopRecording(self,
-                      wait: bool = True,
-                      timeout: Union[int, float] = 5,
-                      callback: Optional[Callable] = None):
-        """ Stop a device that is recording.
-
-            :param wait: If `True`, wait for the recorer to respond and/or
-                remount, indicating the recording has stopped.
-            :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
-            :param callback: A function to call each response-checking
-                cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should require no
-                arguments.
-            :returns: `True` if the command was successful.
-        """
-        # TODO: Implement `wait` actually waiting on change of status code
-        stopped = super().stopRecording(wait, timeout, callback)
-
-        # TODO: Wait until the `ExitCond` Attribute element is received?
-        #  (and/or a timeout after the last packet received, and/or a change
-        #  in DeviceStatusCode)
-        self.manager._streamers.pop(self._streamTopic, None)
-        self.manager.unsubscribe(self._streamTopic)
-
-        try:
-            self._stream.close()
-        except AttributeError:
-            pass
-
-        self.streamCallback = None
-        return stopped
-
-
     @property
     def canStream(self) -> bool:
         """ Is the device capable of streaming data?
@@ -1238,78 +1200,91 @@ class MQTTCommandInterface(SerialCommandInterface):
         return True
 
 
-    def startStream(self,
-                    filename: Union[str, Path],
-                    wait: bool = True,
-                    timeout: Union[int, float] = 10,
-                    callback: Optional[Callable] = None,
-                    streamCallback: Optional[Callable] = None) -> bool:
-        """ Start a device recording/streaming and save the data it sends
-            to a file.
+    @synchronized
+    def saveStream(self,
+                   path: Union[str, Path],
+                   streamCallback: Optional[Callable] = None) -> bool:
+        """ Start receiving and writing data streamed from the device. Note
+            that this does not send the start command to the device; that
+            `startRecording()` must be done explicitly before calling
+            `saveStream()`.
 
-            :param filename: The name of the file to which to write the
-                streamed data (e.g., an ``.IDE``).
-            :param wait: If `True`, wait for the recorer to respond and/or
-                disconnect, indicating the streaming has started.
-            :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately; `None` or -1 will wait
-                indefinitely.
-            :param callback: A function to call each response-checking
-                cycle. If the callback returns `True`, the wait for a
-                response will be cancelled. The callback function should
-                require no arguments. Note that this only applies while
-                starting the stream; use :meth:`stopStreaming()` to
-                stop an active stream.
+            :param path: The name of the directory to which to save the
+                streamed data. The names of the individual ``.IDE``
+                filenames will consist of the device serial number and
+                the date/time (e.g., ``SERIALNO_yyyymmdd_HHMMSS.IDE``).
             :param streamCallback: A function to call each time a 'chunk'
                 of streamed data arrives. It should take two parameters:
                 the `Recorder` instance, and the number of bytes in the
                 chunk. Note: Unlike other callback functions, its return
                 value is ignored, so returning `False` does not cancel
                 the operation.
-            :returns: `True` if the command was successful.
+            :returns: `True` if opening the file and subscribing to the
+                stream was successful, `False` if streamed data is already
+                being received.
         """
-        # TODO: Check device status? Or is it better to send the command
-        #  and fail if already recording/streaming?
-        if self._stream is not None and not self._stream.closed:
+        self.streamCallback = streamCallback or self.streamCallback
+        if self.streaming() and path != self._streamPath:
             return False
 
-        self.streamCallback = streamCallback
-        self._stream = open(filename, mode='wb')
+        self._streamPath = path
+        self._createStreamFile()
+
         self._streamStartTime = 0
         self._streamedBytes = 0
         self._lastStreamChunk = b''
+
         self.manager._streamers[self._streamTopic] = self
         self.manager.subscribe(self._streamTopic)
-        return self.startRecording(wait, timeout, callback)
+        return True
 
 
-    def stopStream(self,
-                   wait: bool = True,
-                   timeout: Union[int, float] = 5,
-                   callback: Optional[Callable] = None) -> bool:
-        """ Stop a device that is streaming data.
-
-            :param wait: If `True`, wait for the recorer to respond
-                indicating the streaming has stopped.
-            :param timeout: Time (in seconds) to wait for the recorder to
-                respond. 0 will return immediately.
-            :param callback: A function to call each response-checking
-                cycle. If the callback returns `True`, the wait for a response
-                will be cancelled. The callback function should require no
-                arguments.
-            :returns: `True` if the command was successful.
+    @synchronized
+    def _createStreamFile(self):
+        """ Start a new IDE file. If a file is currently open and has been
+            written to, close it and start another.
         """
-        return self.stopRecording(wait, timeout, callback)
+        if self._stream and not self._stream.closed:
+            if self._streamedBytes == 0:
+                return
+            self._stream.close()
+
+        filename = f"{self.device.serial}_{datetime.now().strftime('%y%m%d_%H%M%S')}.IDE"
+        self._stream = open(os.path.join(self._streamPath, filename), 'wb')
+        logger.debug(f"Saving stream to {self._stream}")
 
 
+    @synchronized
+    def closeStream(self) -> bool:
+        """ Stop receiving and writing data streamed from the device. Note
+            that this does not send the stop command to the device; that
+            must be done explicitly, either before or after calling
+            `synchronized()`.
+
+            :returns: `True` if the command was successful, `False` if
+                not already receiving/saving streamed data.
+        """
+        if not self.streaming():
+            return False
+
+        self.streamCallback = None
+        self.manager._streamers.pop(self._streamTopic, None)
+        self.manager.unsubscribe(self._streamTopic)
+        self._stream.close()
+        return True
+
+
+    @synchronized
     def streaming(self) -> bool:
         """ Is this instance receiving and recording data streamed from the device?
         """
-        return (self.status[1] == DeviceStatusCode.STREAMING
-                and self._streamTopic in self.manager._streamers
-                and self._stream and not self._stream.closed)
+        return (self._streamTopic in self.manager._streamers
+                and self._stream and not self._stream.closed
+                # and self.status[1] == DeviceStatusCode.STREAMING
+                )
 
 
+    @synchronized
     def _writeStreamChunk(self, chunk: bytearray) -> int:
         """ Write a chunk of streamed measurement data to file. Called by
             the `MQTTConnector`.
@@ -1317,20 +1292,20 @@ class MQTTCommandInterface(SerialCommandInterface):
             :param chunk: The payload of a ``measurement`` topic message.
             :returns: The number of bytes written.
         """
-        # TODO: Automatic stream shutdown if ExitCond in the packet (and/or
-        #  DeviceStatusCode indicates not streaming)? This could get complicated.
-        numbytes = 0
-        if self._stream is None:
+        if self._stream is None or self._stream.closed:
             logger.error(f'{self.device.serial} received stream chunk, but file not open!')
-        elif self._stream.closed:
-            logger.debug(f'{self.device.serial} received stream chunk after file closed; ignoring')
-        else:
-            numbytes = self._stream.write(chunk)
-            self._streamedBytes += numbytes
-            self._lastStreamChunk = chunk
-            self._lastChunkTime = time()
-            if self._streamStartTime == 0:
-                self._streamStartTime = self._lastChunkTime
-            if self.streamCallback:
-                self.streamCallback(self.device, numbytes)
+            return 0
+
+        if chunk.startswith(EBML_ID_BYTES):
+            self._createStreamFile()
+
+        numbytes = self._stream.write(chunk)
+        self._streamedBytes += numbytes
+        self._lastStreamChunk = chunk
+        self._lastChunkTime = time()
+        self._streamStartTime = self._streamStartTime or self._lastChunkTime
+
+        if self.streamCallback:
+            self.streamCallback(self.device, numbytes)
+
         return numbytes

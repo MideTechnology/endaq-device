@@ -9,8 +9,9 @@ device's realtime clock is also done through the command interface, as it
 also takes effect immediately.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 import errno
+from functools import partial
 import logging
 import os.path
 from pathlib import Path
@@ -28,7 +29,7 @@ from .types import Epoch
 from . import legacy
 from . import ui_defaults
 from . import util
-from .util import device_synchronized
+from .util import decodeAttr, device_synchronized
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -190,6 +191,8 @@ class ConfigItem:
         # For future use (if any)
         self.label = self.tooltip = self.units = None
 
+        self.attributes = {}
+
         for k, v in data.items():
             if k in self.ARGS:
                 setattr(self, self.ARGS[k], v)
@@ -197,6 +200,8 @@ class ConfigItem:
                 # Config item type determined by *Value element type
                 # (if present; fallback behaviors below)
                 self.vtype, self._default = k, v
+            elif k == 'Attribute':
+                decodeAttr(v, self)
             else:
                 # Elements with data type as prefix
                 for attr in ("Min", "Max", "Gain", "Offset"):
@@ -690,6 +695,7 @@ class ConfigInterface:
                     {'RecorderConfigurationItem': config}}
 
 
+    @device_synchronized
     def getConfigUI(self) -> Union[Document, MasterElement]:
         """ Get the device's ``ConfigUI`` data.
         """
@@ -876,6 +882,8 @@ class ConfigInterface:
     @name.setter
     def name(self, n: Optional[str]):
         self._setitem(0x08ff7f, n)
+        if self.device:
+            self.device._name = n
 
     @property
     def notes(self) -> Union[str, None]:
@@ -972,7 +980,7 @@ class ConfigInterface:
         t = self._getitem(0x0fff7f).value
         if t is None:
             return None
-        return datetime.utcfromtimestamp(t)
+        return datetime.fromtimestamp(t, timezone.utc)
 
     @recordingStartTime.setter
     def recordingStartTime(self, t: Union[Epoch, datetime, struct_time, tuple, None]):
@@ -1632,14 +1640,17 @@ class RemoteConfigInterface(FileConfigInterface):
     def _writeConfig(self, data: bytes) -> int:
         """ Open and write to the device's config file.
         """
-        self.device.command._setInfo(5, data, callback=self.callback)
+        func = partial(self.device.command._setInfo, 5, data,
+                       callback=self.callback)
+        return util.info_lock_required(func, 'Writing configuration data')
 
 
     def _readConfig(self) -> bytes:
         """ Open and read the device's config file.
         """
-        return self.device.command._getInfo(5, lock=True,
-                                            callback=self.callback)
+        func = partial(self.device.command._getInfo, 5, lock=True,
+                       callback=self.callback)
+        return util.info_lock_required(func, 'Reading configuration data')
 
 
     def _readUi(self):
@@ -1702,6 +1713,7 @@ class RemoteConfigInterface(FileConfigInterface):
         return self.device.command.available
 
 
+    @device_synchronized
     def loadConfig(self, config: Optional[MasterElement] = None):
         """ Process a device's configuration data.
 
@@ -1711,6 +1723,35 @@ class RemoteConfigInterface(FileConfigInterface):
         """
         # FileCommandInterface legacy stuff not needed.
         return super().loadConfig(config)
+
+
+    @device_synchronized
+    def getConfig(self) -> Union[None, Document, MasterElement]:
+        """ Low-level method that retrieves the device's config EBML (e.g.,
+            the contents of a real device's `config.cfg` file), if any.
+        """
+        data = self._readConfig()
+        if data:
+            return loadSchema('mide_ide.xml').loads(data)
+        else:
+            logger.debug('No config data could be read (device not configured?), ignoring')
+
+        return None
+
+
+    @device_synchronized
+    def getConfigUI(self) -> Union[Document, MasterElement]:
+        """ Load the device's ``ConfigUI`` data.
+        """
+        if self.configUi:
+            return self.configUi
+
+        elif self._isfile(self.device.configUIFile):
+            ui = self._schema.loads(self._readUi())
+            if ui:
+                self.configUi = ui
+
+        return super().getConfigUI()
 
 
 # ===========================================================================
