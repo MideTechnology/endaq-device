@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Schema type="mide_config_ui" version="2" readversion="2">
+<Schema type="mide_config_ui" version="3" readversion="3">
     <SchemaInfo>
         <Author>David Stokes, Peter Scheidler</Author>
         <Description>Schema for the device-produced data used to define the user interface for configuring an enDAQ data recorder.</Description>
@@ -30,18 +30,20 @@
     </MasterElement>
 
 <MasterElement name="ConfigUI" level="0" id="0x7777" mandatory="1" multiple="0">
-    <UnicodeElement name="PostConfigMessage" id="0x5035" multiple="0">A message, displayed after device configuration.</UnicodeElement>
+    <UnicodeElement name="PostConfigMessage" id="0x5035" multiple="0">
+        A message, displayed after device configuration.
+    </UnicodeElement>
 
     <MasterElement name="Tab" id="0x4028" multiple="1" mandatory="1">
-        <UnicodeElement name="Label" id="0x5005" multiple="0" />
-        <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
+        <UnicodeElement name="Label" id="0x5005" multiple="0"> Text accompanying the UI widget, name of a tab, etc. </UnicodeElement>
+        <UnicodeElement name="ToolTip" id="0x5015" multiple="0"> Hover help text. </UnicodeElement>
 
         <MasterElement name="Group" global="1" id="0x4008" multiple="1">
             <UnicodeElement name="Label" id="0x5005" multiple="0" />
             <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
             <UIntegerElement name="ConfigID" id="0x5001" multiple="0" />
-            <StringElement name="DisableIf" id="0x5014" multiple="0" />
-            <UIntegerElement name="IsAdvancedFeature" id="0x5010" multiple="0" />
+            <StringElement name="DisableIf" id="0x5014" multiple="0"> An expression (Python syntax) that controls the enabling/disabling of the widget. </StringElement>
+            <UIntegerElement name="IsAdvancedFeature" id="0x5010" multiple="0"> Flag to indicate a widget that should only appear when showing advanced/debug features. </UIntegerElement>
 
             <!--
             NOTE: Any *Field can have any *Value type! The examples below show *Fields with matching
@@ -53,8 +55,8 @@
                 <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
                 <UIntegerElement name="BooleanValue" id="0x5100" multiple="0" />
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
-                <StringElement name="ValueFormat" id="0x5024" multiple="0" />
-                <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="ValueFormat" id="0x5024" multiple="0"> An expression (Python syntax) to convert from display units to raw config file units. </StringElement>
+                <StringElement name="DisplayFormat" id="0x5034" multiple="0"> An expression (Python syntax) to convert from raw config file units to display units. </StringElement>
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
@@ -64,10 +66,11 @@
                 <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
                 <UnicodeElement name="Units" id="0x5025" multiple="0" />
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
-                <UIntegerElement name="UIntMin" id="0x5111" multiple="0" />
-                <UIntegerElement name="UIntMax" id="0x5121" multiple="0" />
+                <UIntegerElement name="UIntMin" id="0x5111" multiple="0">Minimum value in display scale/units</UIntegerElement>
+                <UIntegerElement name="UIntMax" id="0x5121" multiple="0">Maximum value in display scale/units</UIntegerElement>
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <IntegerElement name="IntValue" id="0x5102" multiple="0" />
                 <UIntegerElement name="UIntValue" id="0x5101" multiple="0" />
                 <FloatElement name="FloatValue" id="0x5103" multiple="0" />
@@ -82,11 +85,12 @@
                 <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
                 <UnicodeElement name="Units" id="0x5025" multiple="0" />
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
-                <IntegerElement name="IntMin" id="0x5112" multiple="0" />
-                <IntegerElement name="IntMax" id="0x5122" type="integer" multiple="0" />
+                <IntegerElement name="IntMin" id="0x5112" multiple="0">Minimum value in display scale/units</IntegerElement>
+                <IntegerElement name="IntMax" id="0x5122" multiple="0">Maximum value in display scale/units</IntegerElement>
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <UIntegerElement name="IntIncrement" id="0x5131" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <IntegerElement name="IntValue" id="0x5102" multiple="0" />
                 <UIntegerElement name="UIntValue" id="0x5101" multiple="0" />
                 <FloatElement name="FloatValue" id="0x5103" multiple="0" />
@@ -101,12 +105,13 @@
                 <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
                 <UnicodeElement name="Units" id="0x5025" multiple="0" />
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
-                <FloatElement name="FloatMin" id="0x5113" multiple="0" />
-                <FloatElement name="FloatMax" id="0x5123" multiple="0" />
+                <FloatElement name="FloatMin" id="0x5113" multiple="0">Minimum value in display scale/units</FloatElement>
+                <FloatElement name="FloatMax" id="0x5123" multiple="0">Minimum value in display scale/units</FloatElement>
                 <FloatElement name="FloatIncrement" id="0x5133" multiple="0" />
                 <UIntegerElement name="FloatDigits" id="0x5141" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <IntegerElement name="IntValue" id="0x5102" multiple="0" />
                 <UIntegerElement name="UIntValue" id="0x5101" multiple="0" />
                 <FloatElement name="FloatValue" id="0x5103" multiple="0" />
@@ -121,9 +126,11 @@
                 <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
                 <UIntegerElement name="MaxLength" id="0x5124" multiple="0" />
+                <UIntegerElement name="MinLength" id="0x5144" multiple="0" />
                 <UIntegerElement name="TextLines" id="0x5134" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <StringElement name="ASCIIValue" id="0x5104" multiple="0" />
                 <IntegerElement name="IntValue" />
                 <UIntegerElement name="UIntValue" />
@@ -137,9 +144,11 @@
                 <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
                 <UIntegerElement name="MaxLength" id="0x5124" multiple="0" />
+                <UIntegerElement name="MinLength" id="0x5144" multiple="0" />
                 <UIntegerElement name="TextLines" id="0x5134" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UnicodeElement name="TextValue" id="0x5105" multiple="0" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -156,6 +165,7 @@
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -186,6 +196,7 @@
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UIntegerElement name="UIntValue" />
                 <MasterElement name="EnumOption" />
                 <UIntegerElement name="IsAdvancedFeature" />
@@ -198,6 +209,7 @@
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -215,6 +227,7 @@
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -238,6 +251,7 @@
                 <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
@@ -257,6 +271,7 @@
                 <FloatElement name="FloatValue" />
                 <FloatElement name="FloatGain" />
                 <FloatElement name="FloatOffset" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
@@ -268,10 +283,11 @@
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
                 <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
                 <IntegerElement name="IntMin" id="0x5112" multiple="0" />
-                <IntegerElement name="IntMax" id="0x5122" type="integer" multiple="0" />
+                <IntegerElement name="IntMax" id="0x5122" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <UIntegerElement name="IntIncrement" id="0x5131" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -295,6 +311,7 @@
                 <UIntegerElement name="FloatDigits" id="0x5141" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -312,9 +329,11 @@
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
                 <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
                 <UIntegerElement name="MaxLength" id="0x5124" multiple="0" />
+                <UIntegerElement name="MinLength" id="0x5144" multiple="0" />
                 <UIntegerElement name="TextLines" id="0x5134" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -330,9 +349,11 @@
                 <StringElement name="DisableIf" id="0x5014" multiple="0" />
                 <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
                 <UIntegerElement name="MaxLength" id="0x5124" multiple="0" />
+                <UIntegerElement name="MinLength" id="0x5144" multiple="0" />
                 <UIntegerElement name="TextLines" id="0x5134" multiple="0" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UIntegerElement name="UIntValue" id="0x5101" multiple="0" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
@@ -356,6 +377,7 @@
                 <FloatElement name="FloatValue" />
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <MasterElement name="EnumOption" global="1" id="0x4107" multiple="1">
                     <UnicodeElement name="Label" id="0x5005" multiple="0" />
                     <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
@@ -378,6 +400,7 @@
                 <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UIntegerElement name="UIntValue" />
                 <MasterElement name="EnumOption" />
                 <UIntegerElement name="IsAdvancedFeature" />
@@ -391,6 +414,7 @@
                 <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -409,6 +433,7 @@
                 <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
                 <StringElement name="ValueFormat" id="0x5024" multiple="0" />
                 <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <StringElement name="Validator" id="0x5044" multiple="1" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -420,13 +445,18 @@
             </MasterElement>
 
             <MasterElement name="IntAccelerationField" global="1" id="0x4042" multiple="1">
-                <UIntegerElement name="ConfigID" id="0x5001" multiple="0" />
-                <UnicodeElement name="Label" id="0x5005" multiple="0" />
-                <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
-                <StringElement name="DisableIf" id="0x5014" multiple="0" />
-                <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
-                <StringElement name="ValueFormat" id="0x5024" multiple="0" />
-                <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                A special-case variant of `IntField` widget for entering acceleration values.
+                Default label, tooltip, etc. are appropriate for the unit type, saving space.
+                <UIntegerElement name="ConfigID" />
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <StringElement name="DisableIf" />
+                <UIntegerElement name="ExcludeID" />
+                <StringElement name="ValueFormat" />
+                <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" />
+                <IntegerElement name="IntMin" />
+                <IntegerElement name="IntMax" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -438,13 +468,16 @@
             </MasterElement>
 
             <MasterElement name="CheckIntAccelerationField" global="1" id="0x4052" multiple="1">
-                <UIntegerElement name="ConfigID" id="0x5001" multiple="0" />
-                <UnicodeElement name="Label" id="0x5005" multiple="0" />
-                <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
-                <StringElement name="DisableIf" id="0x5014" multiple="0" />
-                <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
-                <StringElement name="ValueFormat" id="0x5024" multiple="0" />
-                <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <UIntegerElement name="ConfigID" />
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <StringElement name="DisableIf" />
+                <UIntegerElement name="ExcludeID" />
+                <StringElement name="ValueFormat" />
+                <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" />
+                <IntegerElement name="IntMin" />
+                <IntegerElement name="IntMax" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -456,14 +489,18 @@
             </MasterElement>
 
             <MasterElement name="FloatAccelerationField" global="1" id="0x4043" multiple="1">
-                <UIntegerElement name="ConfigID" id="0x5001" multiple="0" />
-                <UnicodeElement name="Label" id="0x5005" multiple="0" />
-                <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
-                <StringElement name="DisableIf" id="0x5014" multiple="0" />
-                <StringElement name="ValueFormat" id="0x5024" multiple="0" />
-                <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
-                <FloatElement name="FloatIncrement" id="0x5133" multiple="0" />
-                <UIntegerElement name="FloatDigits" id="0x5141" multiple="0" />
+                A special-case variant of `FloatField` widget for entering acceleration values.
+                Default label, tooltip, etc. are appropriate for the unit type, saving space.
+                <UIntegerElement name="ConfigID" />
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <StringElement name="DisableIf" />
+                <StringElement name="ValueFormat" />
+                <StringElement name="DisplayFormat" />
+                <FloatElement name="FloatIncrement" />
+                <UIntegerElement name="FloatDigits" />
+                <FloatElement name="FloatMin" />
+                <FloatElement name="FloatMax" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -475,15 +512,18 @@
             </MasterElement>
 
             <MasterElement name="CheckFloatAccelerationField" global="1" id="0x4053" multiple="1">
-                <UIntegerElement name="ConfigID" id="0x5001" multiple="0" />
-                <UnicodeElement name="Label" id="0x5005" multiple="0" />
-                <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
-                <StringElement name="DisableIf" id="0x5014" multiple="0" />
-                <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
-                <StringElement name="ValueFormat" id="0x5024" multiple="0" />
-                <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
-                <FloatElement name="FloatIncrement" id="0x5133" multiple="0" />
-                <UIntegerElement name="FloatDigits" id="0x5141" multiple="0" />
+                <UIntegerElement name="ConfigID" />
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <StringElement name="DisableIf" />
+                <UIntegerElement name="ExcludeID" />
+                <StringElement name="ValueFormat" />
+                <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" />
+                <FloatElement name="FloatMin" />
+                <FloatElement name="FloatMax" />
+                <FloatElement name="FloatIncrement" />
+                <UIntegerElement name="FloatDigits" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -495,12 +535,17 @@
             </MasterElement>
 
             <MasterElement name="IntTemperatureField" global="1" id="0x4062" multiple="1">
-                <UIntegerElement name="ConfigID" id="0x5001" multiple="0" />
-                <UnicodeElement name="Label" id="0x5005" multiple="0" />
-                <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
-                <StringElement name="DisableIf" id="0x5014" multiple="0" />
-                <StringElement name="ValueFormat" id="0x5024" multiple="0" />
-                <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                A special-case variant of `IntField` widget for entering temperature values.
+                Default label, tooltip, etc. are appropriate for the unit type, saving space.
+                <UIntegerElement name="ConfigID" />
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <StringElement name="DisableIf" />
+                <StringElement name="ValueFormat" />
+                <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" />
+                <IntegerElement name="IntMin" />
+                <IntegerElement name="IntMax" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -512,13 +557,14 @@
             </MasterElement>
 
             <MasterElement name="CheckIntTemperatureField" global="1" id="0x4072" multiple="1">
-                <UIntegerElement name="ConfigID" id="0x5001" multiple="0" />
-                <UnicodeElement name="Label" id="0x5005" multiple="0" />
-                <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
-                <StringElement name="DisableIf" id="0x5014" multiple="0" />
-                <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
-                <StringElement name="ValueFormat" id="0x5024" multiple="0" />
-                <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <UIntegerElement name="ConfigID" />
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <StringElement name="DisableIf" />
+                <UIntegerElement name="ExcludeID" />
+                <StringElement name="ValueFormat" />
+                <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -530,14 +576,19 @@
             </MasterElement>
 
             <MasterElement name="FloatTemperatureField" global="1" id="0x4063" multiple="1">
-                <UIntegerElement name="ConfigID" id="0x5001" multiple="0" />
-                <UnicodeElement name="Label" id="0x5005" multiple="0" />
-                <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
-                <StringElement name="DisableIf" id="0x5014" multiple="0" />
-                <StringElement name="ValueFormat" id="0x5024" multiple="0" />
-                <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
-                <FloatElement name="FloatIncrement" id="0x5133" multiple="0" />
-                <UIntegerElement name="FloatDigits" id="0x5141" multiple="0" />
+                A special-case variant of `FloatField` widget for entering temperature values.
+                Default label, tooltip, etc. are appropriate for the unit type, saving space.
+                <UIntegerElement name="ConfigID" />
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <StringElement name="DisableIf" />
+                <StringElement name="ValueFormat" />
+                <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" />
+                <FloatElement name="FloatMin" />
+                <FloatElement name="FloatMax" />
+                <FloatElement name="FloatIncrement" />
+                <UIntegerElement name="FloatDigits" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -549,15 +600,18 @@
             </MasterElement>
 
             <MasterElement name="CheckFloatTemperatureField" global="1" id="0x4073" multiple="1">
-                <UIntegerElement name="ConfigID" id="0x5001" multiple="0" />
-                <UnicodeElement name="Label" id="0x5005" multiple="0" />
-                <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
-                <StringElement name="DisableIf" id="0x5014" multiple="0" />
-                <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
-                <StringElement name="ValueFormat" id="0x5024" multiple="0" />
-                <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
-                <FloatElement name="FloatIncrement" id="0x5133" multiple="0" />
-                <UIntegerElement name="FloatDigits" id="0x5141" multiple="0" />
+                <UIntegerElement name="ConfigID" />
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <StringElement name="DisableIf" />
+                <UIntegerElement name="ExcludeID" />
+                <StringElement name="ValueFormat" />
+                <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" />
+                <FloatElement name="FloatMin" />
+                <FloatElement name="FloatMax" />
+                <FloatElement name="FloatIncrement" />
+                <UIntegerElement name="FloatDigits" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -566,14 +620,18 @@
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
-
             <MasterElement name="IntPressureField" global="1" id="0x4082" multiple="1">
-                <UIntegerElement name="ConfigID" id="0x5001" multiple="0" />
-                <UnicodeElement name="Label" id="0x5005" multiple="0" />
-                <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
-                <StringElement name="DisableIf" id="0x5014" multiple="0" />
-                <StringElement name="ValueFormat" id="0x5024" multiple="0" />
-                <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                A special-case variant of `IntField` widget for entering air pressure values.
+                Default label, tooltip, etc. are appropriate for the unit type, saving space.
+                <UIntegerElement name="ConfigID" />
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <StringElement name="DisableIf" />
+                <StringElement name="ValueFormat" />
+                <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" />
+                <IntegerElement name="IntMin" />
+                <IntegerElement name="IntMax" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -585,13 +643,16 @@
             </MasterElement>
 
             <MasterElement name="CheckIntPressureField" global="1" id="0x4092" multiple="1">
-                <UIntegerElement name="ConfigID" id="0x5001" multiple="0" />
-                <UnicodeElement name="Label" id="0x5005" multiple="0" />
-                <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
-                <StringElement name="DisableIf" id="0x5014" multiple="0" />
-                <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
-                <StringElement name="ValueFormat" id="0x5024" multiple="0" />
-                <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
+                <UIntegerElement name="ConfigID" />
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <StringElement name="DisableIf" />
+                <UIntegerElement name="ExcludeID" />
+                <StringElement name="ValueFormat" />
+                <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" />
+                <IntegerElement name="IntMin" />
+                <IntegerElement name="IntMax" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -603,14 +664,19 @@
             </MasterElement>
 
             <MasterElement name="FloatPressureField" global="1" id="0x4083" multiple="1">
-                <UIntegerElement name="ConfigID" id="0x5001" multiple="0" />
-                <UnicodeElement name="Label" id="0x5005" multiple="0" />
-                <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
-                <StringElement name="DisableIf" id="0x5014" multiple="0" />
-                <StringElement name="ValueFormat" id="0x5024" multiple="0" />
-                <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
-                <FloatElement name="FloatIncrement" id="0x5133" multiple="0" />
-                <UIntegerElement name="FloatDigits" id="0x5141" multiple="0" />
+                A special-case variant of `FloatField` widget for entering air pressure values.
+                Default label, tooltip, etc. are appropriate for the unit type, saving space.
+                <UIntegerElement name="ConfigID" />
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <StringElement name="DisableIf" />
+                <StringElement name="ValueFormat" />
+                <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" />
+                <FloatElement name="FloatMin" />
+                <FloatElement name="FloatMax" />
+                <FloatElement name="FloatIncrement" />
+                <UIntegerElement name="FloatDigits" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -622,15 +688,18 @@
             </MasterElement>
 
             <MasterElement name="CheckFloatPressureField" global="1" id="0x4093" multiple="1">
-                <UIntegerElement name="ConfigID" id="0x5001" multiple="0" />
-                <UnicodeElement name="Label" id="0x5005" multiple="0" />
-                <UnicodeElement name="ToolTip" id="0x5015" multiple="0" />
-                <StringElement name="DisableIf" id="0x5014" multiple="0" />
-                <UIntegerElement name="ExcludeID" id="0x5011" multiple="1"/>
-                <StringElement name="ValueFormat" id="0x5024" multiple="0" />
-                <StringElement name="DisplayFormat" id="0x5034" multiple="0" />
-                <FloatElement name="FloatIncrement" id="0x5133" multiple="0" />
-                <UIntegerElement name="FloatDigits" id="0x5141" multiple="0" />
+                <UIntegerElement name="ConfigID" />
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <StringElement name="DisableIf" />
+                <UIntegerElement name="ExcludeID" />
+                <StringElement name="ValueFormat" />
+                <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" />
+                <FloatElement name="FloatMin" />
+                <FloatElement name="FloatMax" />
+                <FloatElement name="FloatIncrement" />
+                <UIntegerElement name="FloatDigits" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -642,10 +711,11 @@
             </MasterElement>
 
             <MasterElement name="HiddenField" global="1" id="0x040FF" multiple="1">
-                A 'field' for config items without individual UI widgets (e.g. created from multiple other fields)
-                <UIntegerElement name="ConfigID" id="0x5001" multiple="0" />
-                <StringElement name="DisableIf" id="0x5014" multiple="0">For hidden fields, this determines if the config item will be written.</StringElement>
-                <StringElement name="ValueFormat" id="0x5024" multiple="0" />
+                A 'field' for config items without individual UI widgets (e.g. created from
+                multiple other fields).
+                <UIntegerElement name="ConfigID" />
+                <StringElement name="DisableIf" /> For hidden fields, `DisableIf` determines if the config item will be written.
+                <StringElement name="ValueFormat" />
                 <UnicodeElement name="TextValue" />
                 <StringElement name="ASCIIValue" />
                 <IntegerElement name="IntValue" />
@@ -657,7 +727,8 @@
             </MasterElement>
 
             <MasterElement name="VerticalPadding" global="1" id="0x400F" multiple="1">
-                Special-case widget that creates a resizable vertical spacer, placing the fields following it on the bottom of the dialog.
+                Special-case widget that creates a resizable vertical spacer, placing the fields
+                following it on the bottom of the dialog.
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
@@ -666,8 +737,25 @@
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
-            <MasterElement name="ResetButton" global="1" id="404F" multiple="1">
-                Special-case control that resets all the siblings in its group or tab to their factory default values.
+            <MasterElement name="ResetButton" global="1" id="0x404F" multiple="1">
+                Special-case control that resets all the siblings in its group or tab to their
+                factory default values.
+                <UIntegerElement name="IsAdvancedFeature" />
+            </MasterElement>
+
+            <MasterElement name="RebootButton" global="1" id="0x405F" multiple="0">
+                Special-case control that issues the command to reset/reboot the device. Its label
+                and tooltip have default values, but these may be overridden with child elements.
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <UIntegerElement name="IsAdvancedFeature" />
+            </MasterElement>
+
+            <MasterElement name="ShutdownButton" global="1" id="0x406F" multiple="0">
+                Special-case control that issues the command to power off the device. Its label
+                and tooltip have default values, but these may be overridden with child elements.
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
@@ -681,11 +769,14 @@
                 <UIntegerElement name="ExcludeID" />
                 <StringElement name="ValueFormat" />
                 <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" />
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
-            <MasterElement name="ServiceNameField" id="0x4046" global="1" multiple="1">
-                Special-case text field variant for entering the name of an advertised service (e.g., an MQTT broker).
+            <MasterElement name="ServiceNameField" id="0x4045" global="1" multiple="1">
+                Special-case text field variant for entering the name of an advertised service
+                (e.g., an MQTT broker). The default service type is ``_endaq._tcp.local.``
+                (defined in `endaq.device.mqtt.discovery`).
                 <UIntegerElement name="ConfigID" />
                 <UnicodeElement name="Label" />
                 <UnicodeElement name="ToolTip" />
@@ -694,6 +785,23 @@
                 <UIntegerElement name="ExcludeID" />
                 <StringElement name="ValueFormat" />
                 <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" />
+                <UIntegerElement name="IsAdvancedFeature" />
+            </MasterElement>
+
+            <MasterElement name="PasswordField" id="0x4065" global="1" multiple="1">
+                Special-case text field variant for entering passwords.
+                <UIntegerElement name="ConfigID" />
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <UnicodeElement name="TextValue" />
+                <StringElement name="DisableIf" />
+                <UIntegerElement name="ExcludeID" />
+                <StringElement name="ValueFormat" />
+                <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" />
+                <UIntegerElement name="MaxLength" id="0x5124" multiple="0" />
+                <UIntegerElement name="MinLength" id="0x5144" multiple="0" />
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
@@ -707,10 +815,11 @@
                 <UIntegerElement name="ExcludeID" />
                 <StringElement name="ValueFormat" />
                 <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" />
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
-            <MasterElement name="CheckServiceNameField" id="0x4056" global="1" multiple="1">
+            <MasterElement name="CheckServiceNameField" id="0x4055" global="1" multiple="1">
                 Special-case text field variant for entering the name of an advertised service (e.g., an MQTT broker), with checkbox.
                 <UIntegerElement name="ConfigID" />
                 <UnicodeElement name="Label" />
@@ -720,6 +829,23 @@
                 <UIntegerElement name="ExcludeID" />
                 <StringElement name="ValueFormat" />
                 <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" />
+                <UIntegerElement name="IsAdvancedFeature" />
+            </MasterElement>
+
+            <MasterElement name="CheckPasswordField" id="0x4075" global="1" multiple="1">
+                Special-case text field variant for entering passwords, with checkbox.
+                <UIntegerElement name="ConfigID" />
+                <UnicodeElement name="Label" />
+                <UnicodeElement name="ToolTip" />
+                <UnicodeElement name="TextValue" />
+                <StringElement name="DisableIf" />
+                <UIntegerElement name="ExcludeID" />
+                <StringElement name="ValueFormat" />
+                <StringElement name="DisplayFormat" />
+                <StringElement name="Validator" />
+                <UIntegerElement name="MaxLength" id="0x5124" multiple="0" />
+                <UIntegerElement name="MinLength" id="0x5144" multiple="0" />
                 <UIntegerElement name="IsAdvancedFeature" />
             </MasterElement>
 
@@ -736,6 +862,7 @@
             <MasterElement name="FloatField" />
             <MasterElement name="ASCIIField" />
             <MasterElement name="TextField" />
+            <MasterElement name="PasswordField" />
             <MasterElement name="EnumField" />
             <MasterElement name="DateTimeField" />
             <MasterElement name="UTCOffsetField" />
@@ -744,6 +871,7 @@
             <MasterElement name="CheckFloatField" />
             <MasterElement name="CheckASCIIField" />
             <MasterElement name="CheckTextField" />
+            <MasterElement name="CheckPasswordField" />
             <MasterElement name="CheckEnumField" />
             <MasterElement name="CheckDateTimeField" />
             <MasterElement name="CheckUTCOffsetField" />
@@ -776,6 +904,7 @@
         <MasterElement name="FloatField" />
         <MasterElement name="ASCIIField" />
         <MasterElement name="TextField" />
+        <MasterElement name="PasswordField" />
         <MasterElement name="EnumField" />
         <MasterElement name="DateTimeField" />
         <MasterElement name="UTCOffsetField" />
@@ -784,6 +913,7 @@
         <MasterElement name="CheckFloatField" />
         <MasterElement name="CheckASCIIField" />
         <MasterElement name="CheckTextField" />
+        <MasterElement name="CheckPasswordField" />
         <MasterElement name="CheckEnumField" />
         <MasterElement name="CheckDateTimeField" />
         <MasterElement name="CheckUTCOffsetField" />
@@ -803,6 +933,8 @@
         <MasterElement name="CheckDriftButton" />
         <MasterElement name="VerticalPadding" />
         <MasterElement name="ResetButton" />
+        <MasterElement name="RebootButton" />
+        <MasterElement name="ShutdownButton" />
         <MasterElement name="IPAddressField" />
         <MasterElement name="CheckIPAddressField" />
         <MasterElement name="ServiceNameField" />
@@ -825,6 +957,12 @@
     <MasterElement name="WiFiSelectionTab" global="1" id="0x4A88" multiple="0">
         <UIntegerElement name="IsAdvancedFeature" />
     </MasterElement>
+
+    <UIntegerElement name="FieldSubtype" id="0x5041" global="1" multiple="0">
+        The EBML ID of a field/tab subclass, for backwards compatibility with earlier versions of
+        the config GUI that neither have the new element in their schema, nor the mechanism to fall
+        back to the superclass (added in endaq-device v1.4.0). Primarily for development work.
+    </UIntegerElement>
 
 </MasterElement> <!-- ConfigUI -->
 
