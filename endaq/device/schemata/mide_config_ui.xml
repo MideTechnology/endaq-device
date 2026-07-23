@@ -933,6 +933,8 @@
         <MasterElement name="CheckDriftButton" />
         <MasterElement name="VerticalPadding" />
         <MasterElement name="ResetButton" />
+        <MasterElement name="RebootButton" />
+        <MasterElement name="ShutdownButton" />
         <MasterElement name="IPAddressField" />
         <MasterElement name="CheckIPAddressField" />
         <MasterElement name="ServiceNameField" />
