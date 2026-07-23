@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from fnmatch import fnmatchcase
 import logging
 import re
+from threading import RLock
 from time import sleep, time
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -69,6 +70,8 @@ class MDNSFinder:
         self.browser = None                     # Holder for serviceBrowser
         self._mdns: Dict[str, MDNSInfo] = {}    # Dict of mDNS items indexed by full name
 
+        self._synchronized_lock = RLock()  # Same as used in the `@synchronized` decorator
+
         # `*patterns` will always be a tuple w/ 0 or more items (the positional args).
         if not patterns:
             patterns = DEFAULT_NAMES[:]
@@ -85,7 +88,6 @@ class MDNSFinder:
         self.start_time = 0
 
 
-    @synchronized
     def _onServiceStateChange(self,
                               zeroconf: Zeroconf,
                               service_type: str,
@@ -96,8 +98,13 @@ class MDNSFinder:
         or updated. Do not change these parameters or names! They are
         required by Zeroconf.
         """
+        # Note: this method explicitly uses the lock typically created/used
+        # by the `@synchronized` decorator; `get_service_info()` may take 
+        # time, and only the dict access before/after needs to block.
+
         if state_change == ServiceStateChange.Removed and name in self._mdns:
-            del self._mdns[name]
+            with self._synchronized_lock:
+                del self._mdns[name]
             return
 
         info = zeroconf.get_service_info(service_type, name, timeout=self._timeout_ms)
@@ -106,7 +113,8 @@ class MDNSFinder:
             return
 
         if not self._patterns or any(fnmatchcase(info.name, p) for p in self._patterns):
-            self._mdns[info.name] = parseServiceInfo(info)
+            with self._synchronized_lock:
+                self._mdns[info.name] = parseServiceInfo(info)
 
 
     @synchronized
