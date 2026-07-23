@@ -2,20 +2,26 @@
 Pytest configuration functions.
 """
 import pytest
-from typing import Tuple, List
+from typing import Tuple, List, Set, Literal
 from test_hardware.session_manager import SessionManager
+from test_hardware.connection_manager import SessionStateError
 import random
 import re
 import sys
 from copy import copy 
+from functools import cache
 
 pytest_plugins = [
     'test_hardware.fixtures'
 ]
 
+#===== GLOBAL VARIABLES ====#
+#INVARIANT: globals below are modifed in pytest_configure, which
+#by definition is the first thing ran
+SESSION_MANAGER: SessionManager = None
+INTERACTABLE: Literal["", "tty", "raspi"]= ""
 
 #===== HELPERS =====#
-SESSION_MANAGER = None 
 
 def _apply_wifi_toggles(items) -> List:
     """
@@ -28,17 +34,12 @@ def _apply_wifi_toggles(items) -> List:
     for item in items:    
         matches = pattern.search(item.name)
         if matches:
-            """
-            The two lines of code below are temporarily disabled for the current PR.
-            This is actively being developed in the wifi_device_tests branch
-            
             item.fixturenames = copy(item.fixturenames)
             item.fixturenames.append(matches.group(1))
-            """
             if matches.group(1) == "enable_wifi":
                 item.add_marker(pytest.mark.wifi)
             else:
-                item.add_marker(pytest.mark.no_wifi)
+                item.add_marker(pytest.mark.serial)
     return items
 
 def _seperate_by_cond(items, cond) -> Tuple[List, List]:
@@ -49,22 +50,45 @@ def _seperate_by_cond(items, cond) -> Tuple[List, List]:
     cond_true = []
     for item in items: [cond_false, cond_true][cond(item)].append(item)
     return (cond_false, cond_true)
-        
+
+@cache
+def _interactable(config) -> str:
+   """
+   Checks to see if a device can be interacted with, through a raspberry pi,
+   or human input.
+   Note that this method is cached using `functools.cache`, as the value should theoretically
+   never change
+   
+   :param config: the config fixture found in `pytest_configure` or `pytest_collect_modifyitems`.
+       Note that this is not a hook, and config has to be passed in manually
+
+   :return: a boolean if there is some way to interact with this device
+   """
+   if config.getoption('--raspi'):
+       return "raspi"
+   if config.getoption('--no_tty'):
+       return ""
+   if config.getoption('-s') == "no":
+       return "tty"
+   return ""
+
 #==== Hooks =====#
 def pytest_addoption(parser):
     """
     Adds a command line option to list a device by serial number. These are 
     argparse style options.
     """
-
+    
     parser.addoption(
         "-D", "--device", required=True, default=None, help="Specify the serial number of the device to test"
     )
+
+    #=== session options ===#
     parser.addoption(
         "-R", "--raspi", action="store_true", default=False, help="Include if running on a RasPi"
     )
-    parser.addoption('--no_tty', action="store_true", default=False, help="")
-    parser.addoption('--random-order', action="store_true", default=False, help=(
+    parser.addoption("--no_tty", action="store_true", default=False, help="")
+    parser.addoption("--random-order", action="store_true", default=False, help=(
         "Include to randomize test execution order"
     ))
     parser.addoption("--random-order-seed", type=int, default=None, help=(
@@ -72,15 +96,24 @@ def pytest_addoption(parser):
     ))
 
 def pytest_configure(config):
+    """
+    Used to set global variables, which allow other files to 
+    use information that is only retrievable from `config`
+    """
+
+    #creating globals
     global SESSION_MANAGER
+    global INTERACTABLE
     SESSION_MANAGER = SessionManager(
         device_sn = config.getoption('--device'), 
         interface_mode = 2 if config.getoption('--raspi') else 1 if sys.stdin.isatty() else 0,
-        get_on_init=True
         )
+    INTERACTABLE = _interactable(config)
+
 
 def pytest_generate_tests(metafunc):
     global SESSION_MANAGER
+    global INTERACTABLE
     has_wifi = SESSION_MANAGER.device.hasWifi
     #wifi only tests should get deselected, but still generated
     markers = metafunc.definition.own_markers
@@ -89,7 +122,7 @@ def pytest_generate_tests(metafunc):
     
     parametrize_with = []
     
-    if "no_wifi" in marker_names:
+    if "serial" in marker_names:
         parametrize_with.append('disable_wifi')
     elif "wifi" in marker_names:
         parametrize_with.append('enable_wifi')
@@ -98,7 +131,7 @@ def pytest_generate_tests(metafunc):
         parametrize_with.append('disable_wifi')
         if has_wifi:
             parametrize_with.append('enable_wifi')
-
+    #FUTURE: if, this logic needs to be updated
     metafunc.parametrize('wifi_toggle', parametrize_with)
 
 def pytest_exception_interact(node, call, report):
@@ -109,19 +142,22 @@ def pytest_exception_interact(node, call, report):
     NOTE: If the test crashes on a fixture (eg: not having a device plugged in), 
         then there will be no funcargs / session_manager key.
     """
+    #A session state error almost guarentees that the device is not accessible
+    #otherwise would be impossible to recover fromm
+    if isinstance(call.excinfo.value, SessionStateError):
+        return True
     if hasattr(node, 'funcargs') and 'session_manager' in node.funcargs:
-        node.funcargs['session_manager'].end_test(True)
-
+       node.funcargs['session_manager'].end_test(True)
+    return True
 def pytest_collection_modifyitems(config, items):
     """
     Defines how to treat tests with device type marks depending on the device 
     command line input.
     """
+    no_tty: bool = not _interactable(config) 
+    #toggles
     if config.getoption('--verbose'):
         print('duplicating and seperating tests')
-    is_raspi: bool = config.getoption('--raspi')
-    no_tty: bool = ((config.getoption('-s') != "no" or config.getoption('--no_tty'))
-                    and not is_raspi)
     wifi_compatible: bool = SESSION_MANAGER.device.hasWifi
 
     selected = _apply_wifi_toggles(items)
@@ -129,13 +165,15 @@ def pytest_collection_modifyitems(config, items):
 
     conditions = []
     conditions.append(lambda item: not (no_tty and 'tty' in item.keywords)) #no_tty
-
+    #FUTURE: support for additional filtering can be appended to conditions
     for cond in conditions:
         func_out = _seperate_by_cond(selected, cond)
         deselected += func_out[0]
         selected = func_out[1]
+
     #wifi
     wifi_out = _seperate_by_cond(selected, lambda item: ('wifi' in item.keywords))
+
     #random output
     if config.getoption('--random-order'):
         if config.getoption('--verbose'):
@@ -144,14 +182,11 @@ def pytest_collection_modifyitems(config, items):
         shuffler(wifi_out[0])
         shuffler(wifi_out[1])
     selected = wifi_out[0]
-    #This if block is used for the current non-wifi PR. This will be restored in wifi-device-tests
-    if True: 
+
+    if wifi_compatible: 
+        selected += wifi_out[1]
+    else:
         deselected += wifi_out[1]
-    else: 
-        if wifi_compatible: 
-            selected += wifi_out[1]
-        else:
-            deselected += wifi_out[1]
     config.hook.pytest_deselected(items = deselected)
     selected.sort(key = lambda item: 'wifi' in item.keywords)
     items[:] = selected

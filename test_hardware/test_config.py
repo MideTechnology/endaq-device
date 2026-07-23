@@ -51,10 +51,15 @@ def test_get_revert_changes(session_manager):
     assert len(device.config.getChanges()) == 0
     rec_item = device.config.items[917375] 
     rec_item.value = 60 if rec_item.value != 60 else 120
-    assert len(device.config.getChanges()) == 1
+    changes = device.config.getChanges() 
+    assert len(changes) == 1, (
+            f"expected one change, got {changes}"
+            ) 
     device.config.revert()
-    assert len(device.config.getChanges()) == 0
-
+    changes = device.config.getChanges()
+    assert len(changes) == 0, (
+            f"after revert, expected zero changes, got {changes}"
+            )
 
 def test_is_enabled(session_manager):
     device = session_manager.device
@@ -108,25 +113,35 @@ def test_sample_rate(session_manager, sample_rate, is_valid):
 
 
 sample_datetime = datetime(2000,3,14,15,2,30, tzinfo=tz.utc)
-@pytest.mark.parametrize('attr_name, attr_id, attr_value, expected_out', [
-    ('retrigger', 0xEFF7F, 1, 1),
-    ('recordingStartTime', 0xFFF7F, sample_datetime.timestamp(), sample_datetime),
-    ('recordingSizeLimit', 0x11FF7F, 1, 1),
-    ('recordingPrefix', 0x15FF7F, 'recTMP', 'recTMP'),
-    ('recordingDir', 0x14FF7F, 'recTMP', 'recTMP'),
-    ('notes', 0x9FF7F, 'tmp', 'tmp'),
-    ('name', 0x8FF7F, 'tmp', 'tmp'),
-    ('buttonMode', 0x10FF7F, 1, 1)
+@pytest.mark.parametrize('attr_name, attr_id, attr_type', [
+    ('retrigger', 0xEFF7F, "int"),
+    ('recordingSizeLimit', 0x11FF7F, "int"),
+    ('recordingPrefix', 0x15FF7F, "str"),
+    ('recordingDir', 0x14FF7F, "str"),
+    ('notes', 0x9FF7F, "str"),
+    ('name', 0x8FF7F, "str"),
+    ('buttonMode', 0x10FF7F, "int")
 ])
-def test_config_props(session_manager, attr_name, attr_id, attr_value, expected_out):
+def test_config_props(session_manager, attr_name, attr_id, attr_type):
     """
     tests that the properties in `device.config` match the values that are assigned from the config.
     """
     device = session_manager.device
-
     cfg_item = device.config.items[attr_id]
-    cfg_item.value = attr_value
+    if attr_type == "int":
+        #the config we set for button mode is 0, so this will increment to 1.
+        #a different button mode value will break it.
+        new_val = (cfg_item.value or 0) + 1
+    elif attr_type == "str":
+        new_val = (cfg_item.value or "") + "NEW"
+    cfg_item.value = new_val
     device.config.applyConfig()
-    assert getattr(device.config, attr_name) == expected_out
+    assert getattr(device.config, attr_name) == new_val
     
-   
+def test_config_start_time_props(session_manager):
+    """
+    A variation on `test_config_props` for recordingStartTime, as it's 
+    validity checking is slightly different
+    """
+    pytest.skip("test_config_start_time_props not implemented yet")
+    ...

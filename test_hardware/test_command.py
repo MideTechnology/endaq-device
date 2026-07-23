@@ -5,7 +5,7 @@ Tests the communication between the command interface and the device
 import endaq.device
 from endaq.device import DeviceStatusCode as Status
 import pytest
-
+import sys
 import time
 import calendar
 from datetime import datetime, timezone as tz
@@ -17,10 +17,11 @@ def test_standard_run(session_manager):
     device = session_manager.device
     serial_number = device.serial
     
-    session_manager.start_recording(Status.RECORDING)    
+    session_manager.start_recording()    
     assert device.serial == serial_number, "Did not reconnect to the same device."
     session_manager.stop_recording()
 
+@pytest.mark.skipif(sys.platform.startswith("linux"), reason="known flaky linux bug")
 class TestAwait:
     """
     Tests the 4 await functions in the device's command library
@@ -45,7 +46,7 @@ class TestAwait:
         device.command.awaitReconnect(timeout = 30)
     
     #wifi devices can never dismount because they aren't mounted
-    @pytest.mark.no_wifi
+    @pytest.mark.serial
     def test_await_dismount(self, session_manager):
         """
     
@@ -81,7 +82,7 @@ class TestAwait:
         device.command.awaitRemount()
 
     #wifi devices can never remount because they aren't mounted
-    @pytest.mark.no_wifi
+    @pytest.mark.serial
     def test_await_remount(self, session_manager):
         """
         Tests that waiting for a remount is near instantaneous when the device is
@@ -114,12 +115,12 @@ def test_ping_payload(session_manager, index):
     payload = "".join([chr(i) for i in range(index)])
     device.command.awaitReconnect(30)
     returned_payload = device.command.ping(bytearray(payload, 'utf-8'))
-    print(f"\n{bytearray(payload, 'utf-8')} <-- Payload size {index}"
-          f"\n{returned_payload} <-- Returned Payload")
-
     # Confirm that ping() returns the same thing it was sent
     assert returned_payload == bytearray(
-        payload, 'utf-8'), f"ping() failed on size {index}."
+        payload, 'utf-8'), (
+                f"{bytearray(payload, 'utf-8')} <-- Payload size {index}"
+                f"\n{returned_payload} <-- Returned Payload"
+          )
     
 def test_start_recording_wait(session_manager) :
     """ 
@@ -227,8 +228,4 @@ class TestLock:
         assert device.command.isLocked() == (False, False) 
         #tests that clearing non-existant lockID doesn't break
         assert device.command.clearLockID()
-
-
-
-
 

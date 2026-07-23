@@ -45,7 +45,7 @@ def validate_found_device(
 
     ])
 @pytest.mark.tty
-@pytest.mark.no_wifi
+@pytest.mark.serial
 def test_device_changed(session_manager, kwargs, exp_out):
     """
     Performs a series of changes to the device to ensure
@@ -108,7 +108,7 @@ class TestFindDevice:
                 endaq.device.findDevice(sn = device.serial, chipId = device.chipId)
 
 @pytest.mark.tty
-@pytest.mark.no_wifi
+@pytest.mark.serial
 def tet_get_recorder(session_manager):
     """
     we are unable to test the update parameter in getRecorder due to 
