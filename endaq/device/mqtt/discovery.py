@@ -3,13 +3,14 @@ Find an enDAQ MQTT broker.
 """
 
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from fnmatch import fnmatchcase
 import logging
 import re
 from threading import RLock
 from time import sleep, time
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
+import warnings
 
 from zeroconf import Zeroconf, ServiceBrowser, ServiceInfo, ServiceStateChange
 
@@ -34,6 +35,7 @@ MDNS_FINDERS: List["MDNSFinder"] = []
 # ===========================================================================
 
 
+# noinspection deprecation
 @dataclass
 class MDNSInfo:
     """
@@ -52,9 +54,28 @@ class MDNSInfo:
     properties: Dict[bytes, Optional[bytes]]
 
 
+    # For backwards compatibility with earlier version that returned brokers as dicts.
+    # These will be removed in the future.
+
+    def _asdict(self) -> Dict[str, Any]:
+        warnings.warn("mDNS info now returned as an MDNSInfo object; dict methods will be deprecated",
+                      DeprecationWarning)
+        return asdict(self)
+
     def __getitem__(self, k):
-        # For backwards compatibility with earlier version that got brokers as dicts
-        return self.__dict__[k]
+        return self._asdict()[k]
+
+    def get(self, *args):
+        return self._asdict().get(*args)
+
+    def keys(self):
+        return self._asdict().keys()
+
+    def values(self):
+        return self._asdict().values()
+
+    def items(self):
+        return self._asdict().values()
 
 
 class MDNSFinder:
@@ -218,7 +239,7 @@ def parseServiceInfo(info: ServiceInfo) -> MDNSInfo:
                     host=addr, port=info.port, properties=props)
 
 
-# noinspection PyUnusedLocal
+# noinspection PyUnusedLocal,unused-parameter
 def getBroker(name: str = DEFAULT_NAME,
               timeout: float = 5) -> MDNSInfo:
     """

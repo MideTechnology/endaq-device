@@ -6,6 +6,7 @@ to announce the name and IP address of the MQTT Broker via zeroconf/mDNS.
 import itertools
 import json
 import logging
+import signal
 import socket
 from time import time, sleep
 from typing import Any, Callable, Dict, Optional
@@ -68,6 +69,25 @@ class Advertiser:
 
         self.info = None
         self.zeroconf = None
+
+        signal.signal(signal.SIGTERM, self._signal_SIGTERM)
+
+
+    def _signal_SIGTERM(self, _signum, _frame):
+        """ SIGTERM handler: cleanly shut down if process terminated.
+        """
+        logger.debug('Received termination signal (SIGTERM)')
+        self.stop()
+
+
+    def __repr__(self) -> str:
+        """ Return repr(self).
+        """
+        name = f'{type(self).__name__} {self.fullName!r}'
+        if self.is_alive():
+            return f'<{name} (running)>'
+        else:
+            return f'<{name} (stopped)>'
 
 
     def stop(self) -> bool:
@@ -137,6 +157,15 @@ class Advertiser:
                 other_ttl=1125
             )
             self.zeroconf.register_service(self.info)
+
+
+    def is_alive(self) -> bool:
+        """ Is the advetiser running?
+        """
+        try:
+            return self.zeroconf.started
+        except AttributeError:
+            return False
 
 
 # ===========================================================================
