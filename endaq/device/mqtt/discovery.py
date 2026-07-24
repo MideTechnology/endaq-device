@@ -3,7 +3,7 @@ Find an enDAQ MQTT broker.
 """
 
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from fnmatch import fnmatchcase
 import logging
 import re
@@ -52,9 +52,22 @@ class MDNSInfo:
     properties: Dict[bytes, Optional[bytes]]
 
 
+    # For backwards compatibility with earlier version that returned brokers as dicts
+
     def __getitem__(self, k):
-        # For backwards compatibility with earlier version that got brokers as dicts
-        return self.__dict__[k]
+        return asdict(self)[k]
+
+    def get(self, *args):
+        return asdict(self).get(*args)
+
+    def keys(self):
+        return asdict(self).keys()
+
+    def values(self):
+        return asdict(self).values()
+
+    def items(self):
+        return asdict(self).values()
 
 
 class MDNSFinder:
@@ -218,7 +231,7 @@ def parseServiceInfo(info: ServiceInfo) -> MDNSInfo:
                     host=addr, port=info.port, properties=props)
 
 
-# noinspection PyUnusedLocal
+# noinspection PyUnusedLocal,unused-parameter
 def getBroker(name: str = DEFAULT_NAME,
               timeout: float = 5) -> MDNSInfo:
     """
