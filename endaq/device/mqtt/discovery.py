@@ -9,7 +9,8 @@ import logging
 import re
 from threading import RLock
 from time import sleep, time
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
+import warnings
 
 from zeroconf import Zeroconf, ServiceBrowser, ServiceInfo, ServiceStateChange
 
@@ -34,6 +35,7 @@ MDNS_FINDERS: List["MDNSFinder"] = []
 # ===========================================================================
 
 
+# noinspection deprecation
 @dataclass
 class MDNSInfo:
     """
@@ -52,22 +54,28 @@ class MDNSInfo:
     properties: Dict[bytes, Optional[bytes]]
 
 
-    # For backwards compatibility with earlier version that returned brokers as dicts
+    # For backwards compatibility with earlier version that returned brokers as dicts.
+    # These will be removed in the future.
+
+    def _asdict(self) -> Dict[str, Any]:
+        warnings.warn("mDNS info now returned as an MDNSInfo object; dict methods will be deprecated",
+                      DeprecationWarning)
+        return asdict(self)
 
     def __getitem__(self, k):
-        return asdict(self)[k]
+        return self._asdict()[k]
 
     def get(self, *args):
-        return asdict(self).get(*args)
+        return self._asdict().get(*args)
 
     def keys(self):
-        return asdict(self).keys()
+        return self._asdict().keys()
 
     def values(self):
-        return asdict(self).values()
+        return self._asdict().values()
 
     def items(self):
-        return asdict(self).values()
+        return self._asdict().values()
 
 
 class MDNSFinder:
