@@ -283,8 +283,13 @@ class CommandInterface:
             try:
                 response[name] = codes[name](code)
             except (AttributeError, TypeError, ValueError):
+                if name == 'WiFiConnectionStatus':
+                    # WiFiConnectionStatus is something of a special case; its values
+                    # are bits, and multiple can be combined. The enum doesn't explicitly
+                    # have all permutations, so an unknown value is not unexpected.
+                    continue
+
                 logger.debug('Received unknown {}: {}'.format(name, code))
-                pass
 
         return response
 
