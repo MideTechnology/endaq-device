@@ -715,7 +715,7 @@ class CommandInterface:
 
     def getBatteryStatus(self,
                          timeout: Union[int, float] = 1,
-                         callback: Optional[Callable] = None) -> bool:
+                         callback: Optional[Callable] = None) -> Union[dict, None]:
         """ Get the status of the recorder's battery. Not supported on all
             devices. Status is returned as a dictionary. The dictionary will
             always contain the key `"hasBattery"`, and if that is `True`,
@@ -749,7 +749,8 @@ class CommandInterface:
 
     def ping(self,
              data: Union[bytearray, bytes, None] = None,
-             timeout: Union[int, float] = 5,
+             timeout: Union[int, float] = 10,
+             interval: float = .25,
              callback: Optional[Callable] = None) -> bytes:
         """ Verify the recorder is present and responding. Not supported on
             all devices.
@@ -759,6 +760,8 @@ class CommandInterface:
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately; `None` or -1 will wait
                 indefinitely.
+            :param interval: Time (in seconds) between checks for a
+                response.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -2117,7 +2120,7 @@ class SerialCommandInterface(CommandInterface):
         return packet
 
 
-    def _encodeResponse(self, packet: dict) -> bytearray:
+    def _encodeResponse(self, data: dict) -> bytearray:
         """
         Encode a packet of response data in the manner typically received
         from devices, doing any preparation required by the interface's
@@ -2128,11 +2131,11 @@ class SerialCommandInterface(CommandInterface):
         by a device, as the enDAQ firmware uses fixed lengths for element
         size indicators some cases.
 
-        :param packet: The unencoded command `dict`.
+        :param data: The unencoded command `dict`.
         :return: The encoded command data, with any class-specific
             wrapping or other preparations.
         """
-        ebml = super()._encodeResponse(packet)
+        ebml = super()._encodeResponse(data)
         responseCode = 0
 
         # Header: address 1 (host), EBML data, immediate write.
@@ -2143,7 +2146,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def _decode(self,
-                packet: bytearray) -> Dict[str, Any]:
+                packet: Union[bytearray, bytes]) -> Dict[str, Any]:
         """ Translate a response packet into a dictionary. Removes additional
             header data and checks the CRC (if the interface's `ignore_crc`
             attribue is `False`) before parsing the binary EBML contents.
@@ -2600,7 +2603,7 @@ class SerialCommandInterface(CommandInterface):
              data: Union[bytearray, bytes, None] = None,
              timeout: Union[int, float] = 10,
              interval: float = .25,
-             callback: Optional[Callable] = None) -> dict:
+             callback: Optional[Callable] = None) -> bytes:
         """ Verify the recorder is present and responding. Not supported on
             all devices.
 

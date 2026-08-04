@@ -223,20 +223,35 @@ class CommandClient:
         """
         # Attempt to parse, and generate basic errors for bad packets.
         try:
-            command = self.decodeCommand(packet)['EBMLCommand']
+            command = self.decodeCommand(packet)
 
         except (CommandError, TypeError, ValueError):
             logger.error(f'processCommand: Bad packet starting with {dump(packet)}')
             self.sendError(sender, DeviceStatusCode.ERR_BAD_PACKET)
             return
-        except KeyError:
-            logger.error('processCommand: Message did not contain an EBMLCommand element')
+        except KeyError as err:
+            logger.error(f'processCommand: Message did not contain required element {err!r}')
             self.sendError(sender, DeviceStatusCode.ERR_INVALID_COMMAND)
             return
         except CRCError:
             logger.error('processCommand: Packet checksum failed')
             self.sendError(sender, DeviceStatusCode.ERR_BAD_CHECKSUM)
             return
+
+        packet = self.encodeResponse(self._processCommand(command))
+        self.sendResponse(sender, packet)
+
+
+    @synchronized
+    def _processCommand(self,
+                       command: Dict[str, Any]) -> Dict[str, Any]:
+        """ Execute a command. Separated from the decoding/encoding for
+            subclass flexibility.
+
+            :param command: The decoded EBML command dictionary.
+            :returns: The response dictionary.
+        """
+        command = command['EBMLCommand']
 
         idx = command.pop('CommandIdx', None)
         lockId = command.pop('LockID', None)
@@ -273,8 +288,7 @@ class CommandClient:
         if responseMsg:
             response['CommandResponseMessage'] = responseMsg
 
-        packet = self.encodeResponse(response)
-        self.sendResponse(sender, packet)
+        return response
 
 
     def checkLock(self, lockId: ByteString) -> bool:
@@ -320,7 +334,7 @@ class CommandClient:
     #   * A string to return as the `CommandResponseMessage`, or `None`.
     # =======================================================================
 
-    # noinspection PyUnusedLocal
+    # noinspection unused-parameter
     def command_SendPing(
             self,
             payload: Dict[str, Any],
@@ -337,7 +351,7 @@ class CommandClient:
         return {'PingReply': payload}, None, None
     
 
-    # noinspection PyUnusedLocal
+    # noinspection unused-parameter
     def command_GetLockID(
             self,
             payload: Dict[str, Any],
@@ -354,7 +368,7 @@ class CommandClient:
         return {'LockID': self.lockId}, None, None
 
 
-    # noinspection PyUnusedLocal
+    # noinspection unused-parameter
     def command_SetLockID(
             self,
             payload: Dict[str, Any],
@@ -379,7 +393,7 @@ class CommandClient:
             return {}, DeviceStatusCode.ERR_BAD_PAYLOAD, None
 
 
-    # noinspection PyUnusedLocal
+    # noinspection unused-parameter
     def command_GetClock(
             self,
             payload: Dict[str, Any],
