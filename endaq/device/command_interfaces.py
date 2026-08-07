@@ -2395,8 +2395,8 @@ class SerialCommandInterface(CommandInterface):
                         statusCode = responseCode
                     if responseMsg is None:
                         responseMsg = statusMsg
-                    elif statusMsg is None:
-                        statusMsg = responseMsg
+                    # elif statusMsg is None:
+                    #     statusMsg = responseMsg
 
                     self._setStatus(responseCode, responseMsg,
                                     statusCode, statusMsg,
