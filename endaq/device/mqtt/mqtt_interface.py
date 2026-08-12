@@ -903,6 +903,7 @@ class MQTTCommandInterface(SerialCommandInterface):
                               DeviceStatusCode.OFFLINE)
 
 
+    # noinspection method-overriding
     def getSerialPort(self,
                       reset: bool = False,
                       timeout: Union[int, float] = 1,
