@@ -2,6 +2,7 @@
 Some basic utility functions, for internal use.
 """
 
+import base64
 import calendar
 import datetime
 import errno
@@ -402,3 +403,45 @@ def info_lock_required(func: Callable,
                         f'{what} requires a matching lock ID '
                         'set with Recorder.command.setLockID()')
         raise
+
+
+# ===========================================================================
+# Safer JSON serialization
+# Note: This may get moved into `ebmlite`
+# ===========================================================================
+
+def unescapeDict(value: Union[Dict[str, Any], list]) -> None:
+    """ Convert `bytearray`/`bytes` values in a dict/list escaped by
+        `EscapedJSONEncoder` back to their original form. The original
+        dict/list is modified in place.
+    """
+    if isinstance(value, list):
+        iterator = enumerate(value)
+    elif isinstance(value, dict):
+        iterator = value.items()
+    else:
+        raise ValueError(f'cannot iterate {type(value)}')
+
+    for i, v in iterator:
+        if isinstance(v, str) and v.startswith('base64:'):
+            value[i] = base64.b64decode(v[7:])
+        elif isinstance(v, (dict, list)):
+            unescapeDict(v)
+
+
+def escapeDict(value: Union[Dict[str, Any], list]) -> None:
+    """ Convert all strings in a list/dict starting with ``"base64"`` into
+        `bytearray`/`bytes` values. The original dict/list is modified in place.
+    """
+    if isinstance(value, list):
+        iterator = enumerate(value)
+    elif isinstance(value, dict):
+        iterator = value.items()
+    else:
+        raise ValueError(f'cannot iterate {type(value)}')
+
+    for i, v in iterator:
+        if isinstance(v, (bytes, bytearray)):
+            value[i] = 'base64:' + str(base64.b64encode(v), 'utf8')
+        elif isinstance(v, (dict, list)):
+            escapeDict(v)

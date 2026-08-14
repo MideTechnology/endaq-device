@@ -1768,7 +1768,7 @@ class CommandInterface:
     # =======================================================================
 
     def _getInfo(self,
-                 index: int,
+                 infoIdx: int,
                  timeout: Union[int, float] = 10,
                  interval: float = .25,
                  callback: Optional[Callable] = None,
@@ -1778,7 +1778,7 @@ class CommandInterface:
             by methods in `Recorder`. Different subclasses may have
             additional keyword arguments.
 
-            :param index: The index of the information to retrieve.
+            :param infoIdx: The index of the information to retrieve.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
                 `None` or -1 will wait indefinitely.
@@ -1794,7 +1794,7 @@ class CommandInterface:
 
 
     def _setInfo(self,
-                 index: int,
+                 infoIdx: int,
                  payload: Union[bytearray, bytes],
                  timeout: Union[int, float] = 10,
                  interval: float = .25,
@@ -1802,7 +1802,7 @@ class CommandInterface:
         """ Write device system information. This method is called indirectly
             by methods in `Recorder`.
 
-            :param index: The index of the information to write.
+            :param infoIdx: The index of the information to write.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
                 `None` or -1 will wait indefinitely.
@@ -3097,6 +3097,7 @@ class SerialCommandInterface(CommandInterface):
         return bool(devtype & 0xa0000000)
 
 
+    # noinspection method-overriding
     def _getInfo(self,
                  infoIdx: int,
                  timeout: Union[int, float] = 10,
