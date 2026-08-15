@@ -12,7 +12,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
-        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
+#        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.13']
 
     env:
       OS: ${{ matrix.os }}
@@ -21,8 +22,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install --upgrade pip
@@ -33,3 +33,82 @@ jobs:
       - run: python -m pip install pytest pytest-cov mock
 
       - run: python -m pytest ./tests/
+
+  automated-tests:
+    name: Run Automated Device Tests
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12']
+
+    env:
+      APPROVED_USERS: '["pscheidler", "StokesMIDE", "JSMTHWCK"]'
+      VENV_DIR: /opt/runner/venvs/endaq-device
+      PYTHON_VERSION: ${{ matrix.python-version }}
+
+    runs-on: [self-hosted, device-library-tester]
+    steps:
+      - name: Print user called
+        run: |
+          echo "actor name ${{ github.actor }}"
+          echo "sender name ${{ github.event.sender.name }}"
+        shell: bash
+    
+      - name: Print IP Address
+        if: ${{ contains(fromJSON(env.APPROVED_USERS), github.actor) }}
+        run: |
+          echo "IP=$(hostname -I | awk '{print $1}')"
+        shell: bash
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+
+      - uses: actions/checkout@v4
+
+      - name: Check or create virtual environment
+        run: |
+          if [ -d ${{ env.FULL_VENV_PATH }} ]; then
+            echo "Virtual environment exists in ${{ env.FULL_VENV_PATH }}"
+          else
+            echo "Creating virtual environment in ${{ env.FULL_VENV_PATH }}"
+            python -m venv ${{ env.FULL_VENV_PATH }}
+          fi
+          echo "FULL_VENV_PATH=$FULL_VENV_PATH" >> "$GITHUB_ENV"
+        env:
+          FULL_VENV_PATH: ${{ format('{0}_{1}/', env.VENV_DIR, env.PYTHON_VERSION) }}
+        shell: bash
+
+      - name: Set up libraries
+        run: |
+          source "${{ env.FULL_VENV_PATH }}/bin/activate"
+          echo "::group::Initial library list"
+          python -m pip list
+          echo "::endgroup::"
+          echo "::group::Install main requirements"
+          python -m pip install -r requirements.txt
+          echo "::endgroup::"
+          echo "::group::Install test_hw requirements"
+          python -m pip install -r ./test_hardware/requirements.txt
+          echo "::endgroup::"
+          echo "::group::Install test specific libraries"
+          python -m pip install pytest pytest-cov mock
+          echo "::endgroup::"
+          echo "::group::Full library list"
+          python -m pip list
+          echo "::endgroup::"
+#
+#      - name: Config issue example
+#        shell: bash
+#        run: python ./test_hardware/config_test.py
+
+      - name: Run device tests if pusher is approved
+        if: ${{ contains(fromJSON(env.APPROVED_USERS), github.actor) }}
+        run: |
+          source "${{ env.FULL_VENV_PATH }}/bin/activate"
+          python -m pytest --random-order --device "S0013290" --raspi ./test_hardware/
+        env:
+          GUEST_WIFI_PW: ${{ secrets.GUEST_WIFI_PW }}
