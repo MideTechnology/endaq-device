@@ -1,14 +1,15 @@
 from copy import deepcopy
 import logging
 import requests
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union
+from urllib.parse import urljoin
 from endaq.device.command_interfaces import SerialCommandInterface
+from endaq.device.devinfo import SerialDeviceInfo
+from endaq.device.gateway import Gateway
 from endaq.device import CommunicationError
-from endaq.device.response_codes import CommandResponseCode
-from endaq.device.util import escapeDict, unescapeDict
+from endaq.device.util import encodeDict, decodeDict
 
-if TYPE_CHECKING:
-    from endaq.device.base import Recorder
+from endaq.device.base import Recorder, NonRecorder
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class HTTPSCommandInterface(SerialCommandInterface):
         :param url:
         """
         self.baseUrl = url
-        self.url = url + 'command'
+        self.url = urljoin(url, 'command')
         self._http_response: requests.Response = None
         super().__init__(device)
 
@@ -77,7 +78,7 @@ class HTTPSCommandInterface(SerialCommandInterface):
             wrapping or other preparations.
         """
         copy = deepcopy(data)
-        escapeDict(copy)
+        encodeDict(copy)
         return copy
 
 
@@ -105,7 +106,7 @@ class HTTPSCommandInterface(SerialCommandInterface):
         """
         try:
             copy = deepcopy(packet)
-            unescapeDict(copy)
+            decodeDict(copy)
             return copy
 
         except IOError as err:
@@ -154,5 +155,24 @@ class HTTPSCommandInterface(SerialCommandInterface):
             the process to cancel.
         """
         response = self._http_response.json()
-        unescapeDict(response)
-        return response
+        decodeDict(response)
+        return response['EBMLResponse']
+
+
+# ============================================================================
+#
+# ============================================================================
+
+def getHttpsDevice(url: str) -> "Recorder":
+    """ Create a recorder instance with an HTTPS interface.
+    """
+    # Dummy recorder and command interface to retrieve DEVINFO
+    fake = NonRecorder(name='getHttpsDevice')
+    fake.command = HTTPSCommandInterface(fake, url)
+    info = fake.command._getInfo(0, index=False, timeout=3)
+
+    device = Gateway(None, devinfo=info)
+    device.command = HTTPSCommandInterface(device, url)
+    device._devinfo = SerialDeviceInfo(device)
+
+    return device

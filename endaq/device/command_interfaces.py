@@ -2381,7 +2381,7 @@ class SerialCommandInterface(CommandInterface):
 
                 if resp:
                     self._encodeResponseCodes(resp)
-                    responseCode = resp.get('CommandResponseCode')
+                    responseCode = resp.get('CommandResponseCode', 0)
                     responseMsg = resp.get('CommandResponseMessage')
                     statusCode = resp.get('DeviceStatusCode')
                     statusMsg = resp.get('DeviceStatusMessage')
@@ -2439,7 +2439,8 @@ class SerialCommandInterface(CommandInterface):
                 raise
 
         finally:
-            self.port.close()
+            if self.port:
+                self.port.close()
 
 
     def _getTime(self,

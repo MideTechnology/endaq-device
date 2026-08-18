@@ -410,7 +410,7 @@ def info_lock_required(func: Callable,
 # Note: This may get moved into `ebmlite`
 # ===========================================================================
 
-def unescapeDict(value: Union[Dict[str, Any], list]) -> None:
+def decodeDict(value: Union[Dict[str, Any], list]) -> None:
     """ Convert `bytearray`/`bytes` values in a dict/list escaped by
         `EscapedJSONEncoder` back to their original form. The original
         dict/list is modified in place.
@@ -426,10 +426,10 @@ def unescapeDict(value: Union[Dict[str, Any], list]) -> None:
         if isinstance(v, str) and v.startswith('base64:'):
             value[i] = base64.b64decode(v[7:])
         elif isinstance(v, (dict, list)):
-            unescapeDict(v)
+            decodeDict(v)
 
 
-def escapeDict(value: Union[Dict[str, Any], list]) -> None:
+def encodeDict(value: Union[Dict[str, Any], list]) -> None:
     """ Convert all strings in a list/dict starting with ``"base64"`` into
         `bytearray`/`bytes` values. The original dict/list is modified in place.
     """
@@ -444,4 +444,4 @@ def escapeDict(value: Union[Dict[str, Any], list]) -> None:
         if isinstance(v, (bytes, bytearray)):
             value[i] = 'base64:' + str(base64.b64encode(v), 'utf8')
         elif isinstance(v, (dict, list)):
-            escapeDict(v)
+            encodeDict(v)
