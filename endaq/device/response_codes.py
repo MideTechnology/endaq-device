@@ -62,7 +62,7 @@ CommandResponseCode = DeviceStatusCode
 
 responsestrings = {
     CommandResponseCode.ERR_BUSY: "Communication channel is busy",
-    CommandResponseCode.ERR_INVALID_COMMAND: "Badly formed command",
+    CommandResponseCode.ERR_INVALID_COMMAND: "Badly formed or unrecognized command",
     CommandResponseCode.ERR_BAD_LOCK_ID: "Command Lock ID invalid or already set",
     CommandResponseCode.ERR_BAD_INFO_INDEX: "Unknown info index, or info is read or write only",
     CommandResponseCode.ERR_BAD_PARAMETER: "One or more command parameters are invalid in some way",

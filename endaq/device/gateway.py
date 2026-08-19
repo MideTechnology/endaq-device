@@ -43,8 +43,10 @@ class Gateway(Recorder):
             if not info:
                 return False
             devinfo = loadSchema('mide_ide.xml').loads(info).dump()
+
+            # TODO: Create more abstract Gateway recognition
             uid = devinfo['RecordingProperties']['RecorderInfo']['RecorderTypeUID']
-            return uid & 0xa0000000
+            return uid & 0x20000000
 
         except (KeyError, IOError) as err:
             logger.debug("Gateway._isRecorder() raised a possibly-allowed exception: %r" % err)

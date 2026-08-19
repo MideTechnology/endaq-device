@@ -153,11 +153,18 @@ class CommandInterface:
             return False
 
         # Device is a Gateway, can't record
-        if self.device.getInfo('RecorderTypeUID', 0) & 0xa0000000:
+        # TODO: Create more abstract Gateway recognition
+        if self.device.getInfo('RecorderTypeUID', 0) & 0x20000000:
             return False
 
         # Modern devices can record on command, assume True as default
         return True
+
+
+    @property
+    def canLock(self) -> bool:
+        """ Does this device support the `LockID` commands? """
+        return self.device.apiVersion >= 4
 
 
     @property
@@ -1292,7 +1299,8 @@ class CommandInterface:
                 cancelled. The callback function should require no arguments.
                 The `callback` will not be called if `wait` is `False`.
         """
-        if not self.device.getInfo('RecorderTypeUID', 0) & 0xa0000000:
+        # TODO: Create more abstract AP recognition
+        if not self.device.getInfo('RecorderTypeUID', 0) & 0x20000000:
             raise UnsupportedFeature('Device does not support AP Mode')
 
         try:
@@ -2814,7 +2822,8 @@ class SerialCommandInterface(CommandInterface):
                 arguments.
             :returns: `True` if the command was successful.
         """
-        if not self.device.getInfo('RecorderTypeUID', 0) & 0xa0000000:
+        # TODO: Create more abstract Gateway recognition
+        if not self.device.getInfo('RecorderTypeUID', 0) & 0x20000000:
             raise UnsupportedFeature('Device cannot be shut down by command')
 
         return self._runSimpleCommand({'EBMLCommand': {'Shutdown': {}}},
@@ -2960,7 +2969,7 @@ class SerialCommandInterface(CommandInterface):
             # Older FW returns wrong status code
             if err.errno == DeviceStatusCode.ERR_INVALID_COMMAND:
                 raise CommandError(DeviceStatusCode.ERR_UNKNOWN_COMMAND,
-                                   *err.args[1:])
+                                   "Command not recognized by device")
             raise
 
         if not response:
@@ -3074,6 +3083,9 @@ class SerialCommandInterface(CommandInterface):
             :return: A tuple of Booleans: whether the device has a lock set,
                 and whether the lock belongs to this instance.
         """
+        if self.device.apiVersion < 4:
+            return super().isLocked(timeout=timeout, callback=callback)
+
         lock = self.getLockID(timeout=timeout, callback=callback)
         if not lock or not any(lock):
             return False, False
@@ -3094,8 +3106,9 @@ class SerialCommandInterface(CommandInterface):
 
         # Currently, only Gateways can set info over a serial interface.
         # This will be revised if/when we have others.
+        # TODO: Create more abstract Gateway recognition
         devtype = self.device.getInfo('RecorderTypeUID', 0)
-        return bool(devtype & 0xa0000000)
+        return bool(devtype & 0x20000000)
 
 
     # noinspection method-overriding

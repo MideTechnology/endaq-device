@@ -37,7 +37,7 @@ from .types import Drive, Filename, Epoch
 #
 # ============================================================================
 
-__version__ = "1.4.1b9"
+__version__ = "1.4.1b10"
 
 __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'DeviceError', 'DeviceTimeout', 'UnsupportedFeature',

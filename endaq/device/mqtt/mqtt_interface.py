@@ -20,7 +20,6 @@ be found using the :meth:`getDevices()` method.
 
 """
 
-from contextlib import suppress
 from datetime import datetime
 import logging
 import os.path
@@ -1092,7 +1091,7 @@ class MQTTCommandInterface(SerialCommandInterface):
             devices connected via USB.
 
             :raises UnsupportedFeature: This cannot be done via MQTT.
-                """
+        """
         raise UnsupportedFeature(f'Wi-Fi cannot be configured via MQTT')
 
 
@@ -1126,9 +1125,14 @@ class MQTTCommandInterface(SerialCommandInterface):
     # =======================================================================
 
     @property
+    def canLock(self) -> bool:
+        """ Does this device support the `LockID` commands? """
+        return True
+
+
+    @property
     def canStream(self) -> bool:
-        """ Is the device capable of streaming data?
-        """
+        """ Is the device capable of streaming data? """
         # TODO: Check device config to see if the option is enabled?
         return True
 
