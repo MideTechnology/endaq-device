@@ -24,14 +24,17 @@ class HTTPSCommandInterface(SerialCommandInterface):
 
     def __init__(self,
                  device: "Recorder",
-                 url: str = 'http://localhost:8088/'):
+                 url: str = 'http://localhost:8088/',
+                 password: Optional[str] = None):
         """
 
-        :param device:
-        :param url:
+        :param device: The HTTP/HTTPS device.
+        :param url: The device's base URL.
+        :param password: The device's password, if any.
         """
         self.baseUrl = url
         self.url = urljoin(url, 'command')
+        self.password = password
         self._http_response: requests.Response = None
         super().__init__(device)
 
@@ -127,13 +130,18 @@ class HTTPSCommandInterface(SerialCommandInterface):
             :return: The number of bytes written.
         """
         try:
+            if self.password is not None:
+                headers = {'X-Password': self.password}
+            else:
+                headers = None
             self._http_response = requests.post(
                     self.url,
                     json=packet,
+                    headers=headers,
                     timeout=timeout
             )
             return 1
-        except requests.exceptions.ConnectionError as err:
+        except requests.exceptions.ConnectionError as _err:
             # XXX: COMPLETE THIS
             raise
 
