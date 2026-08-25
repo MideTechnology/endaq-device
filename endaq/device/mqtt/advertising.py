@@ -8,8 +8,8 @@ import json
 import logging
 import signal
 import socket
-from time import time, sleep
-from typing import Any, Callable, Dict, Optional
+from time import sleep
+from typing import Any, Dict, Optional
 
 from zeroconf import IPVersion, ServiceInfo, Zeroconf
 from zeroconf import NonUniqueNameException
@@ -160,7 +160,7 @@ class Advertiser:
 
 
     def is_alive(self) -> bool:
-        """ Is the advetiser running?
+        """ Is the advertiser running?
         """
         try:
             return self.zeroconf.started

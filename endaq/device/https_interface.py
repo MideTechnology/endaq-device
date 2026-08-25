@@ -1,10 +1,12 @@
 from copy import deepcopy
 import logging
+# import os.path
 import requests
 from typing import Any, Callable, Dict, Optional, Union
 from urllib.parse import urljoin
 from endaq.device.command_interfaces import SerialCommandInterface
 from endaq.device.devinfo import SerialDeviceInfo
+from endaq.device.exceptions import CommandError
 from endaq.device.gateway import Gateway
 from endaq.device import CommunicationError
 from endaq.device.util import encodeDict, decodeDict
@@ -13,6 +15,10 @@ from endaq.device.base import Recorder, NonRecorder
 
 logger = logging.getLogger(__name__)
 
+# XXX: TEST; TO BE UPDATED/REMOVED
+# CERTFILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cert.pem')
+CERTFILE = False
+
 
 # ===========================================================================
 #
@@ -20,13 +26,16 @@ logger = logging.getLogger(__name__)
 
 class HTTPSCommandInterface(SerialCommandInterface):
     """
+    A mechanism for sending commands to a recorder via HTTP(S).
     """
 
     def __init__(self,
                  device: "Recorder",
                  url: str = 'http://localhost:8088/',
-                 password: Optional[str] = None):
+                 password: Optional[str] = None,
+                 certfile: str = CERTFILE):
         """
+        A mechanism for sending commands to a recorder via HTTP(S).
 
         :param device: The HTTP/HTTPS device.
         :param url: The device's base URL.
@@ -35,6 +44,7 @@ class HTTPSCommandInterface(SerialCommandInterface):
         self.baseUrl = url
         self.url = urljoin(url, 'command')
         self.password = password
+        self.certfile = certfile
         self._http_response: requests.Response = None
         super().__init__(device)
 
@@ -67,8 +77,8 @@ class HTTPSCommandInterface(SerialCommandInterface):
 
     # noinspection method-overriding
     def _encode(self,
-                data: dict[str, Any],
-                checkSize: bool = True) -> dict[str, Any]:
+                data: Dict[str, Any],
+                checkSize: bool = True) -> Dict[str, Any]:
         """
         Prepare a packet of command data for transmission, doing any
         preparation required by the interface's medium.
@@ -85,7 +95,8 @@ class HTTPSCommandInterface(SerialCommandInterface):
         return copy
 
 
-    def _encodeResponse(self, data: dict) -> bytearray:
+    # noinspection method-overriding
+    def _encodeResponse(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Encode a packet of response data in the manner typically received
         from devices, doing any preparation required by the interface's
@@ -99,12 +110,13 @@ class HTTPSCommandInterface(SerialCommandInterface):
         return self._encode(data)
 
 
-    def _decode(self, packet: Union[bytearray, bytes]) -> dict:
+    # noinspection method-overriding
+    def _decode(self, packet: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Translate a response packet (EBML) into a dictionary.
+        Translate a response packet (a dictionary with encoded binary
+        values, from JSON) into a decoded dictionary.
 
-        :param packet: A packet of response data, in EBML with possibly
-            additional coding (varying by interface type).
+        :param packet: A packet of response data, decoded from JSON.
         :return: The response, as nested dictionaries.
         """
         try:
@@ -117,17 +129,17 @@ class HTTPSCommandInterface(SerialCommandInterface):
                                      f'({err})')
 
 
+    # noinspection method-overriding
     def _writeCommand(self,
-                      packet: Union[bytearray, bytes],
+                      packet: Dict[str, Any],
                       timeout: Union[int, float] = 30) -> int:
         """ Transmit a fully formed packet (addressed, HDLC encoded, etc.)
             via serial. This is a low-level write to the medium and does not
             do the additional housekeeping that `sendCommand()` does;
             typically, it should not be used directly.
 
-            :param packet: The encoded, packetized, binary `EBMLCommand`
+            :param packet: The encoded, packetized, `EBMLCommand`
                 data.
-            :return: The number of bytes written.
         """
         try:
             if self.password is not None:
@@ -138,11 +150,17 @@ class HTTPSCommandInterface(SerialCommandInterface):
                     self.url,
                     json=packet,
                     headers=headers,
-                    timeout=timeout
+                    timeout=timeout,
+                    verify=self.certfile
             )
+            if not self._http_response.ok:
+                raise CommandError(
+                        self._http_response.status_code,
+                        f'{self._http_response.reason}: {self._http_response.text}')
             return 1
         except requests.exceptions.ConnectionError as _err:
-            # XXX: COMPLETE THIS
+
+            # TODO: COMPLETE THIS (if necessary)
             raise
 
 
@@ -171,16 +189,20 @@ class HTTPSCommandInterface(SerialCommandInterface):
 #
 # ============================================================================
 
-def getHttpsDevice(url: str) -> "Recorder":
-    """ Create a recorder instance with an HTTPS interface.
+def getHttpsDevice(url: str, password=None) -> "Recorder":
+    """
+    Create a recorder instance with an HTTPS interface.
+
+    :param url: The device's base URL.
+    :param password: The device's password, if any.
     """
     # Dummy recorder and command interface to retrieve DEVINFO
     fake = NonRecorder(name='getHttpsDevice')
-    fake.command = HTTPSCommandInterface(fake, url)
+    fake.command = HTTPSCommandInterface(fake, url, password=password)
     info = fake.command._getInfo(0, index=False, timeout=3)
 
     device = Gateway(None, devinfo=info)
-    device.command = HTTPSCommandInterface(device, url)
+    device.command = HTTPSCommandInterface(device, url, password=password)
     device._devinfo = SerialDeviceInfo(device)
 
     return device
