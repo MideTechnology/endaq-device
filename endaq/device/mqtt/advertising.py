@@ -55,9 +55,10 @@ class Advertiser:
         self.port = port
         self.rename = rename
         self.serviceName, self.serviceType = splitServiceName(name)
-        self.properties = properties or {}
         self.fullName = f'{self.serviceName}.{self.serviceType}'
+        self.server = kwargs.get('server', None)
 
+        self.properties = properties or {}
         self.properties['manager_version'] = __version__
 
         if notes:
@@ -129,7 +130,8 @@ class Advertiser:
                         port=self.port,
                         properties=self.properties,
                         host_ttl=1125,                                  # NOTE: Zeroconf has a min refresh time of 1125
-                        other_ttl=1125
+                        other_ttl=1125,
+                        server=self.server
                 )
                 try:
                     # Duplicate names (apparently) allowed on different
@@ -154,7 +156,8 @@ class Advertiser:
                 port=self.port,
                 properties=self.properties,
                 host_ttl=1125,  # NOTE: Zeroconf has a min refresh time of 1125
-                other_ttl=1125
+                other_ttl=1125,
+                server=self.server
             )
             self.zeroconf.register_service(self.info)
 

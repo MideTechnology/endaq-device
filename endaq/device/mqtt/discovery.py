@@ -51,6 +51,7 @@ class MDNSInfo:
     serviceType: str
     host: List[str]
     port: int
+    server: str
     properties: Dict[bytes, Optional[bytes]]
 
 
@@ -236,7 +237,8 @@ def parseServiceInfo(info: ServiceInfo) -> MDNSInfo:
     # Some services' properties contain null keys
     props = {k: v for k, v in info.properties.items() if k}
     return MDNSInfo(name=name, serviceType=serviceType,
-                    host=addr, port=info.port, properties=props)
+                    host=addr, port=info.port, properties=props,
+                    server=info.server)
 
 
 # noinspection PyUnusedLocal,unused-parameter
