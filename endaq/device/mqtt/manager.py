@@ -15,7 +15,9 @@ from contextlib import suppress
 from io import BytesIO
 import os.path
 from pathlib import Path
+import signal
 import struct
+import sys
 import threading
 from time import time
 from typing import Any, ByteString, Dict, List, Optional, Tuple, Union
@@ -506,6 +508,17 @@ class MQTTDeviceManager(MQTTClient):
         self.advertiser: Optional[Advertiser] =  None
         self.stateUpdater = threading.Timer(1, lambda: None)  # dummy initial value, not run
 
+        signal.signal(signal.SIGTERM, self._signal_SIGTERM)
+
+
+    def _signal_SIGTERM(self, _signum, _frame):
+        """ SIGTERM handler: cleanly shut down if process terminated.
+        """
+        logger.debug('Received termination signal (SIGTERM)')
+        self.setStatus(DeviceStatusCode.SHUTDOWN, 'Received termination signal (SIGTERM)')
+        self.stop()
+        sys.exit(0)
+
 
     def __repr__(self):
         """ Return repr(self).
@@ -546,7 +559,7 @@ class MQTTDeviceManager(MQTTClient):
         sn = parts[1]
 
         with suppress(TypeError, ValueError):
-            sn = int(sn.lstrip('SWXC0'))
+            sn = int(sn.lstrip('SWGHVXC0'))
 
         return sn
 
@@ -629,6 +642,7 @@ class MQTTDeviceManager(MQTTClient):
     # Message handlers, called by the MQTT message callback (`onMessage()`).
     # =======================================================================
 
+    # noinspection method-overriding
     def onConnect(self, *args):
         """ MQTT event handler called when the client connects.
         """

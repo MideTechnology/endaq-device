@@ -8,6 +8,7 @@ import json
 import logging
 import signal
 import socket
+import sys
 from time import sleep
 from typing import Any, Dict, Optional
 
@@ -79,6 +80,7 @@ class Advertiser:
         """
         logger.debug('Received termination signal (SIGTERM)')
         self.stop()
+        sys.exit(0)
 
 
     def __repr__(self) -> str:
