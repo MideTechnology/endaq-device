@@ -258,7 +258,8 @@ def findBrokers(*patterns: str,
                 scantime: float = 2,
                 timeout: float = 5,
                 callback: Optional[Callable] = None,
-                persistent: bool = False) -> List[MDNSInfo]:
+                persistent: bool = False,
+                protocol: Optional[str] = 'mqtt') -> List[MDNSInfo]:
     """
     Find enDAQ-advertised MQTT Brokers.
 
@@ -275,6 +276,8 @@ def findBrokers(*patterns: str,
     :param persistent: If `True`, keep the mDNS finding object open for
         later use (this can make subsequent discovery faster and more
         accurate).
+    :param protocol: The services' advertised protocol (reported in the
+        mDNS properties). Used to filter out non-MQTT services.
     :returns: A list of MQTT Brokers.
     """
     finder = None
@@ -303,6 +306,13 @@ def findBrokers(*patterns: str,
     broker_list = finder.getBrokerList()
     if not keep_open:
         finder.stop()
+
+    if protocol is not None:
+        if isinstance(protocol, str):
+            protocol = bytes(protocol, 'utf-8')
+        broker_list = [b for b in broker_list
+                       if b.properties.get(b'protocol', b'mqtt') == protocol]
+
     return broker_list
 
 
