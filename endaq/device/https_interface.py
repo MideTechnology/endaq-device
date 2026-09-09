@@ -1,13 +1,15 @@
 from copy import deepcopy
 import logging
-# import os.path
+import os.path
 import requests
+import socket
 from typing import Any, Callable, Dict, Optional, Union
 from urllib.parse import urljoin
 from endaq.device.command_interfaces import SerialCommandInterface
 from endaq.device.devinfo import SerialDeviceInfo
 from endaq.device.exceptions import CommandError
 from endaq.device.gateway import Gateway
+from endaq.device.mqtt.discovery import MDNSInfo, findBrokers
 from endaq.device import CommunicationError
 from endaq.device.util import encodeDict, decodeDict
 
@@ -16,8 +18,8 @@ from endaq.device.base import Recorder, NonRecorder
 logger = logging.getLogger(__name__)
 
 # XXX: TEST; TO BE UPDATED/REMOVED
-# CERTFILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cert.pem')
-CERTFILE = False
+CERTFILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cert.pem')
+# CERTFILE = False
 
 
 # ===========================================================================
@@ -189,20 +191,50 @@ class HTTPSCommandInterface(SerialCommandInterface):
 #
 # ============================================================================
 
-def getHttpsDevice(url: str, password=None) -> "Recorder":
+def info2url(info: MDNSInfo) -> str:
+    """
+    Generate a device's base URL from its mDNS advertised info.
+
+    :param info: The HTTPS device's advertised  info.
+    :return: A base URL.
+    """
+    # Zeroconf default server names are just the service name and aren't
+    # necessarily valid domain names. Use the IP if it can't be resolved.
+    host = info.server
+    try:
+        socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        host = info.host
+
+    scheme = 'https' if info.properties.get(b'password', b'1') == b'1' else 'http'
+    return f'{scheme}://{host}:{info.port}'
+
+
+# ============================================================================
+#
+# ============================================================================
+
+def getHttpsDevice(url: Union[str, MDNSInfo],
+                   password: Optional[str] = None,
+                   certfile: Optional[str] = None) -> "Recorder":
     """
     Create a recorder instance with an HTTPS interface.
 
-    :param url: The device's base URL.
+    :param url: The device's base URL, or an `MDNSInfo` object as
+        returned by `endaq.device.mqtt.discovery.findBrokers()`.
     :param password: The device's password, if any.
+    :param certfile:
     """
+    if isinstance(url, MDNSInfo):
+        url = info2url(url)
+
     # Dummy recorder and command interface to retrieve DEVINFO
     fake = NonRecorder(name='getHttpsDevice')
-    fake.command = HTTPSCommandInterface(fake, url, password=password)
+    fake.command = HTTPSCommandInterface(fake, url, password, certfile)
     info = fake.command._getInfo(0, index=False, timeout=3)
 
     device = Gateway(None, devinfo=info)
-    device.command = HTTPSCommandInterface(device, url, password=password)
+    device.command = HTTPSCommandInterface(device, url, password, certfile)
     device._devinfo = SerialDeviceInfo(device)
 
     return device
