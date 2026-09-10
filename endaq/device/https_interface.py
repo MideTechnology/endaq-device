@@ -160,10 +160,9 @@ class HTTPSCommandInterface(SerialCommandInterface):
                         self._http_response.status_code,
                         f'{self._http_response.reason}: {self._http_response.text}')
             return 1
-        except requests.exceptions.ConnectionError as _err:
-
-            # TODO: COMPLETE THIS (if necessary)
-            raise
+        except requests.exceptions.ConnectionError as err:
+            logger.error(f'Error making HTTPS request: {err}')
+            raise CommunicationError(f'Error making HTTPS request: {err}')
 
 
     def _readResponse(self,
@@ -204,9 +203,10 @@ def info2url(info: MDNSInfo) -> str:
     try:
         socket.getaddrinfo(host, None)
     except socket.gaierror:
+        logger.warning('Advertised server name invalid, using IP')
         host = info.host
 
-    scheme = 'https' if info.properties.get(b'password', b'1') == b'1' else 'http'
+    scheme = str(info.properties.get(b'protocol', b'https'), 'utf8')
     return f'{scheme}://{host}:{info.port}'
 
 
