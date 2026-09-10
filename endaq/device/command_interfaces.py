@@ -15,7 +15,7 @@ import struct
 import sys
 from threading import Event
 from time import sleep, time, struct_time
-from typing import Any, AnyStr, Dict, Generator, List, Optional, Tuple, Union, Callable
+from typing import Any, AnyStr, Dict, Generator, List, Literal, Optional, Tuple, Union, Callable
 from uuid import uuid4
 import warnings
 
@@ -149,8 +149,28 @@ class CommandInterface:
     @property
     def canRecord(self) -> bool:
         """ Can the device record on command? """
+        if not self.device or self.device.isVirtual:
+            return False
+
+        # Device is a Gateway, can't record
+        # TODO: Create more abstract Gateway recognition
+        if self.device.getInfo('RecorderTypeUID', 0) & 0x20000000:
+            return False
+
         # Modern devices can record on command, assume True as default
-        return self.device and not self.device.isVirtual
+        return True
+
+
+    @property
+    def canLock(self) -> bool:
+        """ Does this device support the `LockID` commands? """
+        return self.device.apiVersion >= 4
+
+
+    @property
+    def _canSetInfo(self) -> bool:
+        """ Can this interface use `<SetInfo>` commands? """
+        return False
 
 
     def resetConnection(self) -> bool:
@@ -270,8 +290,13 @@ class CommandInterface:
             try:
                 response[name] = codes[name](code)
             except (AttributeError, TypeError, ValueError):
+                if name == 'WiFiConnectionStatus':
+                    # WiFiConnectionStatus is something of a special case; its values
+                    # are bits, and multiple can be combined. The enum doesn't explicitly
+                    # have all permutations, so an unknown value is not unexpected.
+                    continue
+
                 logger.debug('Received unknown {}: {}'.format(name, code))
-                pass
 
         return response
 
@@ -482,7 +507,7 @@ class CommandInterface:
             self.status = now, statusCode, statusMsg
             self._statusChanged.set()
 
-        lockId = lockId or '\x00' * 16
+        lockId: bytes = lockId or '\x00' * 16
         if lockId != self.lockId[1]:
             self.lockId = lockTime or now, lockId
 
@@ -532,7 +557,7 @@ class CommandInterface:
                 the acknowledgement (if the interface supports one). May also
                 be a list if success could generate different responses (e.g.,
                 in different firmware versions).
-            :param wait: If `True`, wait for the recorer to respond and/or
+            :param wait: If `True`, wait for the recorder to respond and/or
                 dismount.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a `DeviceTimeout` exception. `None` or -1 will wait
@@ -604,7 +629,7 @@ class CommandInterface:
                        callback: Optional[Callable] = None) -> bool:
         """ Start the device recording, if supported.
 
-            :param wait: If `True`, wait for the recorer to respond and/or
+            :param wait: If `True`, wait for the recorder to respond and/or
                 dismount, indicating the recording has started.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a `DeviceTimeout` exception. `None` or -1 will wait
@@ -624,7 +649,7 @@ class CommandInterface:
                       callback: Optional[Callable] = None):
         """ Stop a device that is recording, if supported.
 
-            :param wait: If `True`, wait for the recorer to respond and/or
+            :param wait: If `True`, wait for the recorder to respond and/or
                 remount, indicating the recording has stopped.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
@@ -642,9 +667,8 @@ class CommandInterface:
               timeout: Union[int, float] = 5,
               callback: Optional[Callable] = None) -> bool:
         """ Reset (reboot) the recorder.
-            Must be implemented in every subclass.
 
-            :param wait: If `True`, wait for the recorer to respond and/or
+            :param wait: If `True`, wait for the recorder to respond and/or
                 disconnect, indicating the reset has started.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately; `None` or -1 will wait
@@ -653,6 +677,25 @@ class CommandInterface:
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
                 require no arguments.
+            :returns: `True` if the command was successful.
+        """
+        raise NotImplementedError
+
+
+    def shutdown(self,
+                 wait: bool = True,
+                 timeout: Union[int, float] = 5,
+                 callback: Optional[Callable] = None) -> bool:
+        """ Shut down/power off the device. Not supported on all devices.
+
+            :param wait: If `True`, wait for the device to respond and/or
+                disconnect, indicating it is shutting down.
+            :param timeout: Time (in seconds) to wait for the device to
+                respond. 0 will return immediately.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a response
+                will be cancelled. The callback function should require no
+                arguments.
             :returns: `True` if the command was successful.
         """
         raise NotImplementedError
@@ -679,7 +722,7 @@ class CommandInterface:
 
     def getBatteryStatus(self,
                          timeout: Union[int, float] = 1,
-                         callback: Optional[Callable] = None) -> bool:
+                         callback: Optional[Callable] = None) -> Union[dict, None]:
         """ Get the status of the recorder's battery. Not supported on all
             devices. Status is returned as a dictionary. The dictionary will
             always contain the key `"hasBattery"`, and if that is `True`,
@@ -713,7 +756,8 @@ class CommandInterface:
 
     def ping(self,
              data: Union[bytearray, bytes, None] = None,
-             timeout: Union[int, float] = 5,
+             timeout: Union[int, float] = 10,
+             interval: float = .25,
              callback: Optional[Callable] = None) -> bytes:
         """ Verify the recorder is present and responding. Not supported on
             all devices.
@@ -723,6 +767,8 @@ class CommandInterface:
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately; `None` or -1 will wait
                 indefinitely.
+            :param interval: Time (in seconds) between checks for a
+                response.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a
                 response will be cancelled. The callback function should
@@ -963,7 +1009,7 @@ class CommandInterface:
 
             :param secure: if `True`, use the secure update command (requires
                 encrypted firmware).
-            :param wait: If `True`, wait for the recorer to dismount,
+            :param wait: If `True`, wait for the recorder to dismount,
                 indicating the update has started.
             :param timeout: Time (in seconds) to wait for the recorder to
                 dismount, implying the updates are being applied. 0 will
@@ -1136,17 +1182,24 @@ class CommandInterface:
     # =======================================================================
 
     @device_synchronized
-    def setAP(self,
+    def _setAP(self,
               ssid: str,
               password: Optional[str] = None,
+              mode: Literal['sta', 'ap'] = 'sta',
               wait: bool = False,
               timeout: Union[int, float] = 10,
               callback: Optional[Callable] = None):
         """ Quickly set the Wi-Fi access point (router) and password.
             Applicable only to devices with Wi-Fi hardware.
 
-            :param ssid: The SSID (name) of the wireless access point.
+            :param ssid: The SSID (name) of the wireless access point to
+                which to connect.
             :param password: The access point password.
+            :param mode: The device Wi-Fi mode, either ``"sta"`` for 'station'
+                mode (the device connects to an Access Point) or ``"ap"`` for
+                Access Point mode (the device will run as an AP for other
+                devices). AP Mode is only available on enDAQ Gateway
+                hardware; recorders should use Station mode (the default).
             :param wait: If `True`, wait until the device reports it is
                 connected before returning.
             :param timeout: Time (in seconds) to wait for a response before
@@ -1160,14 +1213,19 @@ class CommandInterface:
         timeout = -1 if timeout is None else timeout
         deadline = time() + timeout
 
-        if self.device.isRemote:
-            wait = False
+        try:
+            modeEl = {'sta': 'AP', 'ap': 'APMode'}[mode.lower()[:3]]
+        except (AttributeError, KeyError):
+            raise ValueError(f'Unknown Wi-Fi mode {mode!r}')
 
-        cmd = {'SSID': ssid, 'Selected': 1}
+        cmd = {'SSID': ssid}
         if password is not None:
             cmd['Password'] = password
+        if modeEl == 'AP':
+            cmd['Selected'] = 1
 
-        self.setWifi(cmd, timeout=timeout, callback=callback)
+        self.setWifi({modeEl: cmd}, timeout=timeout, callback=callback)
+
         if not wait or timeout == 0:
             return None
 
@@ -1178,15 +1236,77 @@ class CommandInterface:
             response = self.queryWifi(timeout=0.5)
             if response:
                 status = response.get('WiFiConnectionStatus')
-                if status == WiFiConnectionStatus.CONNECTED:
+                if status & WiFiConnectionStatus.CONNECTED:
                     return None
             else:
-                logger.debug('setAP(): got bad queryWifi() response: {!r}'
+                logger.debug('_setAP(): got bad queryWifi() response: {!r}'
                              .format(response))
 
             sleep(min(timeout, 0.5))
 
-        raise DeviceTimeout('Timed out waiting to connect to AP SSID {}'.format(ssid))
+        raise DeviceTimeout(f'Timed out setting Wi-Fi {modeEl}')
+
+
+    def setAP(self,
+              ssid: str,
+              password: Optional[str] = None,
+              wait: bool = False,
+              timeout: Union[int, float] = 10,
+              callback: Optional[Callable] = None):
+        """ Quickly connect to a Wi-Fi access point (router). Applicable
+            only to devices with Wi-Fi hardware.
+
+            :param ssid: The SSID (name) of the wireless access point.
+            :param password: The access point password.
+            :param wait: If `True`, wait until the device reports it is
+                connected before returning.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will be
+                cancelled. The callback function should require no arguments.
+                The `callback` will not be called if `wait` is `False`.
+        """
+        if self.device.isRemote:
+            # NOTE: This may be obsolete
+            wait = False
+
+        try:
+            self._setAP(ssid, password, 'sta', wait, timeout, callback)
+        except TimeoutError:
+            raise DeviceTimeout(f'Timed out waiting to connect to AP SSID {ssid}')
+
+
+    def setAPMode(self,
+                  ssid: str,
+                  password: Optional[str] = None,
+                  wait: bool = False,
+                  timeout: Union[int, float] = 120,
+                  callback: Optional[Callable] = None):
+        """ Set up the device as a Wi-Fi Access Point (AP), to which other
+            devices will connect. Only applicable to Gateway hardware.
+
+            :param ssid: The SSID (name) of the device's wireless access point.
+            :param password: The access point password.
+            :param wait: If `True`, wait until the device reports the AP is
+                up and running before returning.
+            :param timeout: Time (in seconds) to wait for a response before
+                raising a :class:`~.endaq.device.DeviceTimeout` exception.
+                `None` or -1 will wait indefinitely.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will be
+                cancelled. The callback function should require no arguments.
+                The `callback` will not be called if `wait` is `False`.
+        """
+        # TODO: Create more abstract AP recognition
+        if not self.device.getInfo('RecorderTypeUID', 0) & 0x20000000:
+            raise UnsupportedFeature('Device does not support AP Mode')
+
+        try:
+            self._setAP(ssid, password, 'ap', wait, timeout, callback)
+        except TimeoutError:
+            raise DeviceTimeout('Timed out switching to AP mode')
 
 
     def setWifi(self,
@@ -1226,7 +1346,15 @@ class CommandInterface:
         if not self.device.hasWifi:
             raise UnsupportedFeature('{!r} has no Wi-Fi adapter'.format(self.device))
 
-        cmd = {'EBMLCommand': {'SetWiFi': {"AP": wifi_data}}}
+        if 'SSID' in wifi_data:
+            # Backwards compatibility: just AP data, assume `AP` element
+            # To eventually be removed.
+            warnings.warn("""setWifi data should explicitly include 'outer' "AP" or "APMode" element""",
+                          DeprecationWarning)
+
+            wifi_data = {'AP': wifi_data}
+
+        cmd = {'EBMLCommand': {'SetWiFi': wifi_data}}
 
         self._sendCommand(cmd,
                           response=False,
@@ -1648,7 +1776,7 @@ class CommandInterface:
     # =======================================================================
 
     def _getInfo(self,
-                 index: int,
+                 infoIdx: int,
                  timeout: Union[int, float] = 10,
                  interval: float = .25,
                  callback: Optional[Callable] = None,
@@ -1658,7 +1786,7 @@ class CommandInterface:
             by methods in `Recorder`. Different subclasses may have
             additional keyword arguments.
 
-            :param index: The index of the information to retrieve.
+            :param infoIdx: The index of the information to retrieve.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
                 `None` or -1 will wait indefinitely.
@@ -1674,7 +1802,7 @@ class CommandInterface:
 
 
     def _setInfo(self,
-                 index: int,
+                 infoIdx: int,
                  payload: Union[bytearray, bytes],
                  timeout: Union[int, float] = 10,
                  interval: float = .25,
@@ -1682,7 +1810,7 @@ class CommandInterface:
         """ Write device system information. This method is called indirectly
             by methods in `Recorder`.
 
-            :param index: The index of the information to write.
+            :param infoIdx: The index of the information to write.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a :class:`~.endaq.device.DeviceTimeout` exception.
                 `None` or -1 will wait indefinitely.
@@ -1709,8 +1837,11 @@ class SerialCommandInterface(CommandInterface):
     """
 
     # USB serial port vendor and product IDs, for finding the right device
-    USB_IDS = ((0x10C4, 0x0004),  # SiLabs USB Serial, e.g. enDAQ recorders
-               (0x0483, 0x4003))  # STM32 USB Serial, e.g. newer enDAQs
+    USB_IDS = (
+        (0x10C4, 0x0004),  # SiLabs USB Serial, e.g. enDAQ recorders
+        (0x0483, 0x4003),  # STM32 USB Serial, e.g. newer enDAQs
+        (0x1D6B, 0x0104),  # IOT-GATE 'gadget' port
+    )
 
     # Default serial port parameters
     SERIAL_PARAMS = dict(baudrate=115200,
@@ -1740,18 +1871,22 @@ class SerialCommandInterface(CommandInterface):
         If additional keyword arguments are provided, they will be used
         when opening the serial port.
         """
-        super().__init__(device)
-
         self.make_crc = make_crc
         self.ignore_crc = ignore_crc
         self.escaped = b''
         self.port = None
 
+        super().__init__(device)
+
         # Do additional setup based on device DEVINFO.
         # `NonRecorder` fixture instances have no DEVINFO; skip
         if type(device).__name__ != 'NonRecorder':
             try:
-                self.escaped = self.device.getInfo('SerialCommandInterface')['EscapedCharacters']
+                sci = self.device.getInfo('SerialCommandInterface')
+                self.escaped = sci.get('EscapedCharacters',
+                                       self.escaped)
+                self.maxCommandSize = sci.get('MaxCommandSize',
+                                              self.maxCommandSize)
             except (AttributeError, KeyError, TypeError):
                 pass
 
@@ -1811,8 +1946,17 @@ class SerialCommandInterface(CommandInterface):
         # Find valid USB/serial device by vendor/product ID
         for port in serial.tools.list_ports.comports():
             sn = port.serial_number
-            if not sn or len(sn) != 8:
+
+            if not sn:
                 continue
+
+            # Gateway devices have the prefix "DCB" + 8 digits
+            if sn.startswith('DCB'):
+                sn = sn[3:]
+
+            if len(sn) != 8 or not all(c.isdigit() for c in sn):
+                continue
+
             try:
                 if strict and (port.vid, port.pid) not in cls.USB_IDS:
                     continue
@@ -1823,6 +1967,7 @@ class SerialCommandInterface(CommandInterface):
                     raise
 
 
+    # noinspection PyUnresolvedReferences
     @classmethod
     def findSerialPort(cls,
                        device: Union["Recorder", int, str],
@@ -1875,7 +2020,7 @@ class SerialCommandInterface(CommandInterface):
             the device can be found.
         """
         timeout = -1 if timeout is None else timeout
-        kwargs = kwargs or {}
+        kwargs: dict = kwargs or {}
         kwargs.setdefault('timeout', self.timeout)
         params = self.SERIAL_PARAMS.copy()
         params.update(kwargs)
@@ -1983,7 +2128,7 @@ class SerialCommandInterface(CommandInterface):
         return packet
 
 
-    def _encodeResponse(self, packet: dict) -> bytearray:
+    def _encodeResponse(self, data: dict) -> bytearray:
         """
         Encode a packet of response data in the manner typically received
         from devices, doing any preparation required by the interface's
@@ -1994,11 +2139,11 @@ class SerialCommandInterface(CommandInterface):
         by a device, as the enDAQ firmware uses fixed lengths for element
         size indicators some cases.
 
-        :param packet: The unencoded command `dict`.
+        :param data: The unencoded command `dict`.
         :return: The encoded command data, with any class-specific
             wrapping or other preparations.
         """
-        ebml = super()._encodeResponse(packet)
+        ebml = super()._encodeResponse(data)
         responseCode = 0
 
         # Header: address 1 (host), EBML data, immediate write.
@@ -2009,7 +2154,7 @@ class SerialCommandInterface(CommandInterface):
 
 
     def _decode(self,
-                packet: bytearray) -> Dict[str, Any]:
+                packet: Union[bytearray, bytes]) -> Dict[str, Any]:
         """ Translate a response packet into a dictionary. Removes additional
             header data and checks the CRC (if the interface's `ignore_crc`
             attribue is `False`) before parsing the binary EBML contents.
@@ -2116,7 +2261,7 @@ class SerialCommandInterface(CommandInterface):
         :return: A `dict` of response data, or `None` if `callback` caused
             the process to cancel.
         """
-        timeout = -1 if timeout is None else timeout
+        timeout: float = -1 if timeout is None else timeout
         deadline = time() + timeout
 
         buf = b''
@@ -2129,19 +2274,24 @@ class SerialCommandInterface(CommandInterface):
                 if waiting:
                     buf += self.port.read(waiting)
                     self._lastbuf = buf
-                    if HDLC_BREAK_CHAR in buf:
-                        packet, _, buf = buf.partition(HDLC_BREAK_CHAR)
-                        if packet.startswith(b'\x81\x00'):
-                            response = self._decode(packet)
-                            self._response = time(), response
-                            if 'EBMLResponse' not in response:
-                                logger.warning('Response did not contain an EBMLResponse element')
-                            return response.get('EBMLResponse', response)
-                        else:
-                            # In the future, there might be other devices on the
-                            # bus, so a wrong header might be for a different
-                            # address. Ignore.
-                            logger.debug("Packet incomplete or has wrong header, ignoring")
+
+                    # Process only what's between a packet header and break,
+                    # filtering out extraneous bytes (e.g., Gateway prompts,
+                    # etc.)
+                    start = buf.find(b'\x81\x00')
+                    end = buf.rfind(HDLC_BREAK_CHAR)
+
+                    if start < 0 or end < 0 or start > end:
+                        sleep(.01)
+                        continue
+
+                    packet, _, buf = buf[start:].partition(HDLC_BREAK_CHAR)
+                    response = self._decode(packet)
+                    self._response = time(), response
+                    if 'EBMLResponse' not in response:
+                        logger.warning('Response did not contain an EBMLResponse element')
+                    return response.get('EBMLResponse', response)
+                
                 else:
                     sleep(.01)
 
@@ -2239,7 +2389,7 @@ class SerialCommandInterface(CommandInterface):
 
                 if resp:
                     self._encodeResponseCodes(resp)
-                    responseCode = resp.get('CommandResponseCode')
+                    responseCode = resp.get('CommandResponseCode', 0)
                     responseMsg = resp.get('CommandResponseMessage')
                     statusCode = resp.get('DeviceStatusCode')
                     statusMsg = resp.get('DeviceStatusMessage')
@@ -2253,8 +2403,8 @@ class SerialCommandInterface(CommandInterface):
                         statusCode = responseCode
                     if responseMsg is None:
                         responseMsg = statusMsg
-                    elif statusMsg is None:
-                        statusMsg = responseMsg
+                    # elif statusMsg is None:
+                    #     statusMsg = responseMsg
 
                     self._setStatus(responseCode, responseMsg,
                                     statusCode, statusMsg,
@@ -2297,7 +2447,8 @@ class SerialCommandInterface(CommandInterface):
                 raise
 
         finally:
-            self.port.close()
+            if self.port:
+                self.port.close()
 
 
     def _getTime(self,
@@ -2330,7 +2481,7 @@ class SerialCommandInterface(CommandInterface):
             while int(t) == int(sysTime):
                 sysTime = time()
 
-        response = self._sendCommand(command, timeout=timeout)
+        response: dict = self._sendCommand(command, timeout=timeout)
         try:
             dt = response['ClockTime']
             devTime = self._TIME_PARSER.unpack_from(dt)[0]
@@ -2457,12 +2608,11 @@ class SerialCommandInterface(CommandInterface):
             raise DeviceTimeout("Timed out waiting for device to come back online")
 
 
-
     def ping(self,
              data: Union[bytearray, bytes, None] = None,
              timeout: Union[int, float] = 10,
              interval: float = .25,
-             callback: Optional[Callable] = None) -> dict:
+             callback: Optional[Callable] = None) -> bytes:
         """ Verify the recorder is present and responding. Not supported on
             all devices.
 
@@ -2484,8 +2634,8 @@ class SerialCommandInterface(CommandInterface):
                 raise ValueError("Payload larger than 30 bytes.")
 
         cmd = {'EBMLCommand': {'SendPing': b'' if data is None else data}}
-        response = self._sendCommand(cmd, timeout=timeout, interval=interval,
-                                     callback=callback)
+        response: dict = self._sendCommand(cmd, timeout=timeout, interval=interval,
+                                           callback=callback)
 
         if 'PingReply' not in response:
             raise DeviceError('Ping response did not contain a PingReply')
@@ -2572,7 +2722,7 @@ class SerialCommandInterface(CommandInterface):
                        callback: Optional[Callable] = None) -> bool:
         """ Start the device recording.
 
-            :param wait: If `True`, wait for the recorer to respond and/or
+            :param wait: If `True`, wait for the recorder to respond and/or
                 dismount, indicating the recording has started.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
@@ -2601,7 +2751,7 @@ class SerialCommandInterface(CommandInterface):
                       callback: Optional[Callable] = None):
         """ Stop a device that is recording.
 
-            :param wait: If `True`, wait for the recorer to respond and/or
+            :param wait: If `True`, wait for the recorder to respond and/or
                 remount, indicating the recording has stopped.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
@@ -2638,7 +2788,7 @@ class SerialCommandInterface(CommandInterface):
               callback: Optional[Callable] = None) -> bool:
         """ Reset (reboot) the recorder.
 
-            :param wait: If `True`, wait for the recorer to respond and/or
+            :param wait: If `True`, wait for the recorder to respond and/or
                 disconnect, indicating the reset has started.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately.
@@ -2651,6 +2801,33 @@ class SerialCommandInterface(CommandInterface):
         return self._runSimpleCommand({'EBMLCommand': {'Reset': {}}},
                                       statusCode=DeviceStatusCode.RESET_PENDING,
                                       timeoutMsg="Timed out waiting for device to reset",
+                                      wait=wait,
+                                      timeout=timeout,
+                                      callback=callback)
+
+
+    def shutdown(self,
+                 wait: bool = True,
+                 timeout: Union[int, float] = 5,
+                 callback: Optional[Callable] = None) -> bool:
+        """ Shut down/power off the device. Not supported on all devices.
+
+            :param wait: If `True`, wait for the device to respond and/or
+                disconnect, indicating it is shutting down.
+            :param timeout: Time (in seconds) to wait for the device to
+                respond. 0 will return immediately.
+            :param callback: A function to call each response-checking
+                cycle. If the callback returns `True`, the wait for a response
+                will be cancelled. The callback function should require no
+                arguments.
+            :returns: `True` if the command was successful.
+        """
+        # TODO: Create more abstract Gateway recognition
+        if not self.device.getInfo('RecorderTypeUID', 0) & 0x20000000:
+            raise UnsupportedFeature('Device cannot be shut down by command')
+
+        return self._runSimpleCommand({'EBMLCommand': {'Shutdown': {}}},
+                                      timeoutMsg="Timed out waiting for device to shut down",
                                       wait=wait,
                                       timeout=timeout,
                                       callback=callback)
@@ -2691,7 +2868,7 @@ class SerialCommandInterface(CommandInterface):
 
             :param secure: if `True`, use the secure update command (requires
                 encrypted firmware).
-            :param wait: If `True`, wait for the recorer to dismount,
+            :param wait: If `True`, wait for the recorder to dismount,
                 indicating the update has started.
             :param timeout: Time (in seconds) to wait for the recorder to
                 respond. 0 will return immediately. `None` or -1 will wait
@@ -2792,7 +2969,7 @@ class SerialCommandInterface(CommandInterface):
             # Older FW returns wrong status code
             if err.errno == DeviceStatusCode.ERR_INVALID_COMMAND:
                 raise CommandError(DeviceStatusCode.ERR_UNKNOWN_COMMAND,
-                                   *err.args[1:])
+                                   "Command not recognized by device")
             raise
 
         if not response:
@@ -2906,6 +3083,9 @@ class SerialCommandInterface(CommandInterface):
             :return: A tuple of Booleans: whether the device has a lock set,
                 and whether the lock belongs to this instance.
         """
+        if self.device.apiVersion < 4:
+            return super().isLocked(timeout=timeout, callback=callback)
+
         lock = self.getLockID(timeout=timeout, callback=callback)
         if not lock or not any(lock):
             return False, False
@@ -2916,6 +3096,22 @@ class SerialCommandInterface(CommandInterface):
     # General device info getting/setting
     # =======================================================================
 
+    @property
+    def _canSetInfo(self) -> bool:
+        """ Can this interface use `<SetInfo>` commands? """
+        # Exclude non-existent devices and special case `NonRecorder`
+        # objects (which get into `getInfo()` loops)
+        if not self.device or type(self.device).__name__ == 'NonRecorder':
+            return False
+
+        # Currently, only Gateways can set info over a serial interface.
+        # This will be revised if/when we have others.
+        # TODO: Create more abstract Gateway recognition
+        devtype = self.device.getInfo('RecorderTypeUID', 0)
+        return bool(devtype & 0x20000000)
+
+
+    # noinspection method-overriding
     def _getInfo(self,
                  infoIdx: int,
                  timeout: Union[int, float] = 10,
@@ -2988,7 +3184,31 @@ class SerialCommandInterface(CommandInterface):
                 be cancelled. The callback function should require no arguments.
         """
         # Only supported via MQTT (for now?)
-        raise UnsupportedFeature(self, self._setInfo)
+        if not self._canSetInfo:
+            raise UnsupportedFeature(self, self._setInfo)
+
+        logger.debug(f'{self.device.serial} Setting info index {infoIdx}')
+
+        # Note: `LockID` and `CommandIdx` are explicitly added to ensure they
+        #   come before the `InfoPayload` in the command dict.
+        cmd = {
+            'EBMLCommand': {
+                'LockID': None,  # will be set in _sendCommand
+                'CommandIdx': None,  # will be set in _sendCommand
+                'SetInfo': {
+                    'InfoIndex': infoIdx,
+                    'InfoPayload': payload}
+            }
+        }
+
+        self._sendCommand(cmd,
+                          response=True,
+                          timeout=timeout,
+                          lock=True,
+                          index=True,
+                          callback=callback)
+
+        return True
 
 
 # ===========================================================================
@@ -3262,7 +3482,7 @@ class FileCommandInterface(CommandInterface):
                 Only the first 2 bytes will be sent.
             :param statusCode: The ``<CommandResponseCode>`` expected in the
                 acknowledgement (if the interface supports one).
-            :param wait: If `True`, wait for the recorer to respond and/or
+            :param wait: If `True`, wait for the recorder to respond and/or
                 dismount.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a `DeviceTimeout` exception. 0 will return
@@ -3296,7 +3516,7 @@ class FileCommandInterface(CommandInterface):
 
             :param secure: If `True`, use the `"SecureUpdateAll"` command
                 instead of `"LegacyAll"`.
-            :param wait: If `True`, wait for the recorer to dismount,
+            :param wait: If `True`, wait for the recorder to dismount,
                 indicating the command has executed.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a `DeviceTimeout` exception. 0 will return
@@ -3321,7 +3541,7 @@ class FileCommandInterface(CommandInterface):
                        callback: Optional[Callable] = None) -> bool:
         """ Start the device recording, if supported.
 
-            :param wait: If `True`, wait for the recorer to dismount,
+            :param wait: If `True`, wait for the recorder to dismount,
                 indicating the recording has started.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a `DeviceTimeout` exception. 0 will return
@@ -3355,7 +3575,7 @@ class FileCommandInterface(CommandInterface):
               callback: Optional[Callable] = None) -> bool:
         """ Reset (reboot) the recorder.
 
-            :param wait: If `True`, wait for the recorer to dismount,
+            :param wait: If `True`, wait for the recorder to dismount,
                 indicating the reset has taken effect.
             :param timeout: Time (in seconds) to wait for a response before
                 raising a `DeviceTimeout` exception. 0 will return

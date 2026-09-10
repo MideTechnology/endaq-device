@@ -20,7 +20,6 @@ be found using the :meth:`getDevices()` method.
 
 """
 
-from contextlib import suppress
 from datetime import datetime
 import logging
 import os.path
@@ -30,6 +29,7 @@ from threading import Event, Thread
 from time import sleep, time
 from typing import Any, BinaryIO, Callable, Dict, List, Optional, Tuple, Union
 from weakref import WeakValueDictionary
+from dataclasses import asdict
 
 import paho.mqtt.client as mqtt
 from serial import PortNotOpenError
@@ -191,7 +191,7 @@ class MQTTConnector:
         if not brokers:
             raise NameError(f'No brokers found matching name pattern(s) {patterns!r}')
 
-        broker = brokers[0]
+        broker = asdict(brokers[0])
         broker.update(kwargs)
         return cls(**broker)
 
@@ -246,6 +246,7 @@ class MQTTConnector:
             logger.debug(f'Resubscribing to topic {topic}')
             self.client.subscribe(topic, *args, **kwargs)
 
+
     @synchronized
     def connect(self, timeout=30):
         """
@@ -272,8 +273,8 @@ class MQTTConnector:
             if err != mqtt.MQTT_ERR_SUCCESS:
                 raise CommunicationError(f'Failed to connect to broker: {err!r}')
 
-        result, _mid = self.subscribe(self._managerStateTopic, qos=0)
-        # if result == mqtt.MQTT_ERR_SUCCESS:
+        _result, _mid = self.subscribe(self._managerStateTopic, qos=0)
+        # if _result == mqtt.MQTT_ERR_SUCCESS:
         #     self.client.message_callback_add(self._managerStateTopic, self._onMessage)
 
         self.client.loop_start()
@@ -515,7 +516,7 @@ class MQTTConnector:
             cmd = {'EBMLCommand': {'GetDeviceList': {}}}
             if managerTimeout is not None:
                 cmd['EBMLCommand']['GetDeviceList']['Timeout'] = managerTimeout
-            response = devman.command._sendCommand(cmd, timeout=timeout, callback=callback)
+            response: dict = devman.command._sendCommand(cmd, timeout=timeout, callback=callback)
 
             if not response['DeviceList']:
                 return []
@@ -726,7 +727,7 @@ class MQTTConnector:
             device = device.serialInt
         try:
             cmd = {'EBMLCommand': {'GetIDEHeader': device}}
-            response = self.command._sendCommand(cmd)
+            response: dict = self.command._sendCommand(cmd)
             return response['GetIDEHeaderResponse']['IDEHeaderData']
         except CommandError as err:
             if 'Unknown serial number' not in str(err):
@@ -874,7 +875,7 @@ class MQTTCommandInterface(SerialCommandInterface):
 
         self.streamCallback: Optional[Callable] = None
         self._streamPath: Union[str, Path, None] = None
-        self._stream: Optional[BinaryIO] = None
+        self._stream: BinaryIO = None
         self._streamStartTime: float = 0
         self._streamedBytes: int = 0
         self._lastStreamChunk: bytes = b''
@@ -901,6 +902,7 @@ class MQTTCommandInterface(SerialCommandInterface):
                               DeviceStatusCode.OFFLINE)
 
 
+    # noinspection method-overriding
     def getSerialPort(self,
                       reset: bool = False,
                       timeout: Union[int, float] = 1,
@@ -909,14 +911,14 @@ class MQTTCommandInterface(SerialCommandInterface):
             Create a virtual serial connection through the MQTT broker for commands
             and responses.
 
-            :param reset: If `True`, reset the virual serial connection if already
+            :param reset: If `True`, reset the virtual serial connection if already
                 open. Primarily for compatibility with `SerialCommandInterface`.
             :param timeout: Time (in seconds) to get the serial port.
             :param kwargs: Additional keyword arguments to be used when opening
                 the port.
             :return: A `MQTTSerialPort` instance.
         """
-        kwargs = kwargs or {}
+        kwargs: dict = kwargs or {}
         if reset and self.port:
             self.port.close()
             self.port = None
@@ -935,79 +937,9 @@ class MQTTCommandInterface(SerialCommandInterface):
         return self.port
 
 
-    def _setInfo(self,
-                 infoIdx: int,
-                 payload: Union[bytearray, bytes],
-                 timeout: Union[int, float] = 10,
-                 interval: float = .25,
-                 callback: Optional[Callable] = None):
-        """ Write device system information. This method is called indirectly
-            by methods in `Recorder`.
-
-            :param infoIdx: The index of the information to write.
-            :param timeout: Time (in seconds) to wait for a response before
-                raising a :class:`~.endaq.device.DeviceTimeout` exception.
-                `None` or -1 will wait indefinitely.
-            :param interval: Time (in seconds) between checks for a response.
-            :param callback: A function to call each response-checking cycle.
-                If the callback returns `True`, the wait for a response will
-                be cancelled. The callback function should require no arguments.
-        """
-        logger.debug(f'{self.device.serial} Setting info index {infoIdx}')
-
-        # Note: `LockID` and `CommandIdx` are explicitly added to ensure they
-        #   come before the `InfoPayload` in the command dict.
-        cmd = {
-            'EBMLCommand': {
-                'LockID': None,  # will be set in _sendCommand
-                'CommandIdx': None,  # will be set in _sendCommand
-                'SetInfo': {
-                    'InfoIndex': infoIdx,
-                    'InfoPayload': payload}
-            }
-        }
-
-        self._sendCommand(cmd,
-                          response=True,
-                          timeout=timeout,
-                          lock=True,
-                          index=True,
-                          callback=callback)
-
+    @property
+    def _canSetInfo(self) -> bool:
         return True
-
-
-    def _getInfo(self,
-                 infoIdx: int,
-                 timeout: Union[int, float] = 10,
-                 interval: float = .25,
-                 lock: bool = False,
-                 index: bool = True,
-                 callback: Optional[Callable] = None) -> bytes:
-        """ Retrieve device system information. For 'local' devices, this
-            is retrieved via the filesystem. This method is called indirectly
-            by methods in `Recorder`.
-
-            :param infoIdx: The index of the information to retrieve.
-            :param timeout: Time (in seconds) to wait for a response before
-                raising a :class:`~.endaq.device.DeviceTimeout` exception.
-                `None` or -1 will wait indefinitely.
-            :param interval: Time (in seconds) between checks for a response.
-            :param callback: A function to call each response-checking cycle.
-                If the callback returns `True`, the wait for a response will
-                be cancelled. The callback function should require no arguments.
-            :param lock: If `True`, include the current `hostId` in the
-                command, as some `SetInfo` commands require.
-            :param index: If `True`, include a ``CommandIdx`` in the command,
-                and use it to validate the response (if any).
-            :return: The raw info, as unparsed EBML binary data. It is up to
-                the caller to know how to process the results (e.g., choose
-                the correct schema, etc.).
-        """
-        # Note: Reading config or user calibration requires a LockID
-        # lock = index in (5, 6)
-        logger.debug(f'{self.device.serial} Getting info index {infoIdx}')
-        return super()._getInfo(infoIdx, timeout, interval, lock, index, callback)
 
 
     def getStatus(self,
@@ -1159,7 +1091,7 @@ class MQTTCommandInterface(SerialCommandInterface):
             devices connected via USB.
 
             :raises UnsupportedFeature: This cannot be done via MQTT.
-                """
+        """
         raise UnsupportedFeature(f'Wi-Fi cannot be configured via MQTT')
 
 
@@ -1193,9 +1125,14 @@ class MQTTCommandInterface(SerialCommandInterface):
     # =======================================================================
 
     @property
+    def canLock(self) -> bool:
+        """ Does this device support the `LockID` commands? """
+        return True
+
+
+    @property
     def canStream(self) -> bool:
-        """ Is the device capable of streaming data?
-        """
+        """ Is the device capable of streaming data? """
         # TODO: Check device config to see if the option is enabled?
         return True
 
@@ -1251,7 +1188,7 @@ class MQTTCommandInterface(SerialCommandInterface):
 
         filename = f"{self.device.serial}_{datetime.now().strftime('%y%m%d_%H%M%S')}.IDE"
         self._stream = open(os.path.join(self._streamPath, filename), 'wb')
-        logger.debug(f"Saving stream to {self._stream}")
+        logger.debug(f"Saving stream to {filename}")
 
 
     @synchronized

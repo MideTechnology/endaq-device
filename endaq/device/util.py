@@ -2,6 +2,7 @@
 Some basic utility functions, for internal use.
 """
 
+import base64
 import calendar
 import datetime
 import errno
@@ -29,7 +30,7 @@ def makeBackup(filename: Union[str, pathlib.Path]) -> bool:
         `restoreBackup()`.
     """
     try:
-        backupFilename = filename + "~"
+        backupFilename = f"{filename}~"
         if os.path.exists(filename):
             shutil.copy2(filename, backupFilename)
             return True
@@ -45,7 +46,7 @@ def restoreBackup(filename: Union[str, pathlib.Path],
         conjunction with `makeBackup()`.
     """
     try:
-        backupFilename = filename + "~"
+        backupFilename = f"{filename}~"
         if os.path.exists(backupFilename):
             shutil.copy2(backupFilename, filename)
             if remove:
@@ -402,3 +403,45 @@ def info_lock_required(func: Callable,
                         f'{what} requires a matching lock ID '
                         'set with Recorder.command.setLockID()')
         raise
+
+
+# ===========================================================================
+# Safer JSON serialization
+# Note: This may get moved into `ebmlite`
+# ===========================================================================
+
+def decodeDict(value: Union[Dict[str, Any], list]) -> None:
+    """ Convert `bytearray`/`bytes` values in a dict/list escaped by
+        `EscapedJSONEncoder` back to their original form. The original
+        dict/list is modified in place.
+    """
+    if isinstance(value, list):
+        iterator = enumerate(value)
+    elif isinstance(value, dict):
+        iterator = value.items()
+    else:
+        raise ValueError(f'cannot iterate {type(value)}')
+
+    for i, v in iterator:
+        if isinstance(v, str) and v.startswith('base64:'):
+            value[i] = base64.b64decode(v[7:])
+        elif isinstance(v, (dict, list)):
+            decodeDict(v)
+
+
+def encodeDict(value: Union[Dict[str, Any], list]) -> None:
+    """ Convert all strings in a list/dict starting with ``"base64"`` into
+        `bytearray`/`bytes` values. The original dict/list is modified in place.
+    """
+    if isinstance(value, list):
+        iterator = enumerate(value)
+    elif isinstance(value, dict):
+        iterator = value.items()
+    else:
+        raise ValueError(f'cannot iterate {type(value)}')
+
+    for i, v in iterator:
+        if isinstance(v, (bytes, bytearray)):
+            value[i] = 'base64:' + str(base64.b64encode(v), 'utf8')
+        elif isinstance(v, (dict, list)):
+            encodeDict(v)
