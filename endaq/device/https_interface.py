@@ -206,7 +206,9 @@ def info2url(info: MDNSInfo) -> str:
         logger.warning('Advertised server name invalid, using IP')
         host = info.host
 
-    scheme = str(info.properties.get(b'protocol', b'https'), 'utf8')
+    scheme = str(info.properties.get(b'protocol', b'https'), 'utf8').lower()
+    if not scheme.startswith('http'):
+        raise CommunicationError(f'Unsupported protocol: {scheme!r}')
     return f'{scheme}://{host}:{info.port}'
 
 
