@@ -1635,7 +1635,8 @@ class CommandInterface:
                 in transmission may arrive after a successful call to
                 `stopRecording()`). 0 will return immediately, dropping any
                 additional/buffered/in-transit data; `None` or -1 will wait
-                indefinitely.
+                indefinitely. Note that timing out does not prevent the
+                file from closing, but the data within may be truncated.
             :param callback: A function to call each response-checking cycle.
                 If the callback returns `True`, the wait for a response will
                 be cancelled. The callback function should require no arguments.
