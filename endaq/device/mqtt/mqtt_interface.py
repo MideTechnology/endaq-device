@@ -41,7 +41,8 @@ from .discovery import findBrokers, SERVICE_TYPE
 from ..base import Recorder, NonRecorder
 from ..command_interfaces import SerialCommandInterface
 from ..devinfo import MQTTDeviceInfo
-from ..exceptions import CommandError, CommunicationError, DeviceError, UnsupportedFeature
+from ..exceptions import (CommandError, CommunicationError, DeviceError,
+                          DeviceTimeout, UnsupportedFeature)
 from ..response_codes import DeviceStatusCode
 from ..simserial import SimSerialPort
 from ..types import Filename
@@ -1255,22 +1256,48 @@ class MQTTCommandInterface(SerialCommandInterface):
 
 
     @synchronized
-    def closeStream(self) -> bool:
+    def closeStream(self,
+                    timeout: Optional[Union[int, float]] = 0,
+                    callback: Optional[Callable] = None) -> bool:
         """ Stop receiving and writing data streamed from the device. Note
             that this does not send the stop command to the device; that
-            must be done explicitly, either before or after calling
-            `synchronized()`.
+            must be done explicitly, optimally before calling `closeStream()`.
 
+            :param timeout: Time (in seconds) to wait for the incoming data to
+                cease before closing the file (buffered data or data already
+                in transmission may arrive after a successful call to
+                `stopRecording()`). 0 will return immediately, dropping any
+                additional/buffered/in-transit data; `None` or -1 will wait
+                indefinitely. Note that timing out does not prevent the
+                file from closing, but the data within may be truncated.
+            :param callback: A function to call each response-checking cycle.
+                If the callback returns `True`, the wait for a response will
+                be cancelled. The callback function should require no arguments.
             :returns: `True` if the command was successful, `False` if
                 not already receiving/saving streamed data.
         """
         if not self.streaming():
             return False
 
-        self.streamCallback = None
-        self.manager._streamers.pop(self._streamTopic, None)
-        self.manager.unsubscribe(self._streamTopic)
-        self._stream.close()
+        if timeout is None or timeout == -1:
+            timeout = float('inf')
+
+        try:
+            if timeout > 0:
+                now = time()
+                deadline = now + timeout
+                while now - self._lastChunkTime < 0.125:
+                    if now > deadline:
+                        raise DeviceTimeout('Timed out waiting for streamed data to stop')
+                    elif callback and callback():
+                        break
+                    now = time()
+        finally:
+            self.streamCallback = None
+            self.manager._streamers.pop(self._streamTopic, None)
+            self.manager.unsubscribe(self._streamTopic)
+            self._stream.close()
+
         return True
 
 
