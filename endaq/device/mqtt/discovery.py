@@ -93,28 +93,7 @@ class MDNSFinder:
     by Zeroconf in the background.
     """
 
-    _class_lock = RLock()
-
-    def __new__(cls,
-                serviceType: str = SERVICE_TYPE,
-                timeout: float | int = 5.0,
-                keepalive: float | int = 180.0):
-        """
-        Return existing or instantiate new object.
-        """
-        with cls._class_lock:
-            if serviceType in MDNS_FINDERS:
-                finder = MDNS_FINDERS[serviceType]
-                with finder._synchronized_lock:
-                    # Update existing finder variables
-                    finder.timeout = timeout
-                    finder._keepalive = keepalive
-            else:
-                finder = super().__new__(cls)
-                MDNS_FINDERS[serviceType] = finder
-
-            return finder
-
+    # FUTURE: Redo instance memoization in __new__()? Remember __init__() always called.
 
     def __init__(self,
                  serviceType: str = SERVICE_TYPE,
@@ -137,9 +116,9 @@ class MDNSFinder:
         self._keepalive = keepalive
         self._callbacks: WeakSet[Callable[[List[MDNSInfo]], None]] = WeakSet()
 
-        self._zc = None                         # Holder for Zeroconf object
-        self._browser = None                     # Holder for serviceBrowser
-        self._found: Dict[str, MDNSInfo] = {}    # Dict of mDNS items indexed by full name
+        self._zc = None                        # Holder for Zeroconf object
+        self._browser = None                   # Holder for serviceBrowser
+        self._found: Dict[str, MDNSInfo] = {}  # Dict of mDNS items indexed by full name
         self._lastReported: List[int] = []
 
         self._synchronized_lock = RLock()  # Same as used in the `@synchronized` decorator
@@ -147,19 +126,28 @@ class MDNSFinder:
         self._callbackTimer = Timer(1, lambda x: None)
 
         self.start_time = 0
+        MDNS_FINDERS[serviceType] = self
 
 
     def __repr__(self) -> str:
-        active = 'active' if self.active else 'inactive'
-        return f'<{type(self).__name__} {self.serviceType!r} ({active}) at {hex(id(self))}>'
+        # __repr__() should never completely fail, so:
+        # noinspection broad-exception
+        try:
+            active = 'active' if self.active else 'inactive'
+            return f'<{type(self).__name__} {self.serviceType!r} ({active}) at {hex(id(self))}>'
+        except Exception:
+            return super().__repr__()
 
 
     @property
     def active(self) -> bool:
         """ Is the `MDNSFinder` currently running? """
-        if self._zc is None:
+        try:
+            if self._zc is None:
+                return False
+            return self._zc.started
+        except AttributeError:
             return False
-        return self._zc.started
 
 
     @property
@@ -222,8 +210,8 @@ class MDNSFinder:
         up to date list.
         """
         brokers = self.getBrokerList()
-        hashes = sorted(hash(str(broker)) for broker in brokers)
-        if hashes == self._lastReported:
+
+        if brokers == self._lastReported:
             return
 
         for callback in self._callbacks:
@@ -231,7 +219,7 @@ class MDNSFinder:
                 callback(brokers)
             except Exception as e:
                 logger.exception(e)
-        self._lastReported = hashes
+        self._lastReported = brokers
 
     def _onServiceStateChange(self,
                               zeroconf: Zeroconf,
@@ -306,8 +294,6 @@ class MDNSFinder:
         :returns: A dictionary of the brokers.
         """
         self.start()
-        if not self._found:
-            sleep(1)
         return copy.deepcopy(self._found)
 
 
@@ -317,7 +303,7 @@ class MDNSFinder:
 
         :returns: list of the brokers
         """
-        return list(self.getBrokerDict().values())
+        return sorted(self.getBrokerDict().values(), key=lambda x: x.name)
 
 
     @synchronized
@@ -443,7 +429,11 @@ def findBrokers(*patterns: str,
     broker_list = []
     protocol = bytes(protocol, 'utf-8') if protocol is not None else None
 
-    finder = MDNSFinder(serviceType, timeout=timeout, keepalive=keepalive)
+    if serviceType not in MDNS_FINDERS:
+        finder = MDNSFinder(serviceType, timeout=timeout, keepalive=keepalive)
+    else:
+        finder = MDNS_FINDERS[serviceType]
+
     finder.start()
 
     while time() < deadline:
