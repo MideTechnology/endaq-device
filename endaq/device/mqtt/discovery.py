@@ -1,5 +1,7 @@
 """
 Find an enDAQ MQTT broker.
+
+The simplest way to find an enDAQ MQTT broker is using `findBroker`
 """
 
 import copy
@@ -11,6 +13,7 @@ from threading import RLock, Timer
 from time import sleep, time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import warnings
+from weakref import WeakSet, WeakValueDictionary
 
 from zeroconf import Zeroconf, ServiceBrowser, ServiceInfo, ServiceStateChange
 
@@ -29,7 +32,7 @@ DEFAULT_NAMES = ["enDAQ Remote Interface*._endaq._tcp.local.",
                  "Data Collection Box Interface*._endaq._tcp.local."]
 SERVICE_TYPE = "_endaq._tcp.local."
 
-MDNS_FINDERS: Dict[str, "MDNSFinder"] = {}
+MDNS_FINDERS: Dict[str, "MDNSFinder"] = WeakValueDictionary()
 
 # ===========================================================================
 #
@@ -42,11 +45,15 @@ class MDNSInfo:
     """
     Dataclass for organizing info about mDNS services
 
-    :param name: Root name of mDNS name, so 'name._endaq._tcp.local.' becomes 'name'
-    :param serviceType: Service name of mDNS name, so 'name._endaq._tcp.local.' becomes '_endaq._tcp.local.'
-    :param host: list of IP addresses for mDNS advertiser. Generally only the first item is used
-    :param port: port number for mDNS advertiser
-    :param properties: Properties advertised by the mDNS host
+    :param name: Root name of mDNS service name, excluding service type
+        (e.g., ``name`` from ``name._endaq._tcp.local.``).
+    :param serviceType: The mDNS service name name of mDNS name (e.g.,
+        ``._endaq._tcp.local.`` from ``name._endaq._tcp.local.``).
+    :param host: A list of the service's advertised IP addresses. Generally,
+        only the first item is used
+    :param port: The advertised service's port number.
+    :param server: The advertised service's resolvable server name.
+    :param properties: Properties advertised by the mDNS host.
     """
     name: str
     serviceType: str
@@ -91,8 +98,7 @@ class MDNSFinder:
     def __new__(cls,
                 serviceType: str = SERVICE_TYPE,
                 timeout: float | int = 5.0,
-                keepalive: float | int = 180.0,
-                finderCallback: Optional[Callable] = None):
+                keepalive: float | int = 180.0):
         """
         Return existing or instantiate new object.
         """
@@ -102,8 +108,7 @@ class MDNSFinder:
                 with finder._synchronized_lock:
                     # Update existing finder variables
                     finder.timeout = timeout
-                    finder.keepalive = keepalive
-                    finder.callback = finderCallback
+                    finder._keepalive = keepalive
             else:
                 finder = super().__new__(cls)
                 MDNS_FINDERS[serviceType] = finder
@@ -114,8 +119,7 @@ class MDNSFinder:
     def __init__(self,
                  serviceType: str = SERVICE_TYPE,
                  timeout: float | int = 5.0,
-                 keepalive: float | int = 180.0,
-                 finderCallback: Optional[Callable] = None):
+                 keepalive: float | int = 180.0):
         """
         Object to handle searching for mDNS hosts. Most of the work is handled
         by Zeroconf in the background.
@@ -126,20 +130,17 @@ class MDNSFinder:
             info before giving up.
         :param keepalive: The time to keep the `MDNSFinder` object running
             between uses.
-        :param finderCallback: A function called whenever the mDNS advertising
-            updates (e.g., a broker advertisement goes up or comes down). The
-            function should take one argument: a list of active brokers as
-            `MDNSInfo`.
         """
         self.serviceType = serviceType
         self.timeout = timeout
         self._timeout_ms = int(timeout * 1000)
-        self.keepalive = keepalive
-        self.callback = finderCallback
+        self._keepalive = keepalive
+        self._callbacks: WeakSet[Callable[[List[MDNSInfo]], None]] = WeakSet()
 
         self._zc = None                         # Holder for Zeroconf object
         self._browser = None                     # Holder for serviceBrowser
         self._found: Dict[str, MDNSInfo] = {}    # Dict of mDNS items indexed by full name
+        self._lastReported: List[int] = []
 
         self._synchronized_lock = RLock()  # Same as used in the `@synchronized` decorator
         self._timer = Timer(keepalive, self.stop)
@@ -148,20 +149,89 @@ class MDNSFinder:
         self.start_time = 0
 
 
+    def __repr__(self) -> str:
+        active = 'active' if self.active else 'inactive'
+        return f'<{type(self).__name__} {self.serviceType!r} ({active}) at {hex(id(self))}>'
+
+
+    @property
+    def active(self) -> bool:
+        """ Is the `MDNSFinder` currently running? """
+        if self._zc is None:
+            return False
+        return self._zc.started
+
+
+    @property
+    def keepalive(self) -> Optional[float | int]:
+        return self._keepalive
+
+
+    @keepalive.setter
+    def keepalive(self, lifetime: float | int):
+        self._keepalive = lifetime
+        self._resetTimer()
+        
+
+    @synchronized
+    def addCallback(self, callback: Callable[[List[MDNSInfo]], None]):
+        """
+        Add a function to be called whenever the mDNS advertising updates
+        (e.g., a broker advertisement goes up or comes down). The function
+        should take one argument: a list of active brokers as `MDNSInfo`.
+        Note: when there are multiple callbacks, the order of execution is
+        arbitrary. If a specific sequence is required, implement it in a
+        single callback.
+
+        :param callback: The callback function to add.
+        """
+        self._callbacks.add(callback)
+        del self._lastReported[:]
+
+
+    @synchronized
+    def removeCallback(self, callback: Callable):
+        """ Remove a callback function added with `addCallback()`.
+
+            :param callback: The callback function to remove.
+        """
+        self._callbacks.remove(callback)
+
+
+    @synchronized
+    def clearCallbacks(self):
+        """ Remove all callback functions.
+        """
+        self._callbackTimer.cancel()
+        self._callbacks.clear()
+
+
     def _resetTimer(self):
         """ Start/restart the automatic stop timer.
         """
-        if self.keepalive is not None:
-            self._timer.cancel()
-            self._timer = Timer(self.keepalive, self.stop)
+        self._timer.cancel()
+        if self._keepalive is not None:
+            self._timer = Timer(self._keepalive, self.stop)
+            self._timer.name = f'Reset{self._timer.name}'  # for debugging
             self._timer.start()
 
 
     def _callback(self):
-        """ Wrapper for callback function to ensure an up to date list.
         """
-        self.callback(self.getBrokerList())
+        Wrapper to execute all the callback functions with an
+        up to date list.
+        """
+        brokers = self.getBrokerList()
+        hashes = sorted(hash(str(broker)) for broker in brokers)
+        if hashes == self._lastReported:
+            return
 
+        for callback in self._callbacks:
+            try:
+                callback(brokers)
+            except Exception as e:
+                logger.exception(e)
+        self._lastReported = hashes
 
     def _onServiceStateChange(self,
                               zeroconf: Zeroconf,
@@ -189,8 +259,10 @@ class MDNSFinder:
                 logger.debug(f"getinfo failed for {name} ({service_type}) ")
                 return
 
-        if self.callback and not self._callbackTimer.is_alive():
+        if self._callbacks and not self._callbackTimer.is_alive():
             self._callbackTimer = Timer(1, self._callback)
+            self._callbackTimer.name = f'Callback{self._callbackTimer.name}'
+            self._callbackTimer.start()
 
 
     @synchronized
@@ -200,7 +272,7 @@ class MDNSFinder:
         """
         self._resetTimer()
 
-        if self._zc is not None:
+        if self.active:
             return
 
         self._zc = Zeroconf()
@@ -234,6 +306,8 @@ class MDNSFinder:
         :returns: A dictionary of the brokers.
         """
         self.start()
+        if not self._found:
+            sleep(1)
         return copy.deepcopy(self._found)
 
 
@@ -307,7 +381,8 @@ def getBroker(name: str = DEFAULT_NAME,
 
     :param name: The name of the broker to find.
     :param limit: The maximum number of differences between the given name
-        and a broker name to be considered a match.
+        and a broker name to be considered a match. `None` will return
+        the first broker discovered.
     :param scantime: The minimum time (in seconds) to scan for brokers. If
         any brokers are discovered in this time, they will be returned.
     :param timeout: The maximum time (in seconds) to scan for brokers, if
@@ -331,7 +406,7 @@ def getBroker(name: str = DEFAULT_NAME,
     fullname = fullServiceName(name)
     broker_list = [(levenshtein(fullServiceName(x.name), fullname), x) for x in broker_list]
     broker = min(broker_list, key=lambda x: x[0])
-    if broker[0] <= limit:
+    if limit is None or broker[0] <= limit:
         return broker[0]
     return None
 

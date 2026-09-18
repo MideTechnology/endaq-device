@@ -37,7 +37,7 @@ from serial import PortNotOpenError
 from .. import (_module_busy, RECORDER_TYPES, RECORDERS,
                 RECORDERS_BY_SN, RECORDER_CACHE_SIZE)
 
-from .discovery import findBrokers, SERVICE_TYPE
+from .discovery import findBrokers, SERVICE_TYPE, MDNSInfo
 from ..base import Recorder, NonRecorder
 from ..command_interfaces import SerialCommandInterface
 from ..devinfo import MQTTDeviceInfo
@@ -184,14 +184,21 @@ class MQTTConnector:
                 (case-sensitive). Defaults are used if no arguments are
                 provided.
         """
-
         brokers = findBrokers(*patterns, **kwargs)
         if not brokers:
             if not patterns or patterns[0] is None:
                 raise NameError('No brokers found')
             raise NameError(f'No brokers found matching name pattern(s) {patterns!r}')
 
-        broker = asdict(brokers[0])
+        return cls.frominfo(brokers[0], **kwargs)
+
+
+    @classmethod
+    def frominfo(cls, info: MDNSInfo, **kwargs) -> "MQTTConnector":
+        """ Instantiate an `MQTTConnector` from an `MDNSInfo` object. Keyword
+            arguments are used in the instantiation of the `MQTTConnector`.
+        """
+        broker = asdict(info)
         broker.update(kwargs)
         return cls(**broker)
 
