@@ -7,13 +7,15 @@ The simplest way to find an enDAQ MQTT broker is using `findBroker`
 import copy
 from dataclasses import dataclass, asdict
 from fnmatch import fnmatchcase
+import inspect
 import logging
 import re
 from threading import RLock, Timer
 from time import sleep, time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import warnings
-from weakref import WeakSet, WeakValueDictionary
+import weakref
+# from weakref import WeakValueDictionary, WeakMethod, ref
 
 from zeroconf import Zeroconf, ServiceBrowser, ServiceInfo, ServiceStateChange
 
@@ -32,7 +34,7 @@ DEFAULT_NAMES = ["enDAQ Remote Interface*._endaq._tcp.local.",
                  "Data Collection Box Interface*._endaq._tcp.local."]
 SERVICE_TYPE = "_endaq._tcp.local."
 
-MDNS_FINDERS: Dict[str, "MDNSFinder"] = WeakValueDictionary()
+MDNS_FINDERS: Dict[str, "MDNSFinder"] = weakref.WeakValueDictionary()
 
 # ===========================================================================
 #
@@ -114,7 +116,7 @@ class MDNSFinder:
         self.timeout = timeout
         self._timeout_ms = int(timeout * 1000)
         self._keepalive = keepalive
-        self._callbacks: WeakSet[Callable[[List[MDNSInfo]], None]] = WeakSet()
+        self._callbacks: set[weakref.ReferenceType] = set()
 
         self._zc = None                        # Holder for Zeroconf object
         self._browser = None                   # Holder for serviceBrowser
@@ -159,7 +161,22 @@ class MDNSFinder:
     def keepalive(self, lifetime: float | int):
         self._keepalive = lifetime
         self._resetTimer()
-        
+
+
+    @synchronized
+    def _cleanCallbacks(self):
+        for dead in [x for x in self._callbacks if x() is None]:
+            self._callbacks.remove(dead)
+
+
+    @property
+    @synchronized
+    def callbacks(self) -> tuple[Callable, ...]:
+        """ List all active callbacks.
+        """
+        self._cleanCallbacks()
+        return tuple(c() for c in self._callbacks if c() is not None)
+
 
     @synchronized
     def addCallback(self, callback: Callable[[List[MDNSInfo]], None]):
@@ -173,8 +190,13 @@ class MDNSFinder:
 
         :param callback: The callback function to add.
         """
-        self._callbacks.add(callback)
-        del self._lastReported[:]
+        self._cleanCallbacks()
+        if inspect.ismethod(callback):
+            self._callbacks.add(weakref.WeakMethod(callback))
+        elif callable(callback):
+            self._callbacks.add(weakref.ref(callback))
+        else:
+            raise TypeError(f'argument should be callable, not {type(callback)}')
 
 
     @synchronized
@@ -183,7 +205,12 @@ class MDNSFinder:
 
             :param callback: The callback function to remove.
         """
-        self._callbacks.remove(callback)
+        remove = None
+        for c in self._callbacks:
+            if c() == callback:
+                remove = c
+                break
+        self._callbacks.remove(remove)
 
 
     @synchronized
@@ -216,10 +243,14 @@ class MDNSFinder:
 
         for callback in self._callbacks:
             try:
-                callback(brokers)
+                c = callback()
+                if c is not None:
+                    # noinspection calling-non-callable
+                    c(brokers)
             except Exception as e:
                 logger.exception(e)
         self._lastReported = brokers
+
 
     def _onServiceStateChange(self,
                               zeroconf: Zeroconf,
