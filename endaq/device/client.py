@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
 
 from .command_interfaces import SerialCommandInterface, CommandError, CRCError, CommandInterface
-from .response_codes import DeviceStatusCode
+from .response_codes import CommandResponseCode, DeviceStatusCode
 from .util import dump, synchronized
 
 
@@ -34,11 +34,11 @@ def requires_lock(method):
                 payload: Any,
                 lockId: Optional[int] = None
                 ) -> Tuple[Union[Dict[str, Any], ByteString],
-                       Optional[DeviceStatusCode],
+                       Optional[CommandResponseCode],
                        Optional[str]]:
         if lockId != instance.lockId:
             logger.warning(f'Could not run {method.__name__} (mismatched LockID)')
-            return {}, DeviceStatusCode.ERR_BAD_LOCK_ID, None
+            return {}, CommandResponseCode.ERR_BAD_LOCK_ID, None
         return method(instance, payload, lockId)
     return wrapped
 
@@ -54,11 +54,11 @@ def optional_lock(method):
                 payload: Any,
                 lockId: Optional[int] = None
                 ) -> Tuple[Union[Dict[str, Any], ByteString],
-                       Optional[DeviceStatusCode],
+                       Optional[CommandResponseCode],
                        Optional[str]]:
         if not instance.checkLock(lockId):
             logger.warning(f'Could not run {method.__name__} (mismatched LockID)')
-            return {}, DeviceStatusCode.ERR_BAD_LOCK_ID, None
+            return {}, CommandResponseCode.ERR_BAD_LOCK_ID, None
         return method(instance, payload, lockId)
     return wrapped
 
@@ -134,19 +134,19 @@ class CommandClient:
 
     @synchronized
     def setStatus(self,
-                  stateCode: Union[DeviceStatusCode, int],
-                  stateMsg: Optional[str] = None):
+                  statusCode: Union[DeviceStatusCode, int],
+                  statusMsg: Optional[str] = None):
         """ Set the client's system state code (and, optionally, message).
             Use this method instead of setting `stateCode` or `stateMsg`
             directly, in order to ensure responses don't get mismatched
             codes and messages.
 
-            :param stateCode: The client's `DeviceStatusCode`.
-            :param stateMsg: An optional description of the current state.
+            :param statusCode: The client's `DeviceStatusCode`.
+            :param statusMsg: An optional description of the current state.
         """
-        stateCode = DeviceStatusCode.IDLE_UNMOUNTED if self.statusCode is None else stateCode
-        self.statusCode = int(stateCode) if stateCode is not None else None
-        self.statusMsg = stateMsg
+        statusCode = DeviceStatusCode.IDLE_UNMOUNTED if self.statusCode is None else statusCode
+        self.statusCode = int(statusCode) if statusCode is not None else None
+        self.statusMsg = statusMsg
 
 
     @synchronized
@@ -167,7 +167,7 @@ class CommandClient:
 
     def sendError(self,
                   recipient: Any,
-                  responseCode: DeviceStatusCode,
+                  responseCode: CommandResponseCode,
                   responseMsg: Optional[str] = None):
         """ Helper to transmit a simple error response packet, containing
             nothing other than a status code and optional message, as
@@ -202,7 +202,7 @@ class CommandClient:
         if self.statusCode is not None:
             response['DeviceStatusCode'] = self.statusCode
             if self.statusMsg:
-                response['DeviceStatusMsg'] = self.statusMsg
+                response['DeviceStatusMessage'] = self.statusMsg
         if self.lockId:
             response['LockID'] = self.lockId
 
@@ -223,20 +223,35 @@ class CommandClient:
         """
         # Attempt to parse, and generate basic errors for bad packets.
         try:
-            command = self.decodeCommand(packet)['EBMLCommand']
+            command = self.decodeCommand(packet)
 
         except (CommandError, TypeError, ValueError):
             logger.error(f'processCommand: Bad packet starting with {dump(packet)}')
-            self.sendError(sender, DeviceStatusCode.ERR_BAD_PACKET)
+            self.sendError(sender, CommandResponseCode.ERR_BAD_PACKET)
             return
-        except KeyError:
-            logger.error('processCommand: Message did not contain an EBMLCommand element')
-            self.sendError(sender, DeviceStatusCode.ERR_INVALID_COMMAND)
+        except KeyError as err:
+            logger.error(f'processCommand: Message did not contain required element {err!r}')
+            self.sendError(sender, CommandResponseCode.ERR_INVALID_COMMAND)
             return
         except CRCError:
             logger.error('processCommand: Packet checksum failed')
-            self.sendError(sender, DeviceStatusCode.ERR_BAD_CHECKSUM)
+            self.sendError(sender, CommandResponseCode.ERR_BAD_CHECKSUM)
             return
+
+        packet = self.encodeResponse(self._processCommand(command))
+        self.sendResponse(sender, packet)
+
+
+    @synchronized
+    def _processCommand(self,
+                       command: Dict[str, Any]) -> Dict[str, Any]:
+        """ Execute a command. Separated from the decoding/encoding for
+            subclass flexibility.
+
+            :param command: The decoded EBML command dictionary.
+            :returns: The response dictionary.
+        """
+        command = command['EBMLCommand']
 
         idx = command.pop('CommandIdx', None)
         lockId = command.pop('LockID', None)
@@ -263,18 +278,17 @@ class CommandClient:
                 responseCode = responseCode or self.statusCode
             except Exception as err:
                 logger.error(f'Error processing command {commandName!r}:', exc_info=True)
-                responseCode = DeviceStatusCode.ERR_INTERNAL_ERROR
+                responseCode = CommandResponseCode.ERR_INTERNAL_ERROR
                 responseMsg = f"{type(err).__name__}: {err}"
         else:
-            responseCode = DeviceStatusCode.ERR_UNKNOWN_COMMAND
+            responseCode = CommandResponseCode.ERR_UNKNOWN_COMMAND
             responseMsg = None
 
         response['CommandResponseCode'] = int(responseCode)
         if responseMsg:
             response['CommandResponseMessage'] = responseMsg
 
-        packet = self.encodeResponse(response)
-        self.sendResponse(sender, packet)
+        return response
 
 
     def checkLock(self, lockId: ByteString) -> bool:
@@ -320,24 +334,24 @@ class CommandClient:
     #   * A string to return as the `CommandResponseMessage`, or `None`.
     # =======================================================================
 
-    # noinspection PyUnusedLocal
+    # noinspection unused-parameter
     def command_SendPing(
             self,
             payload: Dict[str, Any],
             lockId: Optional[ByteString] = None
-    ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+    ) -> Tuple[Dict[str, Any], Optional[CommandResponseCode], Optional[str]]:
         """ Handle a ``SendPing`` command (EBML ID 0x5700).
 
             :param payload: The command element's value.
             :param lockId: The lock ID in the message, if any. 
             :returns: A tuple containing a response dictionary, the response
-                DeviceStatusCode (can be `None`), and DeviceStatusMessage
+                CommandResponseCode (can be `None`), and CommandResponseMessage
                 (can be `None`).
         """
         return {'PingReply': payload}, None, None
     
 
-    # noinspection PyUnusedLocal
+    # noinspection unused-parameter
     def command_GetLockID(
             self,
             payload: Dict[str, Any],
@@ -348,24 +362,24 @@ class CommandClient:
             :param payload: The command element's value.
             :param lockId: The lock ID in the message, if any. 
             :returns: A tuple containing a response dictionary, the response
-                DeviceStatusCode (can be `None`), and DeviceStatusMessage
+                CommandResponseCode (can be `None`), and CommandResponseMessage
                 (can be `None`).
         """
         return {'LockID': self.lockId}, None, None
 
 
-    # noinspection PyUnusedLocal
+    # noinspection unused-parameter
     def command_SetLockID(
             self,
             payload: Dict[str, Any],
             lockId: Optional[ByteString] = None
-    ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+    ) -> Tuple[Dict[str, Any], Optional[CommandResponseCode], Optional[str]]:
         """ Handle a `<SetLockID>` command (EBML ID 0x5B07).
 
             :param payload: The command element's value.
             :param lockId: The lock ID in the message, if any. 
             :returns: A tuple containing a response dictionary, the response
-                DeviceStatusCode (can be `None`), and DeviceStatusMessage
+                CommandResponseCode (can be `None`), and CommandResponseMessage
                 (can be `None`).
         """
         try:
@@ -373,18 +387,18 @@ class CommandClient:
                 self.lockId = payload['NewLockID']
                 return {'LockID': self.lockId}, None, None
                 
-            return {}, DeviceStatusCode.ERR_BAD_LOCK_ID, None
+            return {}, CommandResponseCode.ERR_BAD_LOCK_ID, None
         
         except KeyError:
-            return {}, DeviceStatusCode.ERR_BAD_PAYLOAD, None
+            return {}, CommandResponseCode.ERR_BAD_PAYLOAD, None
 
 
-    # noinspection PyUnusedLocal
+    # noinspection unused-parameter
     def command_GetClock(
             self,
             payload: Dict[str, Any],
             lockId: Optional[ByteString] = None
-    ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+    ) -> Tuple[Dict[str, Any], Optional[CommandResponseCode], Optional[str]]:
         """ Handle a `<GetClock>` command (EBML ID 0x5500).
         """
         return ({'ClockTime': self.command._TIME_PARSER.pack(int(time()))},
@@ -395,14 +409,14 @@ class CommandClient:
             self,
             payload: Dict[str, Any],
             lockId: Optional[ByteString] = None
-    ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+    ) -> Tuple[Dict[str, Any], Optional[CommandResponseCode], Optional[str]]:
         """ Main handler for the `<GetInfo>` command (EBML ID 0x5B00).
         """
         try:
             getter = self.COMMANDS[f'GetInfo_{payload}']
         except KeyError:
             logger.warning(f'No GetInfo for idx {payload!r}')
-            return {}, DeviceStatusCode.ERR_BAD_INFO_INDEX, None
+            return {}, CommandResponseCode.ERR_BAD_INFO_INDEX, None
 
         info, statusCode, statusMsg = getter(payload, lockId)
         response = {'GetInfoResponse': {'InfoIndex': payload,
@@ -414,7 +428,7 @@ class CommandClient:
             self,
             payload: Dict[str, Any],
             lockId: Optional[ByteString] = None
-    ) -> Tuple[Dict[str, Any], Optional[DeviceStatusCode], Optional[str]]:
+    ) -> Tuple[Dict[str, Any], Optional[CommandResponseCode], Optional[str]]:
         """ Main handler for the `<SetInfo>` command (EBML ID 0x5B07).
         """
         try:
@@ -422,13 +436,13 @@ class CommandClient:
             info = payload['InfoPayload']
         except KeyError as err:
             logger.error(f'SetInfo command missing element {err}')
-            return {}, DeviceStatusCode.ERR_INVALID_COMMAND, None
+            return {}, CommandResponseCode.ERR_INVALID_COMMAND, None
 
         try:
             setter = self.COMMANDS[f'SetInfo_{idx}']
         except KeyError:
             logger.warning(f'No SetInfo for idx {idx!r}')
-            return {}, DeviceStatusCode.ERR_BAD_INFO_INDEX, None
+            return {}, CommandResponseCode.ERR_BAD_INFO_INDEX, None
 
         _payload, statusCode, statusMsg = setter(info, lockId)
         return {}, statusCode, statusMsg
@@ -441,7 +455,7 @@ class CommandClient:
             self,
             payload: ByteString,
             lockId: Optional[int] = None
-    ) -> Tuple[ByteString, Optional[DeviceStatusCode], Optional[str]]:
+    ) -> Tuple[ByteString, Optional[CommandResponseCode], Optional[str]]:
         """ Example of a `GetInfo` (0: `DEVINFO`) that does not require the
             lock be set. This should be overridden by subclasses. This
             implementation returns the same `ERR_BAD_INFO_INDEX` as is
@@ -451,7 +465,7 @@ class CommandClient:
             response is `bytes` (e.g., the requested info as encoded EBML).
         """
         return (b'',
-                DeviceStatusCode.ERR_BAD_INFO_INDEX,
+                CommandResponseCode.ERR_BAD_INFO_INDEX,
                 'command_GetInfo_0() is only an example')
 
 
@@ -461,7 +475,7 @@ class CommandClient:
             self,
             payload: ByteString,
             lockId: Optional[int] = None
-    ) -> Tuple[ByteString, Optional[DeviceStatusCode], Optional[str]]:
+    ) -> Tuple[ByteString, Optional[CommandResponseCode], Optional[str]]:
         """ Example of a `GetInfo` (5: `config.cfg`) that requires the lock
             be set. Note the use of the `requires_lock` decorator. This
             should be overridden in subclasses.  This implementation returns
@@ -472,5 +486,5 @@ class CommandClient:
             response is `bytes` (e.g., the requested info as encoded EBML).
         """
         return (b'',
-                DeviceStatusCode.ERR_BAD_INFO_INDEX,
+                CommandResponseCode.ERR_BAD_INFO_INDEX,
                 'command_GetInfo_5() is only an example')
