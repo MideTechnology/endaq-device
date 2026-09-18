@@ -7,14 +7,14 @@ from dataclasses import dataclass, asdict
 from fnmatch import fnmatchcase
 import logging
 import re
-from threading import RLock
+from threading import RLock, Timer
 from time import sleep, time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import warnings
 
 from zeroconf import Zeroconf, ServiceBrowser, ServiceInfo, ServiceStateChange
 
-from endaq.device.util import synchronized
+from endaq.device.util import synchronized, levenshtein
 
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,8 @@ DEFAULT_NAME = "Data Collection Box Interface._endaq._tcp.local."
 DEFAULT_NAMES = ["enDAQ Remote Interface*._endaq._tcp.local.",
                  "Data Collection Box Interface*._endaq._tcp.local."]
 SERVICE_TYPE = "_endaq._tcp.local."
-MDNS_FINDERS: List["MDNSFinder"] = []
+
+MDNS_FINDERS: Dict[str, "MDNSFinder"] = {}
 
 # ===========================================================================
 #
@@ -51,6 +52,7 @@ class MDNSInfo:
     serviceType: str
     host: List[str]
     port: int
+    server: str
     properties: Dict[bytes, Optional[bytes]]
 
 
@@ -79,34 +81,86 @@ class MDNSInfo:
 
 
 class MDNSFinder:
-    def __init__(self, *patterns, timeout: float = 5.0):
+    """
+    Object to handle searching for mDNS hosts. Most of the work is handled
+    by Zeroconf in the background.
+    """
+
+    _class_lock = RLock()
+
+    def __new__(cls,
+                serviceType: str = SERVICE_TYPE,
+                timeout: float | int = 5.0,
+                keepalive: float | int = 180.0,
+                finderCallback: Optional[Callable] = None):
         """
-        Object to handle searching for mDNS hosts. Most of the work is handled by Zeroconf in the background
-        :param patterns: Zero or more MQTT Broker names (multiple positional
-            arguments). Glob-like wildcards may be used (case-sensitive).
-            `None` will return all MQTT brokers.
-        :param timeout: How many seconds to wait while querying for mDNS host info before giving up
+        Return existing or instantiate new object.
         """
+        with cls._class_lock:
+            if serviceType in MDNS_FINDERS:
+                finder = MDNS_FINDERS[serviceType]
+                with finder._synchronized_lock:
+                    # Update existing finder variables
+                    finder.timeout = timeout
+                    finder.keepalive = keepalive
+                    finder.callback = finderCallback
+            else:
+                finder = super().__new__(cls)
+                MDNS_FINDERS[serviceType] = finder
+
+            return finder
+
+
+    def __init__(self,
+                 serviceType: str = SERVICE_TYPE,
+                 timeout: float | int = 5.0,
+                 keepalive: float | int = 180.0,
+                 finderCallback: Optional[Callable] = None):
+        """
+        Object to handle searching for mDNS hosts. Most of the work is handled
+        by Zeroconf in the background.
+
+        :param serviceType: The service type to find. Each `MDNSFinder`
+            instance scans for a single service type.
+        :param timeout: How many seconds to wait while querying for mDNS host
+            info before giving up.
+        :param keepalive: The time to keep the `MDNSFinder` object running
+            between uses.
+        :param finderCallback: A function called whenever the mDNS advertising
+            updates (e.g., a broker advertisement goes up or comes down). The
+            function should take one argument: a list of active brokers as
+            `MDNSInfo`.
+        """
+        self.serviceType = serviceType
+        self.timeout = timeout
+        self._timeout_ms = int(timeout * 1000)
+        self.keepalive = keepalive
+        self.callback = finderCallback
+
         self._zc = None                         # Holder for Zeroconf object
-        self.browser = None                     # Holder for serviceBrowser
-        self._mdns: Dict[str, MDNSInfo] = {}    # Dict of mDNS items indexed by full name
+        self._browser = None                     # Holder for serviceBrowser
+        self._found: Dict[str, MDNSInfo] = {}    # Dict of mDNS items indexed by full name
 
         self._synchronized_lock = RLock()  # Same as used in the `@synchronized` decorator
+        self._timer = Timer(keepalive, self.stop)
+        self._callbackTimer = Timer(1, lambda x: None)
 
-        # `*patterns` will always be a tuple w/ 0 or more items (the positional args).
-        if not patterns:
-            patterns = DEFAULT_NAMES[:]
-        elif patterns[0] is None:
-            patterns = None
-        else:
-            # Add service name if the name doesn't have one.
-            patterns = list(patterns)
-            for i, n in enumerate(patterns):
-                patterns[i] = '{}.{}'.format(*splitServiceName(n))
-
-        self._patterns: Optional[List[str]] = patterns       # TODO: Validate Patterns
-        self._timeout_ms = int(timeout * 1000)
         self.start_time = 0
+
+
+    def _resetTimer(self):
+        """ Start/restart the automatic stop timer.
+        """
+        if self.keepalive is not None:
+            self._timer.cancel()
+            self._timer = Timer(self.keepalive, self.stop)
+            self._timer.start()
+
+
+    def _callback(self):
+        """ Wrapper for callback function to ensure an up to date list.
+        """
+        self.callback(self.getBrokerList())
 
 
     def _onServiceStateChange(self,
@@ -123,19 +177,20 @@ class MDNSFinder:
         # by the `@synchronized` decorator; `get_service_info()` may take 
         # time, and only the dict access before/after needs to block.
 
-        if state_change == ServiceStateChange.Removed and name in self._mdns:
+        if state_change == ServiceStateChange.Removed and name in self._found:
             with self._synchronized_lock:
-                del self._mdns[name]
-            return
+                del self._found[name]
+        else:
+            info = zeroconf.get_service_info(service_type, name, timeout=self._timeout_ms)
+            if info:
+                with self._synchronized_lock:
+                    self._found[info.name] = parseServiceInfo(info)
+            else:
+                logger.debug(f"getinfo failed for {name} ({service_type}) ")
+                return
 
-        info = zeroconf.get_service_info(service_type, name, timeout=self._timeout_ms)
-        if not info:
-            logger.debug(f"getinfo failed for {name} ({service_type}) ")
-            return
-
-        if not self._patterns or any(fnmatchcase(info.name, p) for p in self._patterns):
-            with self._synchronized_lock:
-                self._mdns[info.name] = parseServiceInfo(info)
+        if self.callback and not self._callbackTimer.is_alive():
+            self._callbackTimer = Timer(1, self._callback)
 
 
     @synchronized
@@ -143,18 +198,18 @@ class MDNSFinder:
         """
         Start searching for the specified mDNS service types.
         """
+        self._resetTimer()
+
         if self._zc is not None:
             return
+
         self._zc = Zeroconf()
-        if not self._patterns:
-            services = [SERVICE_TYPE]
-        else:
-            services = [splitServiceName(n)[1] for n in self._patterns]
-        self.browser = ServiceBrowser(
+        self._browser = ServiceBrowser(
             zc=self._zc,
-            type_=services,
+            type_=[self.serviceType],
             handlers=[self._onServiceStateChange],
         )
+
         self.start_time = time()
 
 
@@ -163,41 +218,32 @@ class MDNSFinder:
         """
         Close out the search and delete all results.
         """
+        self._timer.cancel()
         if self._zc is not None:
-            self.browser.cancel()
+            self._browser.cancel()
             self._zc.close()
         self._zc = None
-        self._mdns.clear()
+        self._found.clear()
 
 
     @synchronized
     def getBrokerDict(self) -> Dict[str, MDNSInfo]:
         """
-        Copy the dict of brokers and get a separate list of their names
+        Get a dictionary of discovered brokers, keyed by name.
 
         :returns: A dictionary of the brokers.
         """
-        # Removing the Levenshtein distance sorting, it looked like we were sorting here,
-        # then re-sorting in the broker select
-        return copy.deepcopy(self._mdns)
+        self.start()
+        return copy.deepcopy(self._found)
 
 
     def getBrokerList(self) -> List[MDNSInfo]:
         """
-        Copy the list of brokers
-        :returns: list of the brokers:
+        Get a list of advertised brokers.
+
+        :returns: list of the brokers
         """
         return list(self.getBrokerDict().values())
-
-
-    @synchronized
-    def patternsMatch(self, *patterns) -> bool:
-        """
-        See if the specified patterns match what this broker is using.
-        """
-        if self._patterns is None:
-            return True
-        return set(self._patterns) == set(patterns)
 
 
     @synchronized
@@ -210,6 +256,7 @@ class MDNSFinder:
             started min_lifetime seconds ago
         """
         if time() - self.start_time < min_lifetime:
+            self._resetTimer()
             return
 
         self.stop()
@@ -227,6 +274,13 @@ def splitServiceName(serviceName: str) -> Tuple[str, str]:
     return serviceName, SERVICE_TYPE
 
 
+def fullServiceName(service: str | MDNSInfo) -> str:
+    if isinstance(service, str):
+        n, t = splitServiceName(service)
+        return f"{n}.{t}"
+    return f'{service.name}.{service.serviceType}'
+
+
 def parseServiceInfo(info: ServiceInfo) -> MDNSInfo:
     """
     Parse `zeroconf.ServiceInfo` into an `MDNSInfo` object.
@@ -236,33 +290,24 @@ def parseServiceInfo(info: ServiceInfo) -> MDNSInfo:
     # Some services' properties contain null keys
     props = {k: v for k, v in info.properties.items() if k}
     return MDNSInfo(name=name, serviceType=serviceType,
-                    host=addr, port=info.port, properties=props)
+                    host=addr, port=info.port, server=info.server,
+                    properties=props)
 
 
-# noinspection PyUnusedLocal,unused-parameter
 def getBroker(name: str = DEFAULT_NAME,
-              timeout: float = 5) -> MDNSInfo:
+              limit: int = 5,
+              scantime: float = 2,
+              timeout: float = 5,
+              callback: Optional[Callable] = None,
+              keepalive: float | int = 180.0,
+              protocol: str = 'mqtt') -> MDNSInfo:
     """
-    Find a specific enDAQ-advertised MQTT Broker.
+    Find a specific enDAQ-advertised MQTT Broker by name. The closest match
+    will be returned.
 
-    :param name: The name of the broker.
-    :param timeout: The timeout, in seconds.
-    :returns: A dictionary of broker information.
-    """
-    raise NotImplementedError("Use findBroker, or rewrite this to use MDNSFinder")
-
-
-def findBrokers(*patterns: str,
-                scantime: float = 2,
-                timeout: float = 5,
-                callback: Optional[Callable] = None,
-                persistent: bool = False) -> List[MDNSInfo]:
-    """
-    Find enDAQ-advertised MQTT Brokers.
-
-    :param patterns: Zero or more MQTT Broker names (multiple positional
-        arguments). Glob-like wildcards may be used (case-sensitive).
-        `None` will return all MQTT brokers.
+    :param name: The name of the broker to find.
+    :param limit: The maximum number of differences between the given name
+        and a broker name to be considered a match.
     :param scantime: The minimum time (in seconds) to scan for brokers. If
         any brokers are discovered in this time, they will be returned.
     :param timeout: The maximum time (in seconds) to scan for brokers, if
@@ -270,37 +315,81 @@ def findBrokers(*patterns: str,
     :param callback: A function to call repeatedly while scanning. If the
         callback returns `True`, the wait for a response will be cancelled.
         The callback function should require no arguments.
-    :param persistent: If `True`, keep the mDNS finding object open for
+    :param keepalive: If `True`, keep the mDNS finding object open for
         later use (this can make subsequent discovery faster and more
         accurate).
+    :param protocol: The advertised broker's self-reported protocol.
+    :returns: A `MDNSInfo` object.
+    """
+    _, serviceType = splitServiceName(name)
+    broker_list = findBrokers(serviceType=serviceType, scantime=scantime,
+                              timeout=timeout, callback=callback,
+                              keepalive=keepalive, protocol=protocol)
+    if not broker_list:
+        return None
+
+    fullname = fullServiceName(name)
+    broker_list = [(levenshtein(fullServiceName(x.name), fullname), x) for x in broker_list]
+    broker = min(broker_list, key=lambda x: x[0])
+    if broker[0] <= limit:
+        return broker[0]
+    return None
+
+
+def findBrokers(*patterns: str,
+                serviceType: str = SERVICE_TYPE,
+                scantime: float = 2,
+                timeout: float = 5,
+                callback: Optional[Callable] = None,
+                keepalive: float | int = 180.0,
+                protocol: str = 'mqtt') -> List[MDNSInfo]:
+    """
+    Find enDAQ-advertised MQTT Brokers.
+
+    :param patterns: Zero or more MQTT Broker names (multiple positional
+        arguments). Glob-like wildcards may be used (case-sensitive).
+        No positional arguments or `None` will return all MQTT brokers.
+    :param serviceType: The service type to find.
+    :param scantime: The *minimum* time (in seconds) to scan for brokers. If
+        any brokers are discovered in this time, they will be returned.
+    :param timeout: The *maximum* time (in seconds) to scan for brokers, if
+        none were found in `scantime`.
+    :param callback: A function to call repeatedly while scanning. If the
+        callback returns `True`, the wait for a response will be cancelled.
+        The callback function should require no arguments.
+    :param keepalive: If `True`, keep the mDNS finding object open for
+        later use (this can make subsequent discovery faster and more
+        accurate).
+    :param protocol: The advertised broker's self-reported protocol.
     :returns: A list of MQTT Brokers.
     """
-    finder = None
-    deadline = 0
     scanDeadline = time() + scantime
-    keep_open = False
-    for broker in MDNS_FINDERS:
-        if broker.patternsMatch(patterns):
-            finder = broker
-            keep_open = True
-            break
-    if finder is None:
-        finder = MDNSFinder(*patterns, timeout=timeout)
-        if persistent:
-            MDNS_FINDERS.append(finder)
-            keep_open = True
-        finder.start()
-        deadline = time() + timeout
+    deadline = time() + timeout
+    broker_list = []
+    protocol = bytes(protocol, 'utf-8') if protocol is not None else None
+
+    finder = MDNSFinder(serviceType, timeout=timeout, keepalive=keepalive)
+    finder.start()
 
     while time() < deadline:
+        sleep(0.1)
+
+        broker_list = finder.getBrokerList()
+
+        if protocol is not None:
+            broker_list = [broker for broker in broker_list
+                           if broker.properties.get(b'protocol', b'mqtt') == protocol]
+
+        if patterns and patterns[0]:
+            broker_list = [broker for broker in broker_list
+                           if any(fnmatchcase(broker.name, p) for p in patterns)]
+
+        if broker_list and time() > scanDeadline:
+            break
+
         if callback and callback():
             break
-        if finder.getBrokerList() and time() > scanDeadline:
-            break
-        sleep(0.1)
-    broker_list = finder.getBrokerList()
-    if not keep_open:
-        finder.stop()
+
     return broker_list
 
 
@@ -308,7 +397,7 @@ if __name__ == "__main__":
     """
     Just print added and removed mDNS items.
     """
-    finder = MDNSFinder(None)
+    finder = MDNSFinder()
     finder.start()
     hosts = {}
     print(f"Scanning for mDNS Hosts:")

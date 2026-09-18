@@ -20,7 +20,7 @@ be found using the :meth:`getDevices()` method.
 
 """
 
-from contextlib import suppress
+from dataclasses import asdict
 from datetime import datetime
 import logging
 import os.path
@@ -184,15 +184,14 @@ class MQTTConnector:
                 (case-sensitive). Defaults are used if no arguments are
                 provided.
         """
-        scantime = kwargs.pop('scantime', 2)
-        timeout = kwargs.pop('timeout', 5)
-        callback = kwargs.pop('callback', None)
 
-        brokers = findBrokers(*patterns, scantime=scantime, timeout=timeout, callback=callback)
+        brokers = findBrokers(*patterns, **kwargs)
         if not brokers:
+            if not patterns or patterns[0] is None:
+                raise NameError('No brokers found')
             raise NameError(f'No brokers found matching name pattern(s) {patterns!r}')
 
-        broker = brokers[0]
+        broker = asdict(brokers[0])
         broker.update(kwargs)
         return cls(**broker)
 
