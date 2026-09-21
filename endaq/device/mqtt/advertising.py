@@ -8,8 +8,9 @@ import json
 import logging
 import signal
 import socket
-from time import time, sleep
-from typing import Any, Callable, Dict, Optional
+import sys
+from time import sleep
+from typing import Any, Dict, Optional
 
 from zeroconf import IPVersion, ServiceInfo, Zeroconf
 from zeroconf import NonUniqueNameException
@@ -55,9 +56,10 @@ class Advertiser:
         self.port = port
         self.rename = rename
         self.serviceName, self.serviceType = splitServiceName(name)
-        self.properties = properties or {}
         self.fullName = f'{self.serviceName}.{self.serviceType}'
+        self.server = kwargs.get('server', None)
 
+        self.properties = properties or {}
         self.properties['manager_version'] = __version__
 
         if notes:
@@ -78,6 +80,7 @@ class Advertiser:
         """
         logger.debug('Received termination signal (SIGTERM)')
         self.stop()
+        sys.exit(0)
 
 
     def __repr__(self) -> str:
@@ -129,7 +132,8 @@ class Advertiser:
                         port=self.port,
                         properties=self.properties,
                         host_ttl=1125,                                  # NOTE: Zeroconf has a min refresh time of 1125
-                        other_ttl=1125
+                        other_ttl=1125,
+                        server=self.server
                 )
                 try:
                     # Duplicate names (apparently) allowed on different
@@ -154,13 +158,14 @@ class Advertiser:
                 port=self.port,
                 properties=self.properties,
                 host_ttl=1125,  # NOTE: Zeroconf has a min refresh time of 1125
-                other_ttl=1125
+                other_ttl=1125,
+                server=self.server
             )
             self.zeroconf.register_service(self.info)
 
 
     def is_alive(self) -> bool:
-        """ Is the advetiser running?
+        """ Is the advertiser running?
         """
         try:
             return self.zeroconf.started
