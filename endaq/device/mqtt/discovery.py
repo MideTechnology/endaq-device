@@ -12,10 +12,9 @@ import logging
 import re
 from threading import RLock, Timer
 from time import sleep, time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import warnings
 import weakref
-# from weakref import WeakValueDictionary, WeakMethod, ref
 
 from zeroconf import Zeroconf, ServiceBrowser, ServiceInfo, ServiceStateChange
 
@@ -99,8 +98,8 @@ class MDNSFinder:
 
     def __init__(self,
                  serviceType: str = SERVICE_TYPE,
-                 timeout: float | int = 5.0,
-                 keepalive: float | int = 180.0):
+                 timeout: Union[float, int] = 5.0,
+                 keepalive: Union[float, int] = 180.0):
         """
         Object to handle searching for mDNS hosts. Most of the work is handled
         by Zeroconf in the background.
@@ -153,12 +152,12 @@ class MDNSFinder:
 
 
     @property
-    def keepalive(self) -> Optional[float | int]:
+    def keepalive(self) -> Union[float, int, None]:
         return self._keepalive
 
 
     @keepalive.setter
-    def keepalive(self, lifetime: float | int):
+    def keepalive(self, lifetime: Union[float, int]):
         self._keepalive = lifetime
         self._resetTimer()
 
@@ -365,7 +364,7 @@ def splitServiceName(serviceName: str) -> Tuple[str, str]:
     return serviceName, SERVICE_TYPE
 
 
-def fullServiceName(service: str | MDNSInfo) -> str:
+def fullServiceName(service: Union[str, MDNSInfo]) -> str:
     if isinstance(service, str):
         n, t = splitServiceName(service)
         return f"{n}.{t}"
@@ -386,11 +385,11 @@ def parseServiceInfo(info: ServiceInfo) -> MDNSInfo:
 
 
 def getBroker(name: str = DEFAULT_NAME,
-              limit: int = 5,
-              scantime: float = 2,
-              timeout: float = 5,
+              limit: Union[float, int] = 5,
+              scantime: Union[float, int] = 2,
+              timeout: Union[float, int] = 5,
               callback: Optional[Callable] = None,
-              keepalive: float | int = 180.0,
+              keepalive: Union[float, int] = 180.0,
               protocol: str = 'mqtt') -> MDNSInfo:
     """
     Find a specific enDAQ-advertised MQTT Broker by name. The closest match
@@ -430,10 +429,10 @@ def getBroker(name: str = DEFAULT_NAME,
 
 def findBrokers(*patterns: str,
                 serviceType: str = SERVICE_TYPE,
-                scantime: float = 2,
-                timeout: float = 5,
+                scantime: Union[float, int] = 2,
+                timeout: Union[float, int] = 5,
                 callback: Optional[Callable] = None,
-                keepalive: float | int = 180.0,
+                keepalive: Union[float, int] = 180.0,
                 protocol: str = 'mqtt') -> List[MDNSInfo]:
     """
     Find enDAQ-advertised MQTT Brokers.
