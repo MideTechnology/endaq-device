@@ -1,7 +1,7 @@
 """
 Find an enDAQ MQTT broker.
 
-The simplest way to find an enDAQ MQTT broker is using `findBroker`
+The simplest way to find an enDAQ MQTT broker is using `findBroker()`
 """
 
 import copy
@@ -23,6 +23,9 @@ from endaq.device.util import synchronized, levenshtein
 
 logger = logging.getLogger(__name__)
 
+
+__all__ = ("MDNSInfo", "MDNSFinder", "findBrokers", "getBroker")
+
 # ===========================================================================
 #
 # ===========================================================================
@@ -33,7 +36,8 @@ DEFAULT_NAMES = ["enDAQ Remote Interface*._endaq._tcp.local.",
                  "Data Collection Box Interface*._endaq._tcp.local."]
 SERVICE_TYPE = "_endaq._tcp.local."
 
-MDNS_FINDERS: Dict[str, "MDNSFinder"] = weakref.WeakValueDictionary()
+# Cached `MDNSFinder` instances, keyed by instantiation arguments
+MDNS_FINDERS: Dict[Tuple[str, float, float], "MDNSFinder"] = weakref.WeakValueDictionary()
 
 # ===========================================================================
 #
@@ -92,14 +96,50 @@ class MDNSFinder:
     """
     Object to handle searching for mDNS hosts. Most of the work is handled
     by Zeroconf in the background.
+
+    By default, `MDNSFinder` instances memoized (instances cached by their
+    parameters) and reused. This can make getting brokers faster and more
+    reliable.
     """
 
-    # FUTURE: Redo instance memoization in __new__()? Remember __init__() always called.
+    DEFAULT_TIMEOUT = 5.0
+    DEFAULT_KEEPALIVE = 180.0
+
+    _class_lock = RLock()
+    _INITIALIZED = False
+
+
+    def __new__(cls,
+                serviceType: str = SERVICE_TYPE,
+                timeout: float | int = DEFAULT_TIMEOUT,
+                keepalive: float | int = DEFAULT_KEEPALIVE,
+                new: bool = False):
+        """
+        Return existing or instantiate new object.
+        """
+        if new:
+            finder = super().__new__(cls)
+            logger.debug(f'Explicitly created new MDNSFinder instance: {finder}')
+            return finder
+
+        key = (serviceType, timeout, keepalive)
+        with cls._class_lock:
+            if key in MDNS_FINDERS:
+                finder = MDNS_FINDERS[key]
+                logger.debug(f'Reusing existing MDNSFinder instance: {finder}')
+            else:
+                finder = super().__new__(cls)
+                logger.debug(f'Created new MDNSFinder instance: {finder}')
+                MDNS_FINDERS[key] = finder
+
+            return finder
+
 
     def __init__(self,
                  serviceType: str = SERVICE_TYPE,
-                 timeout: Union[float, int] = 5.0,
-                 keepalive: Union[float, int] = 180.0):
+                 timeout: Union[float, int] = DEFAULT_TIMEOUT,
+                 keepalive: Union[float, int] = DEFAULT_KEEPALIVE,
+                 new: bool = False):
         """
         Object to handle searching for mDNS hosts. Most of the work is handled
         by Zeroconf in the background.
@@ -110,7 +150,15 @@ class MDNSFinder:
             info before giving up.
         :param keepalive: The time to keep the `MDNSFinder` object running
             between uses.
+        :param new: If `True`, force the creation of a new and unique
+            `MDNSFinder` instance, ignoring any cached instances.
         """
+        if self._INITIALIZED:
+            # `__init__()` is always called, even if `__new__()` doesn't do
+            # it explicitly. This preserves the attributes of cached instances.
+            return
+
+        self._INITIALIZED = True
         self.serviceType = serviceType
         self.timeout = timeout
         self._timeout_ms = int(timeout * 1000)
@@ -127,7 +175,6 @@ class MDNSFinder:
         self._callbackTimer = Timer(1, lambda x: None)
 
         self.start_time = 0
-        MDNS_FINDERS[serviceType] = self
 
 
     def __repr__(self) -> str:
@@ -227,6 +274,7 @@ class MDNSFinder:
         if self._keepalive is not None:
             self._timer = Timer(self._keepalive, self.stop)
             self._timer.name = f'Reset{self._timer.name}'  # for debugging
+            self._timer.daemon = True
             self._timer.start()
 
 
@@ -279,6 +327,7 @@ class MDNSFinder:
 
         if self._callbacks and not self._callbackTimer.is_alive():
             self._callbackTimer = Timer(1, self._callback)
+            self._callbackTimer.daemon = True
             self._callbackTimer.name = f'Callback{self._callbackTimer.name}'
             self._callbackTimer.start()
 
@@ -430,10 +479,11 @@ def getBroker(name: str = DEFAULT_NAME,
 def findBrokers(*patterns: str,
                 serviceType: str = SERVICE_TYPE,
                 scantime: Union[float, int] = 2,
-                timeout: Union[float, int] = 5,
+                timeout: Union[float, int] = MDNSFinder.DEFAULT_TIMEOUT,
                 callback: Optional[Callable] = None,
-                keepalive: Union[float, int] = 180.0,
-                protocol: str = 'mqtt') -> List[MDNSInfo]:
+                keepalive: Union[float, int] = MDNSFinder.DEFAULT_KEEPALIVE,
+                protocol: str = 'mqtt',
+                new: bool = False) -> List[MDNSInfo]:
     """
     Find enDAQ-advertised MQTT Brokers.
 
@@ -452,6 +502,8 @@ def findBrokers(*patterns: str,
         later use (this can make subsequent discovery faster and more
         accurate).
     :param protocol: The advertised broker's self-reported protocol.
+    :param new: If `True`, force the creation of a new and unique
+        `MDNSFinder` instance, ignoring any cached instances.
     :returns: A list of MQTT Brokers.
     """
     scanDeadline = time() + scantime
@@ -459,11 +511,7 @@ def findBrokers(*patterns: str,
     broker_list = []
     protocol = bytes(protocol, 'utf-8') if protocol is not None else None
 
-    if serviceType not in MDNS_FINDERS:
-        finder = MDNSFinder(serviceType, timeout=timeout, keepalive=keepalive)
-    else:
-        finder = MDNS_FINDERS[serviceType]
-
+    finder = MDNSFinder(serviceType, timeout=timeout, keepalive=keepalive, new=new)
     finder.start()
 
     while time() < deadline:
