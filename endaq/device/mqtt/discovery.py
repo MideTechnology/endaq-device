@@ -1,7 +1,13 @@
 """
 Find an enDAQ MQTT broker.
 
-The simplest way to find an enDAQ MQTT broker is using `findBroker()`
+The simplest way to find an enDAQ MQTT broker is using `findBrokers()`. You
+may need to call the function more than once to catch all the mDNS messages.
+
+The more reliable way to find enDAQ MQTT brokers is to create an `MDNSFinder`
+object and leave it running to collect mDNS messages. This is functionally
+the same as calling `findBrokers()` more than once, but allows more
+direct control.
 """
 
 import copy
@@ -153,6 +159,10 @@ class MDNSFinder:
         :param new: If `True`, force the creation of a new and unique
             `MDNSFinder` instance, ignoring any cached instances.
         """
+        # TODO: Sometimes Zeroconf appears to become unresponsive if running
+        #  for a long time (and/or the computer goes to sleep). Add long-running
+        #  thread/timer to restart after a period of no mDNS messages?
+
         if self._INITIALIZED:
             # `__init__()` is always called, even if `__new__()` doesn't do
             # it explicitly. This preserves the attributes of cached instances.
@@ -168,11 +178,11 @@ class MDNSFinder:
         self._zc = None                        # Holder for Zeroconf object
         self._browser = None                   # Holder for serviceBrowser
         self._found: Dict[str, MDNSInfo] = {}  # Dict of mDNS items indexed by full name
-        self._lastReported: List[int] = []
+        self._lastReported: List[MDNSInfo] = []     # Devices in last callback
 
         self._synchronized_lock = RLock()  # Same as used in the `@synchronized` decorator
-        self._timer = Timer(keepalive, self.stop)
-        self._callbackTimer = Timer(1, lambda x: None)
+        self._timer = Timer(keepalive, self.stop)  # Auto shutdown timer
+        self._callbackTimer = Timer(1, self._callback)  # Limits number of callbacks per second
 
         self.start_time = 0
 
