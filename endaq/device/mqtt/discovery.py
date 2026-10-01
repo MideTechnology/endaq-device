@@ -2,11 +2,19 @@
 Find an enDAQ MQTT broker.
 
 The simplest way to find an enDAQ MQTT broker is using `findBrokers()`. You
-may need to call the function more than once to catch all the mDNS messages.
+may need to call the function more than once to catch all the mDNS messages,
+as the mDNS messages arrive asynchronously.
 
 The more reliable way to find enDAQ MQTT brokers is to create an `MDNSFinder`
 object and leave it running to collect mDNS messages. This is functionally
 the same as calling `findBrokers()` more than once, but allows more control.
+For best results, allow several seconds between starting the instance and
+getting its list of brokers.
+
+Note that `MDNSFinder` callbacks differ from the callbacks used in arguments
+elsewhere (e.g., command interface methods); they are called when the list
+of mDNS services changes, as opposed to being a means of interrupting
+long-running functions.
 """
 
 import copy
@@ -41,7 +49,7 @@ DEFAULT_NAMES = ["enDAQ Remote Interface*._endaq._tcp.local.",
                  "Data Collection Box Interface*._endaq._tcp.local."]
 SERVICE_TYPE = "_endaq._tcp.local."
 
-# Cached `MDNSFinder` instances, keyed by instantiation arguments
+# Cached `MDNSFinder` instances, keyed by service type
 MDNS_FINDERS: Dict[str, "MDNSFinder"] = weakref.WeakValueDictionary()
 
 # ===========================================================================
@@ -105,7 +113,7 @@ class MDNSFinder:
 
     def __init__(self,
                  serviceType: str = SERVICE_TYPE,
-                 timeout: Union[float, int] = 5.0,
+                 timeout: Union[float, int] = 2.0,
                  keepalive: Union[float, int] = 1800.0):
         """
         Object to handle searching for mDNS hosts. Most of the work is handled
@@ -145,8 +153,9 @@ class MDNSFinder:
         try:
             active = 'active' if self.active else 'inactive'
             return f'<{type(self).__name__} {self.serviceType!r} ({active}) at {hex(id(self))}>'
-        except Exception:
+        except Exception as err:
             # __repr__() should never completely fail, so:
+            logger.error(f'repr() failed: {err!r}', exc_info=True)
             return super().__repr__()
 
 
@@ -163,6 +172,8 @@ class MDNSFinder:
 
     @property
     def keepalive(self) -> Union[float, int, None]:
+        """ Time to keep the finder active after its last use.
+        """
         return self._keepalive
 
 
@@ -174,6 +185,8 @@ class MDNSFinder:
 
     @synchronized
     def _cleanCallbacks(self):
+        """ Remove 'dead' callbacks (methods of deleted objects, etc.)
+        """
         for dead in [x for x in self._callbacks if x() is None]:
             self._callbacks.remove(dead)
 
@@ -196,6 +209,9 @@ class MDNSFinder:
         Note: when there are multiple callbacks, the order of execution is
         arbitrary. If a specific sequence is required, implement it in a
         single callback.
+
+        Note that this callback is not the same as the `callback` argument
+        used elsewhere (primarily in command interfaces).
 
         :param callback: The callback function to add.
         """
@@ -244,7 +260,8 @@ class MDNSFinder:
     def _callback(self):
         """
         Wrapper to execute all the callback functions with an
-        up to date list.
+        up to date list. It is called after a delay when service
+        states change.
         """
         brokers = self.getBrokerList()
 
@@ -253,7 +270,7 @@ class MDNSFinder:
 
         for callback in self._callbacks:
             try:
-                # weakref; call to get actual callback
+                # weakref; call to get actual callback function
                 c = callback()
                 if c is not None:
                     # noinspection calling-non-callable
