@@ -18,8 +18,8 @@ from endaq.device.base import Recorder, NonRecorder
 logger = logging.getLogger(__name__)
 
 # XXX: TEST; TO BE UPDATED/REMOVED
-CERTFILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cert.pem')
-# CERTFILE = False
+# CERTFILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cert.pem')
+CERTFILE = False
 
 
 # ===========================================================================
