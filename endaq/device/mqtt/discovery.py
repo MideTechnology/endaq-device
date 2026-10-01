@@ -6,8 +6,7 @@ may need to call the function more than once to catch all the mDNS messages.
 
 The more reliable way to find enDAQ MQTT brokers is to create an `MDNSFinder`
 object and leave it running to collect mDNS messages. This is functionally
-the same as calling `findBrokers()` more than once, but allows more
-direct control.
+the same as calling `findBrokers()` more than once, but allows more control.
 """
 
 import copy
@@ -43,7 +42,7 @@ DEFAULT_NAMES = ["enDAQ Remote Interface*._endaq._tcp.local.",
 SERVICE_TYPE = "_endaq._tcp.local."
 
 # Cached `MDNSFinder` instances, keyed by instantiation arguments
-MDNS_FINDERS: Dict[Tuple[str, float, float], "MDNSFinder"] = weakref.WeakValueDictionary()
+MDNS_FINDERS: Dict[str, "MDNSFinder"] = weakref.WeakValueDictionary()
 
 # ===========================================================================
 #
@@ -102,50 +101,12 @@ class MDNSFinder:
     """
     Object to handle searching for mDNS hosts. Most of the work is handled
     by Zeroconf in the background.
-
-    By default, `MDNSFinder` instances memoized (instances cached by their
-    parameters) and reused. This can make getting brokers faster and more
-    reliable.
     """
-
-    DEFAULT_TIMEOUT = 5.0
-    DEFAULT_KEEPALIVE = 180.0
-
-    _class_lock = RLock()
-    _INITIALIZED = False
-
-
-    def __new__(cls,
-                serviceType: str = SERVICE_TYPE,
-                timeout: float | int = DEFAULT_TIMEOUT,
-                keepalive: float | int = DEFAULT_KEEPALIVE,
-                new: bool = False):
-        """
-        Return existing or instantiate new object.
-        """
-        if new:
-            finder = super().__new__(cls)
-            logger.debug(f'Explicitly created new MDNSFinder instance: {finder}')
-            return finder
-
-        key = (serviceType, timeout, keepalive)
-        with cls._class_lock:
-            if key in MDNS_FINDERS:
-                finder = MDNS_FINDERS[key]
-                logger.debug(f'Reusing existing MDNSFinder instance: {finder}')
-            else:
-                finder = super().__new__(cls)
-                logger.debug(f'Created new MDNSFinder instance: {finder}')
-                MDNS_FINDERS[key] = finder
-
-            return finder
-
 
     def __init__(self,
                  serviceType: str = SERVICE_TYPE,
-                 timeout: Union[float, int] = DEFAULT_TIMEOUT,
-                 keepalive: Union[float, int] = DEFAULT_KEEPALIVE,
-                 new: bool = False):
+                 timeout: Union[float, int] = 5.0,
+                 keepalive: Union[float, int] = 1800.0):
         """
         Object to handle searching for mDNS hosts. Most of the work is handled
         by Zeroconf in the background.
@@ -156,19 +117,11 @@ class MDNSFinder:
             info before giving up.
         :param keepalive: The time to keep the `MDNSFinder` object running
             between uses.
-        :param new: If `True`, force the creation of a new and unique
-            `MDNSFinder` instance, ignoring any cached instances.
         """
         # TODO: Sometimes Zeroconf appears to become unresponsive if running
         #  for a long time (and/or the computer goes to sleep). Add long-running
         #  thread/timer to restart after a period of no mDNS messages?
 
-        if self._INITIALIZED:
-            # `__init__()` is always called, even if `__new__()` doesn't do
-            # it explicitly. This preserves the attributes of cached instances.
-            return
-
-        self._INITIALIZED = True
         self.serviceType = serviceType
         self.timeout = timeout
         self._timeout_ms = int(timeout * 1000)
@@ -188,12 +141,12 @@ class MDNSFinder:
 
 
     def __repr__(self) -> str:
-        # __repr__() should never completely fail, so:
         # noinspection broad-exception
         try:
             active = 'active' if self.active else 'inactive'
             return f'<{type(self).__name__} {self.serviceType!r} ({active}) at {hex(id(self))}>'
         except Exception:
+            # __repr__() should never completely fail, so:
             return super().__repr__()
 
 
@@ -300,6 +253,7 @@ class MDNSFinder:
 
         for callback in self._callbacks:
             try:
+                # weakref; call to get actual callback
                 c = callback()
                 if c is not None:
                     # noinspection calling-non-callable
@@ -489,11 +443,10 @@ def getBroker(name: str = DEFAULT_NAME,
 def findBrokers(*patterns: str,
                 serviceType: str = SERVICE_TYPE,
                 scantime: Union[float, int] = 2,
-                timeout: Union[float, int] = MDNSFinder.DEFAULT_TIMEOUT,
+                timeout: Union[float, int] = 3,
                 callback: Optional[Callable] = None,
-                keepalive: Union[float, int] = MDNSFinder.DEFAULT_KEEPALIVE,
-                protocol: str = 'mqtt',
-                new: bool = False) -> List[MDNSInfo]:
+                keepalive: Union[float, int] = 120,
+                protocol: str = 'mqtt') -> List[MDNSInfo]:
     """
     Find enDAQ-advertised MQTT Brokers.
 
@@ -512,8 +465,6 @@ def findBrokers(*patterns: str,
         later use (this can make subsequent discovery faster and more
         accurate).
     :param protocol: The advertised broker's self-reported protocol.
-    :param new: If `True`, force the creation of a new and unique
-        `MDNSFinder` instance, ignoring any cached instances.
     :returns: A list of MQTT Brokers.
     """
     scanDeadline = time() + scantime
@@ -521,7 +472,11 @@ def findBrokers(*patterns: str,
     broker_list = []
     protocol = bytes(protocol, 'utf-8') if protocol is not None else None
 
-    finder = MDNSFinder(serviceType, timeout=timeout, keepalive=keepalive, new=new)
+    if f := MDNS_FINDERS.get(serviceType):
+        finder = f
+    else:
+        finder = MDNSFinder(serviceType, timeout=timeout, keepalive=keepalive)
+        MDNS_FINDERS[serviceType] = finder
     finder.start()
 
     while time() < deadline:
