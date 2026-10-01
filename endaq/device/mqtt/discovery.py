@@ -339,6 +339,7 @@ class MDNSFinder:
         Close out the search and delete all results.
         """
         self._timer.cancel()
+        self._callbackTimer.cancel()
         if self._zc is not None:
             self._browser.cancel()
             self._zc.close()
@@ -497,8 +498,6 @@ def findBrokers(*patterns: str,
     finder.start()
 
     while time() < deadline:
-        sleep(0.1)
-
         broker_list = finder.getBrokerList()
 
         if protocol is not None:
@@ -509,11 +508,10 @@ def findBrokers(*patterns: str,
             broker_list = [broker for broker in broker_list
                            if any(fnmatchcase(broker.name, p) for p in patterns)]
 
-        if broker_list and time() > scanDeadline:
+        if ((broker_list and time() > scanDeadline) or (callback and callback())):
             break
 
-        if callback and callback():
-            break
+        sleep(0.1)
 
     return broker_list
 
