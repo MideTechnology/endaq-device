@@ -136,10 +136,11 @@ class MDNSFinder:
         self._keepalive = keepalive
         self._callbacks: set[weakref.ReferenceType] = set()
 
-        self._zc = None                        # Holder for Zeroconf object
-        self._browser = None                   # Holder for serviceBrowser
-        self._found: Dict[str, MDNSInfo] = {}  # Dict of mDNS items indexed by full name
-        self._lastReported: List[MDNSInfo] = []     # Devices in last callback
+        self._zc = None                            # Holder for Zeroconf object
+        self._browser = None                       # Holder for serviceBrowser
+        self._found: Dict[str, MDNSInfo] = {}      # Dict of mDNS items indexed by full name
+        self._lastReported: List[MDNSInfo] = []    # Devices in last callback
+        self._lastUpdated: float = 0.0        # Time of last mDNS update received
 
         self._synchronized_lock = RLock()  # Same as used in the `@synchronized` decorator
         self._timer = Timer(keepalive, self.stop)  # Auto shutdown timer
@@ -294,6 +295,8 @@ class MDNSFinder:
         # by the `@synchronized` decorator; `get_service_info()` may take 
         # time, and only the dict access before/after needs to block.
 
+        self._lastUpdated = time()
+
         if state_change == ServiceStateChange.Removed and name in self._found:
             with self._synchronized_lock:
                 del self._found[name]
@@ -331,6 +334,7 @@ class MDNSFinder:
         )
 
         self.start_time = time()
+        self._lastUpdated = 0
 
 
     @synchronized
