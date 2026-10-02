@@ -2,9 +2,14 @@ from copy import deepcopy
 import logging
 import os.path
 import requests
+from requests.exceptions import ConnectTimeout
 import socket
-from typing import Any, Callable, Dict, Optional, Union
+from threading import Thread
+from time import sleep, time
+from typing import Any, Callable, Dict, List, Optional, Union
 from urllib.parse import urljoin
+
+from endaq.device import RECORDERS, RECORDERS_BY_SN
 from endaq.device.command_interfaces import SerialCommandInterface
 from endaq.device.devinfo import SerialDeviceInfo
 from endaq.device.exceptions import CommandError
@@ -20,6 +25,8 @@ logger = logging.getLogger(__name__)
 # XXX: TEST; TO BE UPDATED/REMOVED
 # CERTFILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cert.pem')
 CERTFILE = False
+
+__all__ = ('HTTPSCommandInterface', 'getDevices')
 
 
 # ===========================================================================
@@ -194,19 +201,23 @@ def info2url(info: MDNSInfo) -> str:
     """
     Generate a device's base URL from its mDNS advertised info.
 
-    :param info: The HTTPS device's advertised  info.
+    :param info: The HTTPS device's advertised  info. If `info` is a string,
+        the string gets returned verbatim.
     :return: A base URL.
     """
+    if isinstance(info, str):
+        return info
+
     # Zeroconf default server names are just the service name and aren't
     # necessarily valid domain names. Use the IP if it can't be resolved.
-    host = info.server
+    host = info.server.rstrip('.')
     try:
         socket.getaddrinfo(host, None)
     except socket.gaierror:
         logger.warning('Advertised server name invalid, using IP')
-        host = info.host
+        host = info.host[0]
 
-    scheme = str(info.properties.get(b'protocol', b'https'), 'utf8').lower()
+    scheme = str(info.properties.get(b'protocol', b'mqtt'), 'utf8').lower()
     if not scheme.startswith('http'):
         raise CommunicationError(f'Unsupported protocol: {scheme!r}')
     return f'{scheme}://{host}:{info.port}'
@@ -230,6 +241,9 @@ def getHttpsDevice(url: Union[str, MDNSInfo],
     if isinstance(url, MDNSInfo):
         url = info2url(url)
 
+    if 'https' not in url.lower():
+        certfile = None
+
     # Dummy recorder and command interface to retrieve DEVINFO
     fake = NonRecorder(name='getHttpsDevice')
     fake.command = HTTPSCommandInterface(fake, url, password, certfile)
@@ -240,3 +254,98 @@ def getHttpsDevice(url: Union[str, MDNSInfo],
     device._devinfo = SerialDeviceInfo(device)
 
     return device
+
+
+# ============================================================================
+#
+# ============================================================================
+
+class DeviceGetterThread(Thread):
+    """
+    Thread for attempting to asynchronously instantiate an HTTP(S) device
+    instance. Used by `endaq.device.https_interface.getDevices()`.
+    """
+
+    def __init__(self,
+                 url: MDNSInfo,
+                 certfile: Optional[str] = None):
+        """
+
+        :param url:
+        :param certfile:
+        """
+        self.url = url
+        self.certfile = certfile
+        self.device = None
+        self.exception = None
+
+        super().__init__(daemon=True)
+        self.name = self.name.replace('Thread', type(self).__name__)
+
+        self.start()
+
+
+    def run(self):
+        """ Main thread loop.
+        """
+        try:
+            self.device = getHttpsDevice(self.url,
+                                         certfile=self.certfile)
+        except ConnectTimeout as err:
+            self.exception = err
+            logger.error(f'Timed out connecting to {self.url!r}, skipping')
+        except Exception as err:
+            self.exception = err
+            logger.exception(f'Error getting device from {info2url(self.url)}')
+
+
+# ============================================================================
+#
+# ============================================================================
+
+def getDevices(scantime: Union[float, int] = 2,
+               timeout: Union[float, int] = 20,
+               callback: Optional[Callable] = None,
+               keepalive: Union[float, int] = 180.0,
+               certfile: Optional[str] = None) -> List[Recorder]:
+    """
+    Find enDAQ-advertised HTTP/HTTPS devices.
+
+    :param scantime: The *minimum* time (in seconds) to scan for advertised
+        HTTP/HTTPS devices. If any are discovered in this time, they will
+        be returned.
+    :param timeout: The *maximum* time (in seconds) to scan for devices, if
+        none were found in `scantime`.
+    :param callback: A function to call repeatedly while scanning. If the
+        callback returns `True`, the wait for a response will be cancelled.
+        The callback function should require no arguments.
+    :param keepalive: If `True`, keep the mDNS finding object open for
+        later use (this can make subsequent discovery faster and more
+        accurate).
+    :param certfile:
+    :returns: A list of MQTT Brokers.
+    """
+    devices = []
+    kwargs = dict(scantime=scantime,
+                  timeout=timeout,
+                  callback=callback,
+                  keepalive=keepalive)
+
+    mdns = findBrokers(protocol='http', **kwargs)
+    mdns.extend(findBrokers(protocol='https', **kwargs))
+
+    if not mdns:
+        return devices
+
+    threads = [DeviceGetterThread(url, certfile=certfile) for url in mdns]
+
+    deadline = time() + timeout
+    while time() < deadline:
+        if not any(thread.is_alive() for thread in threads):
+            break
+        sleep(0.1)
+    for thread in threads:
+        if thread.device:
+            devices.append(thread.device)
+
+    return devices
