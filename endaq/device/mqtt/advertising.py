@@ -8,15 +8,16 @@ import json
 import logging
 import signal
 import socket
-from time import time, sleep
-from typing import Any, Callable, Dict, Optional
+from threading import Timer
+from time import sleep
+from typing import Any, Dict, Optional
 
 from zeroconf import IPVersion, ServiceInfo, Zeroconf
 from zeroconf import NonUniqueNameException
 
 from .mqtt_interface import MQTT_BROKER, MQTT_PORT
 from .discovery import DEFAULT_NAME, splitServiceName, findBrokers
-from ..util import getMyIP
+from ..util import getMyIP, synchronized
 
 from endaq.device import __version__
 
@@ -49,7 +50,6 @@ class Advertiser:
         :param properties: An optional dictionary of additional data to be
             included in the service advertising.
         """
-        # print(f"{name=}\n{rename=}\n{address=}\n{port=}\n{notes=}\n{properties=}")
         if kwargs:
             logger.debug(f'Starting Advertiser, ignoring extra kwargs {kwargs}')
         self.port = port
@@ -69,6 +69,7 @@ class Advertiser:
 
         self.info = None
         self.zeroconf = None
+        self._watchdogTimer = Timer(120, self._checkZeroconf)  # To restart if zeroconf fails
 
         signal.signal(signal.SIGTERM, self._signal_SIGTERM)
 
@@ -78,6 +79,7 @@ class Advertiser:
         """
         logger.debug('Received termination signal (SIGTERM)')
         self.stop()
+        exit(0)
 
 
     def __repr__(self) -> str:
@@ -90,12 +92,15 @@ class Advertiser:
             return f'<{name} (stopped)>'
 
 
+    @synchronized
     def stop(self) -> bool:
         """
         Stop advertising the MQTT broker.
+
         :return: True if the advertisement was stopped.
         """
         logger.debug('Attempting to stop advertising...')
+        self._watchdogTimer.cancel()
         if self.zeroconf is None:
             return True
         self.zeroconf.unregister_service(self.info)
@@ -104,12 +109,30 @@ class Advertiser:
         return True
 
 
+    def _createSI(self) -> ServiceInfo:
+        """ Instantiate a `zeroconf.ServiceInfo` using this object's info.
+        """
+        return ServiceInfo(
+                self.serviceType,
+                self.fullName,
+                addresses=[socket.inet_aton(self.address)],
+                port=self.port,
+                properties=self.properties,
+                host_ttl=1125,  # NOTE: Zeroconf has a min refresh time of 1125
+                other_ttl=1125
+        )
+
+
+    @synchronized
     def start(self) -> None:
-        """ Start the advertising activity.
+        """
+        Start the advertising activity.
 
         This method will raise a `RuntimeError` if called more than once on the
         same `Advertiser` object.
         """
+        self._watchdogTimer.cancel()
+
         logger.debug(f'Starting zeroconf advertising of {self.fullName} '
                      f'on {self.address}:{self.port}.')
         if self.zeroconf is not None:
@@ -122,18 +145,10 @@ class Advertiser:
 
         if self.rename:
             for n in itertools.count(1):
-                self.info = ServiceInfo(
-                        self.serviceType,
-                        self.fullName,
-                        addresses=[socket.inet_aton(self.address)],
-                        port=self.port,
-                        properties=self.properties,
-                        host_ttl=1125,                                  # NOTE: Zeroconf has a min refresh time of 1125
-                        other_ttl=1125
-                )
+                self.info = self._createSI()
                 try:
                     # Duplicate names (apparently) allowed on different
-                    # segments of same network (e.g., ethernet adn Wi-Fi);
+                    # segments of same network (e.g., Ethernet and Wi-Fi);
                     # explicitly check for duplicates
                     if not any(broker.name == self.serviceName for broker in existing):
                         self.zeroconf.register_service(self.info)
@@ -147,25 +162,43 @@ class Advertiser:
         else:
             if any(broker.name == self.serviceName for broker in existing):
                 raise NonUniqueNameException
-            self.info = ServiceInfo(
-                self.serviceType,
-                self.fullName,
-                addresses=[socket.inet_aton(self.address)],
-                port=self.port,
-                properties=self.properties,
-                host_ttl=1125,  # NOTE: Zeroconf has a min refresh time of 1125
-                other_ttl=1125
-            )
+            self.info = self._createSI()
             self.zeroconf.register_service(self.info)
 
+        self._restartWatchdog()
 
+
+    @synchronized
     def is_alive(self) -> bool:
-        """ Is the advetiser running?
+        """ Is the advertiser running?
         """
         try:
-            return self.zeroconf.started
+            return self.zeroconf.started and self.zeroconf.loop.is_running()
         except AttributeError:
             return False
+
+
+    @synchronized
+    def _restartWatchdog(self):
+        """
+        Create and start the watchdog timer, which resets Zeroconf if it
+        has become nonresponsive.
+        """
+        self._watchdogTimer.cancel()
+        self._watchdogTimer = Timer(120, self._checkZeroconf)
+        self._watchdogTimer.daemon = True
+        self._watchdogTimer.name = f'Watchdog{self._watchdogTimer.name}'
+        self._watchdogTimer.start()
+
+
+    def _checkZeroconf(self):
+        """ Handler to reset Zeroconf if it has become nonresponsive.
+        """
+        if self.zeroconf is None or not self.zeroconf.started:
+            return
+        elif not self.is_alive():
+            self.stop()
+            self.start()
 
 
 # ===========================================================================

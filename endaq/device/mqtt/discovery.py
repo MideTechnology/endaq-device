@@ -113,7 +113,7 @@ class MDNSFinder:
 
     def __init__(self,
                  serviceType: str = SERVICE_TYPE,
-                 timeout: Union[float, int] = 2.0,
+                 timeout: Union[float, int] = 5.0,
                  keepalive: Union[float, int] = 1800.0):
         """
         Object to handle searching for mDNS hosts. Most of the work is handled
@@ -126,27 +126,24 @@ class MDNSFinder:
         :param keepalive: The time to keep the `MDNSFinder` object running
             between uses.
         """
-        # TODO: Sometimes Zeroconf appears to become unresponsive if running
-        #  for a long time (and/or the computer goes to sleep). Add long-running
-        #  thread/timer to restart after a period of no mDNS messages?
-
         self.serviceType = serviceType
         self.timeout = timeout
         self._timeout_ms = int(timeout * 1000)
         self._keepalive = keepalive
         self._callbacks: set[weakref.ReferenceType] = set()
 
-        self._zc = None                            # Holder for Zeroconf object
-        self._browser = None                       # Holder for serviceBrowser
-        self._found: Dict[str, MDNSInfo] = {}      # Dict of mDNS items indexed by full name
-        self._lastReported: List[MDNSInfo] = []    # Devices in last callback
-        self._lastUpdated: float = 0.0        # Time of last mDNS update received
+        self._zc = None                        # Holder for Zeroconf object
+        self._browser = None                   # Holder for serviceBrowser
+        self._found: Dict[str, MDNSInfo] = {}  # Dict of mDNS items indexed by full name
+        self._lastReported: List[MDNSInfo] = []  # Devices in last callback
+        self.lastUpdated = 0
 
         self._synchronized_lock = RLock()  # Same as used in the `@synchronized` decorator
-        self._timer = Timer(keepalive, self.stop)  # Auto shutdown timer
-        self._callbackTimer = Timer(1, self._callback)  # Limits number of callbacks per second
+        self._lifeTimer = Timer(keepalive, self.stop)  # Auto shutdown timer
+        self._callbackTimer = Timer(1, lambda: None)  # Limits number of callbacks per second
+        self._watchdogTimer = Timer(120, self._checkBrowser)  # To restart if zeroconf fails
 
-        self.start_time = 0
+        self.startTime = 0
 
 
     def __repr__(self) -> str:
@@ -164,9 +161,9 @@ class MDNSFinder:
     def active(self) -> bool:
         """ Is the `MDNSFinder` currently running? """
         try:
-            if self._zc is None:
+            if self._zc is None or self._browser is None:
                 return False
-            return self._zc.started
+            return self._zc.started and self._browser.is_alive()
         except AttributeError:
             return False
 
@@ -180,6 +177,7 @@ class MDNSFinder:
 
     @keepalive.setter
     def keepalive(self, lifetime: Union[float, int]):
+        self._lifeTimer.cancel()
         self._keepalive = lifetime
         self._resetTimer()
 
@@ -195,7 +193,7 @@ class MDNSFinder:
     @property
     @synchronized
     def callbacks(self) -> tuple[Callable, ...]:
-        """ List all active callbacks.
+        """ List of all active callbacks.
         """
         self._cleanCallbacks()
         return tuple(c() for c in self._callbacks if c() is not None)
@@ -227,9 +225,10 @@ class MDNSFinder:
 
     @synchronized
     def removeCallback(self, callback: Callable):
-        """ Remove a callback function added with `addCallback()`.
+        """
+        Remove a callback function added with `addCallback()`.
 
-            :param callback: The callback function to remove.
+        :param callback: The callback function to remove.
         """
         remove = None
         for c in self._callbacks:
@@ -247,15 +246,42 @@ class MDNSFinder:
         self._callbacks.clear()
 
 
+    def _startTimer(self,
+                    name: str,
+                    duration: Union[float, int],
+                    callback: Callable) -> Timer:
+        """ Create and start a Timer.
+        """
+        timer = Timer(duration, callback)
+        timer.daemon = True
+        timer.name = f'{name}{timer.name}'
+        timer.start()
+        return timer
+
+
     def _resetTimer(self):
         """ Start/restart the automatic stop timer.
         """
-        self._timer.cancel()
+        self._lifeTimer.cancel()
         if self._keepalive is not None:
-            self._timer = Timer(self._keepalive, self.stop)
-            self._timer.name = f'Reset{self._timer.name}'  # for debugging
-            self._timer.daemon = True
-            self._timer.start()
+            self._lifeTimer = self._startTimer('Reset', self._keepalive, self.stop)
+
+
+    def _restartWatchdog(self):
+        self._watchdogTimer.cancel()
+        self._watchdogTimer = self._startTimer('Watchdog', 120, self._checkBrowser)
+
+
+    @synchronized
+    def _checkBrowser(self):
+        """
+        Called by the watchdog timer. Restart Zeroconf if it has failed.
+        """
+        if self.active:
+            self._restartWatchdog()
+            return
+        logger.debug('zeroconf.ServiceBrowser died; restarting MDNSFinder...')
+        self.restart()
 
 
     def _callback(self):
@@ -292,10 +318,10 @@ class MDNSFinder:
         required by Zeroconf.
         """
         # Note: this method explicitly uses the lock typically created/used
-        # by the `@synchronized` decorator; `get_service_info()` may take 
+        # by the `@synchronized` decorator; `get_service_info()` may take
         # time, and only the dict access before/after needs to block.
 
-        self._lastUpdated = time()
+        self.lastUpdated = time()
 
         if state_change == ServiceStateChange.Removed and name in self._found:
             with self._synchronized_lock:
@@ -310,10 +336,7 @@ class MDNSFinder:
                 return
 
         if self._callbacks and not self._callbackTimer.is_alive():
-            self._callbackTimer = Timer(1, self._callback)
-            self._callbackTimer.daemon = True
-            self._callbackTimer.name = f'Callback{self._callbackTimer.name}'
-            self._callbackTimer.start()
+            self._callbackTimer = self._startTimer('Callback', 1, self._callback)
 
 
     @synchronized
@@ -326,6 +349,8 @@ class MDNSFinder:
         if self.active:
             return
 
+        self._restartWatchdog()
+
         self._zc = Zeroconf()
         self._browser = ServiceBrowser(
             zc=self._zc,
@@ -333,8 +358,8 @@ class MDNSFinder:
             handlers=[self._onServiceStateChange],
         )
 
-        self.start_time = time()
-        self._lastUpdated = 0
+        self.startTime = time()
+        self.lastUpdated = 0
 
 
     @synchronized
@@ -342,12 +367,14 @@ class MDNSFinder:
         """
         Close out the search and delete all results.
         """
-        self._timer.cancel()
+        self._watchdogTimer.cancel()
+        self._lifeTimer.cancel()
         self._callbackTimer.cancel()
         if self._zc is not None:
             self._browser.cancel()
             self._zc.close()
         self._zc = None
+        self._browser = None
         self._found.clear()
 
 
@@ -380,7 +407,7 @@ class MDNSFinder:
         :param min_lifetime: Don't kill the previous process if it was
             started min_lifetime seconds ago
         """
-        if time() - self.start_time < min_lifetime:
+        if time() - self.startTime < min_lifetime:
             self._resetTimer()
             return
 
@@ -424,7 +451,7 @@ def getBroker(name: str = DEFAULT_NAME,
               scantime: Union[float, int] = 2,
               timeout: Union[float, int] = 5,
               callback: Optional[Callable] = None,
-              keepalive: Union[float, int] = 180.0,
+              keepalive: Union[float, int] = 1800.0,
               protocol: str = 'mqtt') -> MDNSInfo:
     """
     Find a specific enDAQ-advertised MQTT Broker by name. The closest match
@@ -465,9 +492,9 @@ def getBroker(name: str = DEFAULT_NAME,
 def findBrokers(*patterns: str,
                 serviceType: str = SERVICE_TYPE,
                 scantime: Union[float, int] = 2,
-                timeout: Union[float, int] = 3,
+                timeout: Union[float, int] = 5,
                 callback: Optional[Callable] = None,
-                keepalive: Union[float, int] = 120,
+                keepalive: Union[float, int] = 180.0,
                 protocol: str = 'mqtt') -> List[MDNSInfo]:
     """
     Find enDAQ-advertised MQTT Brokers.
@@ -494,11 +521,11 @@ def findBrokers(*patterns: str,
     broker_list = []
     protocol = bytes(protocol, 'utf-8') if protocol is not None else None
 
-    if f := MDNS_FINDERS.get(serviceType):
-        finder = f
-    else:
+    if serviceType not in MDNS_FINDERS:
         finder = MDNSFinder(serviceType, timeout=timeout, keepalive=keepalive)
-        MDNS_FINDERS[serviceType] = finder
+    else:
+        finder = MDNS_FINDERS[serviceType]
+
     finder.start()
 
     while time() < deadline:
@@ -512,10 +539,11 @@ def findBrokers(*patterns: str,
             broker_list = [broker for broker in broker_list
                            if any(fnmatchcase(broker.name, p) for p in patterns)]
 
-        if ((broker_list and time() > scanDeadline) or (callback and callback())):
+        if (broker_list and time() > scanDeadline) or (callback and callback()):
             break
 
         sleep(0.1)
+
 
     return broker_list
 
