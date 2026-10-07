@@ -8,6 +8,7 @@ import json
 import logging
 import signal
 import socket
+import sys
 from threading import Timer
 from time import sleep
 from typing import Any, Dict, Optional
@@ -79,7 +80,7 @@ class Advertiser:
         """
         logger.debug('Received termination signal (SIGTERM)')
         self.stop()
-        exit(0)
+        sys.exit(0)
 
 
     def __repr__(self) -> str:
@@ -103,9 +104,11 @@ class Advertiser:
         self._watchdogTimer.cancel()
         if self.zeroconf is None:
             return True
-        self.zeroconf.unregister_service(self.info)
-        self.zeroconf.close()
-        self.zeroconf = None
+        try:
+            self.zeroconf.unregister_service(self.info)
+            self.zeroconf.close()
+        finally:
+            self.zeroconf = None
         return True
 
 
@@ -191,6 +194,7 @@ class Advertiser:
         self._watchdogTimer.start()
 
 
+    @synchronized
     def _checkZeroconf(self):
         """ Handler to reset Zeroconf if it has become nonresponsive.
         """

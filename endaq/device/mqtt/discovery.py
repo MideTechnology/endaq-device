@@ -52,6 +52,9 @@ SERVICE_TYPE = "_endaq._tcp.local."
 # Cached `MDNSFinder` instances, keyed by service type
 MDNS_FINDERS: Dict[str, "MDNSFinder"] = weakref.WeakValueDictionary()
 
+KEEPALIVE = 1800
+TIMEOUT = 5
+
 # ===========================================================================
 #
 # ===========================================================================
@@ -113,8 +116,8 @@ class MDNSFinder:
 
     def __init__(self,
                  serviceType: str = SERVICE_TYPE,
-                 timeout: Union[float, int] = 5.0,
-                 keepalive: Union[float, int] = 1800.0):
+                 timeout: Union[float, int] = TIMEOUT,
+                 keepalive: Union[float, int] = KEEPALIVE):
         """
         Object to handle searching for mDNS hosts. Most of the work is handled
         by Zeroconf in the background.
@@ -179,7 +182,7 @@ class MDNSFinder:
     def keepalive(self, lifetime: Union[float, int]):
         self._lifeTimer.cancel()
         self._keepalive = lifetime
-        self._resetTimer()
+        self._resetKeepaliveTimer()
 
 
     @synchronized
@@ -259,7 +262,7 @@ class MDNSFinder:
         return timer
 
 
-    def _resetTimer(self):
+    def _resetKeepaliveTimer(self):
         """ Start/restart the automatic stop timer.
         """
         self._lifeTimer.cancel()
@@ -323,20 +326,24 @@ class MDNSFinder:
 
         self.lastUpdated = time()
 
-        if state_change == ServiceStateChange.Removed and name in self._found:
-            with self._synchronized_lock:
-                del self._found[name]
-        else:
-            info = zeroconf.get_service_info(service_type, name, timeout=self._timeout_ms)
-            if info:
+        try:
+            if state_change == ServiceStateChange.Removed and name in self._found:
                 with self._synchronized_lock:
-                    self._found[info.name] = parseServiceInfo(info)
+                    del self._found[name]
             else:
-                logger.debug(f"getinfo failed for {name} ({service_type}) ")
-                return
+                info = zeroconf.get_service_info(service_type, name, timeout=self._timeout_ms)
+                if info:
+                    with self._synchronized_lock:
+                        self._found[info.name] = parseServiceInfo(info)
+                else:
+                    logger.debug(f"getinfo failed for {name} ({service_type}) ")
+                    return
 
-        if self._callbacks and not self._callbackTimer.is_alive():
-            self._callbackTimer = self._startTimer('Callback', 1, self._callback)
+            if self._callbacks and not self._callbackTimer.is_alive():
+                self._callbackTimer = self._startTimer('Callback', 1, self._callback)
+
+        except Exception as e:
+            logger.exception(e)
 
 
     @synchronized
@@ -344,7 +351,7 @@ class MDNSFinder:
         """
         Start searching for the specified mDNS service types.
         """
-        self._resetTimer()
+        self._resetKeepaliveTimer()
 
         if self.active:
             return
@@ -370,9 +377,11 @@ class MDNSFinder:
         self._watchdogTimer.cancel()
         self._lifeTimer.cancel()
         self._callbackTimer.cancel()
-        if self._zc is not None:
+        try:
             self._browser.cancel()
             self._zc.close()
+        except AttributeError:
+            pass
         self._zc = None
         self._browser = None
         self._found.clear()
@@ -408,7 +417,7 @@ class MDNSFinder:
             started min_lifetime seconds ago
         """
         if time() - self.startTime < min_lifetime:
-            self._resetTimer()
+            self._resetKeepaliveTimer()
             return
 
         self.stop()
@@ -492,9 +501,9 @@ def getBroker(name: str = DEFAULT_NAME,
 def findBrokers(*patterns: str,
                 serviceType: str = SERVICE_TYPE,
                 scantime: Union[float, int] = 2,
-                timeout: Union[float, int] = 5,
+                timeout: Union[float, int] = TIMEOUT,
                 callback: Optional[Callable] = None,
-                keepalive: Union[float, int] = 180.0,
+                keepalive: Union[float, int] = KEEPALIVE,
                 protocol: str = 'mqtt') -> List[MDNSInfo]:
     """
     Find enDAQ-advertised MQTT Brokers.
@@ -523,6 +532,7 @@ def findBrokers(*patterns: str,
 
     if serviceType not in MDNS_FINDERS:
         finder = MDNSFinder(serviceType, timeout=timeout, keepalive=keepalive)
+        MDNS_FINDERS[serviceType] = finder
     else:
         finder = MDNS_FINDERS[serviceType]
 
