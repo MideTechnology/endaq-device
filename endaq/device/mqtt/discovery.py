@@ -1,7 +1,20 @@
 """
 Find an enDAQ MQTT broker.
 
-The simplest way to find an enDAQ MQTT broker is using `findBroker`
+The simplest way to find an enDAQ MQTT broker is using `findBrokers()`. You
+may need to call the function more than once to catch all the mDNS messages,
+as the mDNS messages arrive asynchronously.
+
+The more reliable way to find enDAQ MQTT brokers is to create an `MDNSFinder`
+object and leave it running to collect mDNS messages. This is functionally
+the same as calling `findBrokers()` more than once, but allows more control.
+For best results, allow several seconds between starting the instance and
+getting its list of brokers.
+
+Note that `MDNSFinder` callbacks differ from the callbacks used in arguments
+elsewhere (e.g., command interface methods); they are called when the list
+of mDNS services changes, as opposed to being a means of interrupting
+long-running functions.
 """
 
 import copy
@@ -23,6 +36,9 @@ from endaq.device.util import synchronized, levenshtein
 
 logger = logging.getLogger(__name__)
 
+
+__all__ = ("MDNSInfo", "MDNSFinder", "findBrokers", "getBroker")
+
 # ===========================================================================
 #
 # ===========================================================================
@@ -33,6 +49,7 @@ DEFAULT_NAMES = ["enDAQ Remote Interface*._endaq._tcp.local.",
                  "Data Collection Box Interface*._endaq._tcp.local."]
 SERVICE_TYPE = "_endaq._tcp.local."
 
+# Cached `MDNSFinder` instances, keyed by service type
 MDNS_FINDERS: Dict[str, "MDNSFinder"] = weakref.WeakValueDictionary()
 
 # ===========================================================================
@@ -94,12 +111,10 @@ class MDNSFinder:
     by Zeroconf in the background.
     """
 
-    # FUTURE: Redo instance memoization in __new__()? Remember __init__() always called.
-
     def __init__(self,
                  serviceType: str = SERVICE_TYPE,
-                 timeout: Union[float, int] = 5.0,
-                 keepalive: Union[float, int] = 180.0):
+                 timeout: Union[float, int] = 2.0,
+                 keepalive: Union[float, int] = 1800.0):
         """
         Object to handle searching for mDNS hosts. Most of the work is handled
         by Zeroconf in the background.
@@ -111,32 +126,37 @@ class MDNSFinder:
         :param keepalive: The time to keep the `MDNSFinder` object running
             between uses.
         """
+        # TODO: Sometimes Zeroconf appears to become unresponsive if running
+        #  for a long time (and/or the computer goes to sleep). Add long-running
+        #  thread/timer to restart after a period of no mDNS messages?
+
         self.serviceType = serviceType
         self.timeout = timeout
         self._timeout_ms = int(timeout * 1000)
         self._keepalive = keepalive
         self._callbacks: set[weakref.ReferenceType] = set()
 
-        self._zc = None                        # Holder for Zeroconf object
-        self._browser = None                   # Holder for serviceBrowser
-        self._found: Dict[str, MDNSInfo] = {}  # Dict of mDNS items indexed by full name
-        self._lastReported: List[int] = []
+        self._zc = None                            # Holder for Zeroconf object
+        self._browser = None                       # Holder for serviceBrowser
+        self._found: Dict[str, MDNSInfo] = {}      # Dict of mDNS items indexed by full name
+        self._lastReported: List[MDNSInfo] = []    # Devices in last callback
+        self._lastUpdated: float = 0.0        # Time of last mDNS update received
 
         self._synchronized_lock = RLock()  # Same as used in the `@synchronized` decorator
-        self._timer = Timer(keepalive, self.stop)
-        self._callbackTimer = Timer(1, lambda x: None)
+        self._timer = Timer(keepalive, self.stop)  # Auto shutdown timer
+        self._callbackTimer = Timer(1, self._callback)  # Limits number of callbacks per second
 
         self.start_time = 0
-        MDNS_FINDERS[serviceType] = self
 
 
     def __repr__(self) -> str:
-        # __repr__() should never completely fail, so:
         # noinspection broad-exception
         try:
             active = 'active' if self.active else 'inactive'
             return f'<{type(self).__name__} {self.serviceType!r} ({active}) at {hex(id(self))}>'
-        except Exception:
+        except Exception as err:
+            # __repr__() should never completely fail, so:
+            logger.error(f'repr() failed: {err!r}', exc_info=True)
             return super().__repr__()
 
 
@@ -153,6 +173,8 @@ class MDNSFinder:
 
     @property
     def keepalive(self) -> Union[float, int, None]:
+        """ Time to keep the finder active after its last use.
+        """
         return self._keepalive
 
 
@@ -164,6 +186,8 @@ class MDNSFinder:
 
     @synchronized
     def _cleanCallbacks(self):
+        """ Remove 'dead' callbacks (methods of deleted objects, etc.)
+        """
         for dead in [x for x in self._callbacks if x() is None]:
             self._callbacks.remove(dead)
 
@@ -186,6 +210,9 @@ class MDNSFinder:
         Note: when there are multiple callbacks, the order of execution is
         arbitrary. If a specific sequence is required, implement it in a
         single callback.
+
+        Note that this callback is not the same as the `callback` argument
+        used elsewhere (primarily in command interfaces).
 
         :param callback: The callback function to add.
         """
@@ -227,13 +254,15 @@ class MDNSFinder:
         if self._keepalive is not None:
             self._timer = Timer(self._keepalive, self.stop)
             self._timer.name = f'Reset{self._timer.name}'  # for debugging
+            self._timer.daemon = True
             self._timer.start()
 
 
     def _callback(self):
         """
         Wrapper to execute all the callback functions with an
-        up to date list.
+        up to date list. It is called after a delay when service
+        states change.
         """
         brokers = self.getBrokerList()
 
@@ -242,6 +271,7 @@ class MDNSFinder:
 
         for callback in self._callbacks:
             try:
+                # weakref; call to get actual callback function
                 c = callback()
                 if c is not None:
                     # noinspection calling-non-callable
@@ -265,6 +295,8 @@ class MDNSFinder:
         # by the `@synchronized` decorator; `get_service_info()` may take 
         # time, and only the dict access before/after needs to block.
 
+        self._lastUpdated = time()
+
         if state_change == ServiceStateChange.Removed and name in self._found:
             with self._synchronized_lock:
                 del self._found[name]
@@ -279,6 +311,7 @@ class MDNSFinder:
 
         if self._callbacks and not self._callbackTimer.is_alive():
             self._callbackTimer = Timer(1, self._callback)
+            self._callbackTimer.daemon = True
             self._callbackTimer.name = f'Callback{self._callbackTimer.name}'
             self._callbackTimer.start()
 
@@ -301,6 +334,7 @@ class MDNSFinder:
         )
 
         self.start_time = time()
+        self._lastUpdated = 0
 
 
     @synchronized
@@ -309,6 +343,7 @@ class MDNSFinder:
         Close out the search and delete all results.
         """
         self._timer.cancel()
+        self._callbackTimer.cancel()
         if self._zc is not None:
             self._browser.cancel()
             self._zc.close()
@@ -430,9 +465,9 @@ def getBroker(name: str = DEFAULT_NAME,
 def findBrokers(*patterns: str,
                 serviceType: str = SERVICE_TYPE,
                 scantime: Union[float, int] = 2,
-                timeout: Union[float, int] = 5,
+                timeout: Union[float, int] = 3,
                 callback: Optional[Callable] = None,
-                keepalive: Union[float, int] = 180.0,
+                keepalive: Union[float, int] = 120,
                 protocol: str = 'mqtt') -> List[MDNSInfo]:
     """
     Find enDAQ-advertised MQTT Brokers.
@@ -459,16 +494,14 @@ def findBrokers(*patterns: str,
     broker_list = []
     protocol = bytes(protocol, 'utf-8') if protocol is not None else None
 
-    if serviceType not in MDNS_FINDERS:
-        finder = MDNSFinder(serviceType, timeout=timeout, keepalive=keepalive)
+    if f := MDNS_FINDERS.get(serviceType):
+        finder = f
     else:
-        finder = MDNS_FINDERS[serviceType]
-
+        finder = MDNSFinder(serviceType, timeout=timeout, keepalive=keepalive)
+        MDNS_FINDERS[serviceType] = finder
     finder.start()
 
     while time() < deadline:
-        sleep(0.1)
-
         broker_list = finder.getBrokerList()
 
         if protocol is not None:
@@ -479,11 +512,10 @@ def findBrokers(*patterns: str,
             broker_list = [broker for broker in broker_list
                            if any(fnmatchcase(broker.name, p) for p in patterns)]
 
-        if broker_list and time() > scanDeadline:
+        if ((broker_list and time() > scanDeadline) or (callback and callback())):
             break
 
-        if callback and callback():
-            break
+        sleep(0.1)
 
     return broker_list
 

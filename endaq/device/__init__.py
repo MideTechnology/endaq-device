@@ -144,7 +144,7 @@ def getRecorder(path: Filename,
 
         # Remove old cached devices. Ordered dictionaries assumed!
         if len(RECORDERS) > RECORDER_CACHE_SIZE:
-            for k in list(RECORDERS.keys())[-RECORDER_CACHE_SIZE:]:
+            for k in list(RECORDERS.keys())[:-RECORDER_CACHE_SIZE]:
                 del RECORDERS[k]
 
         return dev

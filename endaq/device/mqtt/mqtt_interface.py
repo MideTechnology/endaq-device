@@ -663,7 +663,7 @@ class MQTTConnector:
 
         # Remove old cached devices. Ordered dictionaries assumed!
         if len(RECORDERS) > RECORDER_CACHE_SIZE:
-            for k in list(RECORDERS.keys())[-RECORDER_CACHE_SIZE:]:
+            for k in list(RECORDERS.keys())[:-RECORDER_CACHE_SIZE]:
                 del RECORDERS[k]
 
         return devices
@@ -1261,7 +1261,6 @@ class MQTTCommandInterface(SerialCommandInterface):
         logger.debug(f"Saving stream to {self._stream}")
 
 
-    @synchronized
     def closeStream(self,
                     timeout: Optional[Union[int, float]] = 0,
                     callback: Optional[Callable] = None) -> bool:
@@ -1282,6 +1281,9 @@ class MQTTCommandInterface(SerialCommandInterface):
             :returns: `True` if the command was successful, `False` if
                 not already receiving/saving streamed data.
         """
+        # Note: this method is intentionally not `@synchronized`. The wait
+        # below must not hold the lock needed by `_writeStreamChunk()`,
+        # which is called from the MQTT thread as trailing data arrives.
         if not self.streaming():
             return False
 
@@ -1297,14 +1299,23 @@ class MQTTCommandInterface(SerialCommandInterface):
                         raise DeviceTimeout('Timed out waiting for streamed data to stop')
                     elif callback and callback():
                         break
+                    sleep(0.01)
                     now = time()
         finally:
-            self.streamCallback = None
-            self.manager._streamers.pop(self._streamTopic, None)
-            self.manager.unsubscribe(self._streamTopic)
-            self._stream.close()
+            self._teardownStream()
 
         return True
+
+
+    @synchronized
+    def _teardownStream(self):
+        """ Stop receiving streamed data and close the file. Called by
+            `closeStream()`.
+        """
+        self.streamCallback = None
+        self.manager._streamers.pop(self._streamTopic, None)
+        self.manager.unsubscribe(self._streamTopic)
+        self._stream.close()
 
 
     @synchronized
