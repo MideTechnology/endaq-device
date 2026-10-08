@@ -487,7 +487,7 @@ class MQTTDeviceManager(MQTTClient):
         if isinstance(cache, (str, Path)):
             self.cache = FileCache(cache)
         else:
-            self.cachePath = cache
+            self.cache = cache
 
         self.minInterval = minInterval
         self.allowShutdown = shutdown
