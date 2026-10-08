@@ -470,7 +470,7 @@ class ConfigInterface:
         self._schema = loadSchema('mide_config_ui.xml')
         self._schema.UNKNOWN = ConfigInterface._handleUnknownField
 
-        self.device: Optional["Recorder"] = device
+        self.device: "Recorder" = device
         self.configUi: Optional[MasterElement] = None
         self.config: Optional[MasterElement] = None
         self._items: Dict[int, ConfigItem] = {}
@@ -948,7 +948,7 @@ class ConfigInterface:
         return self._getitem(0x0bff7f).value / 3600
 
     @utcOffset.setter
-    def utcOffset(self, offset: Optional[float]):
+    def utcOffset(self, offset: float):
         # Convert from hours to seconds
         self._setitem(0x0bff7f, int(offset * 3600))
 
@@ -1441,6 +1441,8 @@ class FileConfigInterface(ConfigInterface):
         if self._supportedConfigVersions is not None:
             return self._supportedConfigVersions
 
+        # Legacy FW on EFM32GG330 does not report MCU type and only supports
+        # config version 1 through the file interface.
         mcu = self.device.getInfo('McuType', 'EFM32GG330')
         if not mcu.startswith("EFM32GG330"):
             return ConfigInterface.supportedConfigVersions.fget(self)
@@ -1635,6 +1637,14 @@ class RemoteConfigInterface(FileConfigInterface):
 
         #: The timeout for all `GetInfo` and `SetInfo` commands.
         self.timeout = timeout
+
+
+    @property
+    def supportedConfigVersions(self):
+        """ A tuple of configuration file format versions supported by
+            the interface.
+        """
+        return ConfigInterface.supportedConfigVersions.fget(self)
 
 
     def _writeConfig(self, data: bytes) -> int:

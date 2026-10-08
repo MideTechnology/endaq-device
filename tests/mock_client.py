@@ -11,6 +11,7 @@ from endaq.device.command_interfaces import CommandInterface, SerialCommandInter
 
 from tests.mock_hardware import MockPort
 
+
 # ===========================================================================
 #
 # ===========================================================================
@@ -24,6 +25,7 @@ class MockClientCommandInterface(SerialCommandInterface):
         super().__init__(*args, **kwargs)
         self.client = None
         self.port = MockPort()
+        self.maxCommandSize = 0
 
     def getSerialPort(self, *args, **kwargs):
         return self.port
@@ -75,11 +77,21 @@ class MockClient(CommandClient):
         return self.CONFIG, None, None
 
 
+    @requires_lock
+    def command_SetInfo_5(self,
+                          payload: ByteString,
+                          lockId: Optional[int] = None):
+        """ Example of a `SetInfo` (5: `config.cfg`) that requires the lock
+            be set.
+        """
+        return b'', None, None
+
+
 # ===========================================================================
 #
 # ===========================================================================
 
-def createMocks(device: Recorder) -> Tuple[CommandInterface, CommandClient]:
+def createMocks(device: Recorder) -> Tuple[MockClientCommandInterface, MockClient]:
     """ Create a mockup `CommandClient`, and a mockup `CommandInterface` to
         test it.
 
