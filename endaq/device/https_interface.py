@@ -1,4 +1,5 @@
 from copy import deepcopy
+from fnmatch import fnmatchcase
 import logging
 import os.path
 import requests
@@ -9,12 +10,12 @@ from time import sleep, time
 from typing import Any, Callable, Dict, List, Optional, Union
 from urllib.parse import urljoin
 
-from endaq.device import RECORDERS, RECORDERS_BY_SN
+import endaq.device
 from endaq.device.command_interfaces import SerialCommandInterface
 from endaq.device.devinfo import SerialDeviceInfo
 from endaq.device.exceptions import CommandError
 from endaq.device.gateway import Gateway
-from endaq.device.mqtt.discovery import MDNSInfo, findBrokers
+from endaq.device.mqtt.discovery import MDNSInfo, MDNSFinder, findBrokers
 from endaq.device import CommunicationError
 from endaq.device.util import encodeDict, decodeDict
 
@@ -227,31 +228,45 @@ def info2url(info: MDNSInfo) -> str:
 #
 # ============================================================================
 
-def getHttpsDevice(url: Union[str, MDNSInfo],
+def getHttpsDevice(info: Union[str, MDNSInfo],
                    password: Optional[str] = None,
                    certfile: Optional[str] = None) -> "Recorder":
     """
     Create a recorder instance with an HTTPS interface.
 
-    :param url: The device's base URL, or an `MDNSInfo` object as
+    :param info: The device's base URL, or an `MDNSInfo` object as
         returned by `endaq.device.mqtt.discovery.findBrokers()`.
+        Using `MDNSInfo` is more efficient.
     :param password: The device's password, if any.
     :param certfile:
     """
-    if isinstance(url, MDNSInfo):
-        url = info2url(url)
+    if isinstance(info, MDNSInfo):
+        url = info2url(info)
+        devinfo = info.properties.get(b'devinfo', None)
+    elif isinstance(info, str):
+        url = info
+        devinfo = None
+    else:
+        raise TypeError(f'Expected MDNSInfo or str, got {type(info)}')
 
     if 'https' not in url.lower():
         certfile = None
 
-    # Dummy recorder and command interface to retrieve DEVINFO
-    fake = NonRecorder(name='getHttpsDevice')
-    fake.command = HTTPSCommandInterface(fake, url, password, certfile)
-    info = fake.command._getInfo(0, index=False, timeout=3)
+    if devinfo is None:
+        # Dummy recorder and command interface to retrieve DEVINFO
+        fake = NonRecorder(name='getHttpsDevice')
+        fake.command = HTTPSCommandInterface(fake, url, password, certfile)
+        devinfo = fake.command._getInfo(0, index=False, timeout=3)
 
-    device = Gateway(None, devinfo=info)
-    device.command = HTTPSCommandInterface(device, url, password, certfile)
-    device._devinfo = SerialDeviceInfo(device)
+    with endaq.device._module_busy:
+        infohash = hash(devinfo)
+        device = endaq.device.RECORDERS.pop(infohash, None)
+        if device is None:
+            device = Gateway(None, devinfo=devinfo)
+            device.command = HTTPSCommandInterface(device, url, password, certfile)
+            device._devinfo = SerialDeviceInfo(device)
+        endaq.device.RECORDERS[infohash] = device
+        endaq.device.RECORDERS_BY_SN[device.serialInt] = device
 
     return device
 
@@ -267,14 +282,14 @@ class DeviceGetterThread(Thread):
     """
 
     def __init__(self,
-                 url: MDNSInfo,
+                 info: MDNSInfo,
                  certfile: Optional[str] = None):
         """
 
-        :param url:
+        :param info:
         :param certfile:
         """
-        self.url = url
+        self.info = info
         self.certfile = certfile
         self.device = None
         self.exception = None
@@ -289,14 +304,14 @@ class DeviceGetterThread(Thread):
         """ Main thread loop.
         """
         try:
-            self.device = getHttpsDevice(self.url,
+            self.device = getHttpsDevice(self.info,
                                          certfile=self.certfile)
         except ConnectTimeout as err:
             self.exception = err
-            logger.error(f'Timed out connecting to {self.url!r}, skipping')
+            logger.error(f'Timed out connecting to {info2url(self.info)!r}, skipping')
         except Exception as err:
             self.exception = err
-            logger.exception(f'Error getting device from {info2url(self.url)}')
+            logger.exception(f'Error getting device from {info2url(self.info)}')
 
 
 # ============================================================================
@@ -307,7 +322,8 @@ def getDevices(scantime: Union[float, int] = 2,
                timeout: Union[float, int] = 20,
                callback: Optional[Callable] = None,
                keepalive: Union[float, int] = 180.0,
-               certfile: Optional[str] = None) -> List[Recorder]:
+               certfile: Optional[str] = None,
+               finder: Optional[MDNSFinder] = None) -> List[Recorder]:
     """
     Find enDAQ-advertised HTTP/HTTPS devices.
 
@@ -323,16 +339,21 @@ def getDevices(scantime: Union[float, int] = 2,
         later use (this can make subsequent discovery faster and more
         accurate).
     :param certfile:
+    :param finder: An existing, running `MDNSFinder` instance. Supplying
+        one can make things faster.
     :returns: A list of MQTT Brokers.
     """
     devices = []
-    kwargs = dict(scantime=scantime,
-                  timeout=timeout,
-                  callback=callback,
-                  keepalive=keepalive)
 
-    mdns = findBrokers(protocol='http', **kwargs)
-    mdns.extend(findBrokers(protocol='https', **kwargs))
+    if finder is not None:
+        mdns = [broker for broker in finder.getBrokerList()
+                if fnmatchcase(broker.properties.get(b'protocol', b'mqtt'), b'http*')]
+    else:
+        mdns = findBrokers(protocol='http*',
+                           scantime=scantime,
+                           timeout=timeout,
+                           callback=callback,
+                           keepalive=keepalive)
 
     if not mdns:
         return devices
