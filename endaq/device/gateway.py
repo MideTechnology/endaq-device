@@ -80,4 +80,15 @@ class Gateway(Recorder):
     def canRecord(self) -> bool:
         """ Can the device record on command? Not applicable to non-sensors.
         """
+        # The Gateway interface itself doesn't record. The box *could* run
+        # a simulated Recorder to capture data (e.g., SBD), but that would
+        # present itself as a `Recorder` instance and have its own interface.
+        return False
+
+
+    @property
+    def isVirtual(self) -> bool:
+        """ Is this actual hardware, or a virtual device?
+        """
+        # Gateways don't record, so they can't be virtual (created from IDE).
         return False

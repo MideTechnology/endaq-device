@@ -1,7 +1,7 @@
 from copy import deepcopy
 from fnmatch import fnmatchcase
 import logging
-import os.path
+# import os.path
 import requests
 from requests.exceptions import ConnectTimeout
 import socket
@@ -192,6 +192,36 @@ class HTTPSCommandInterface(SerialCommandInterface):
         response = self._http_response.json()
         decodeDict(response)
         return response['EBMLResponse']
+
+
+    @property
+    def canLock(self) -> bool:
+        """ Does this device support the `LockID` commands? """
+        # FUTURE: Determine `canLock` based on data in the `Recorder`
+        return True
+
+
+    @property
+    def canRecord(self) -> bool:
+        """ Can the device record on command? """
+        # FUTURE: Determine `canRecord` based on data in the `Recorder`
+        return False
+
+
+    @property
+    def canStream(self) -> bool:
+        """ Can the device stream data? Only applicable to wireless devices
+            connected through an MQTT broker.
+        """
+        # FUTURE: Determine `canStream` based on data in the `Recorder`
+        return False
+
+
+    @property
+    def _canSetInfo(self) -> bool:
+        """ Can this interface use `<SetInfo>` commands? """
+        # FUTURE: Determine `_canSetInfo` based on data in the `Recorder`
+        return True
 
 
 # ============================================================================
