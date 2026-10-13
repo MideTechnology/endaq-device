@@ -4,7 +4,7 @@ data-logging devices.
 """
 
 __author__ = "David Stokes"
-__copyright__ = "Copyright 2025 Mide Technology Corporation"
+__copyright__ = "Copyright 2026 Mide Technology Corporation"
 
 from contextlib import suppress
 import os
@@ -37,7 +37,7 @@ from .types import Drive, Filename, Epoch
 #
 # ============================================================================
 
-__version__ = "1.4.1b15"
+__version__ = "1.4.1b16"
 
 __all__ = ('CommandError', 'ConfigError', 'ConfigVersionError',
            'DeviceError', 'DeviceTimeout', 'UnsupportedFeature',
