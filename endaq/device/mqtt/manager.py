@@ -13,7 +13,7 @@ Starting an :class:`MQTTDeviceManager` is typically done via the
 from collections import defaultdict
 from contextlib import suppress
 from io import BytesIO
-import os.path
+import os
 from pathlib import Path
 import signal
 import struct
@@ -223,6 +223,16 @@ class MQTTDevice:
         self.lastCommand = time()
         msg = message.payload
 
+        update = False  # Does manager need to publish an update?
+
+        # If the device is sleeping and receives a command, the manager will
+        # report it as WAKING (a 'fake' state). Once awake, the device will
+        # update with its real state.
+        # TODO: Put a 120s timeout on WAKING?
+        if self.stateInfo.get('DeviceStatusCode') == DeviceStatusCode.SLEEPING:
+            self.stateInfo['DeviceStatusCode'] = DeviceStatusCode.WAKING
+            update = True
+
         try:
             schema = ebmlite.loadSchema('command-response.xml')
             command = (self.manager.command
@@ -246,11 +256,14 @@ class MQTTDevice:
                 if myId != newId:
                     logger.debug(f'Captured SetLockID command for {self.sn}: '
                                  f'{dump(newId, 0)!r}')
-                    self.manager.updateState()
+                    update = True
 
         except KeyError as err:
             logger.debug(repr(err))
             pass
+
+        if update:
+            self.manager.updateState()
 
 
     # =======================================================================
@@ -505,7 +518,7 @@ class MQTTDeviceManager(MQTTClient):
         self.stateSubTopic = STATE_TOPIC.format(sn='+')
         self.client.message_callback_add(self.stateSubTopic, self.onStateMessage)
 
-        self.advertiser: Optional[Advertiser] =  None
+        self.advertiser: Advertiser =  None
         self.stateUpdater = threading.Timer(1, lambda: None)  # dummy initial value, not run
 
         signal.signal(signal.SIGTERM, self._signal_SIGTERM)
@@ -781,7 +794,7 @@ def start(host: Optional[str] = MQTT_BROKER,
           connectArgs: Dict[str, Any] = None,
           advertArgs: Dict[str, Any] = None,
           managerArgs: Dict[str, Any] = None,
-          clean: Optional[int] = None,
+          clean: Optional[int] = 24,
           **kwargs):
     """
     Start the Device Manager and (optionally) the mDNS advertiser.
@@ -809,7 +822,7 @@ def start(host: Optional[str] = MQTT_BROKER,
         `True`).
     :param managerArgs: A dictionary of additional keyword arguments to be
         used in the instantiation of the `MQTTDeviceManager`.
-    :param clean: If not `None`, remove cached header data older than
+    :param clean: If greater than 0, remove cached header data older than
         `clean` hours on Device Manager startup.
     :return: The running `MQTTDeviceManager` if `background`, else the
         function runs indefinitely without returning.
@@ -834,8 +847,12 @@ def start(host: Optional[str] = MQTT_BROKER,
 
     manager = MQTTDeviceManager(client, **managerArgs)
 
-    if clean is not None:
-        manager.cleanCache(retention=clean)
+    if clean:
+        try:
+            manager.cleanCache(retention=clean)
+        except Exception as err:
+            logger.exception(err)
+            logger.error('Error cleaning cache, manager startup continuing...')
 
     if advertise:
         kwargs = {'address': host, 'port': port,
@@ -909,9 +926,9 @@ if __name__ == "__main__":
                              "arguments for the Device Manager and advertising. "
                              "Values in the config file will override other "
                              "arguments.")
-    parser.add_argument('--clean', type=int, default=None,
+    parser.add_argument('--clean', type=int, default=24,
                         help="On startup, clean out cached header data older "
-                             "than this many hours.")
+                             "than this many hours. 0 to skip cleaning.")
     args = parser.parse_args()
     kwargs = {'host': args.address, 'port': args.port,
               'advertise': not args.silent, 'name': args.name,
