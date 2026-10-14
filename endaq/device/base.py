@@ -39,7 +39,6 @@ from .devinfo import DeviceInfo, FileDeviceInfo
 from . import measurement
 from .measurement import MeasurementType
 from . import command_interfaces
-from .command_interfaces import CommandInterface
 from .exceptions import *
 from .types import Drive, Filename, Epoch
 from . import util
@@ -56,9 +55,9 @@ __all__ = ('Recorder', 'os_specific')
 # ===============================================================================
 
 class Recorder:
-    """ A representation of an enDAQ/SlamStick data recorder. Some devices
-        will instantiate as a specialized subclass, but the interface remains
-        the same.
+    """ A representation of an enDAQ/SlamStick data recorder or device. Some
+        devices will instantiate as a specialized subclass, but the interface
+        remains the same.
     """
 
     _INFO_FILE = os.path.join("SYSTEM", "DEV", "DEVINFO")
@@ -98,13 +97,13 @@ class Recorder:
                  strict: bool = True,
                  devinfo: Optional[bytes] = None,
                  virtual: bool = False):
-        """ A representation of an enDAQ/SlamStick data recorder. Typically,
-            instantiation should be done indirectly, using functions such as
-            `endaq.device.getDevices()` or `endaq.device.fromRecording()`.
-            Explicitly instantiating a `Recorder` or `Recorder` subclass is
-            rarely (if ever) necessary.
+        """ A representation of an enDAQ/SlamStick data recorder or device.
+            Typically, instantiation should be done indirectly, using
+            functions such as `endaq.device.getDevices()` or
+            `endaq.device.fromRecording()`. Explicitly instantiating a
+            `Recorder` or `Recorder` subclass is rarely (if ever) necessary.
 
-            :param path: The filesystem path to the recorder, or `None` if
+            :param path: The filesystem path to the device, or `None` if
                 it is a 'virtual' or remote device.
             :param strict: If `True`, only allow real device paths. If
                 `False`, allow any path that contains a ``SYSTEM`` directory
@@ -120,31 +119,31 @@ class Recorder:
         self.strict: bool = strict
 
         self._virtual: bool = virtual
-        self._command: Optional[CommandInterface] = None
+        self._command: Optional[command_interfaces.CommandInterface] = None
         self._config: Optional[ConfigInterface] = None
         self._path: Optional[Filename] = None
         self._devinfo: Optional[DeviceInfo] = None
         self._rawinfo: Optional[bytes] = devinfo
-        self._info: Optional[Dict] = None
+        self._info: Dict = None
 
         self._hash: Optional[int] = None
-        self._configData: Optional[Dict] = None
+        self._configData: Dict = None
         self._sn: Optional[str] = None
         self._snInt: Optional[int] = None
         self._chipId: Optional[int] = None
-        self._sensors: Optional[Dict[int, Sensor]] = None
-        self._channels: Optional[Dict[int, Channel]] = None
+        self._sensors: Dict[int, Sensor] = None
+        self._channels: Dict[int, Channel] = None
         self._channelRanges = {}
         self._propData: Optional[bytes] = None
-        self._manifest: Optional[Dict[str, Any]] = None
-        self._calibration: Optional[Dict[str, Any]] = None
-        self._calData: Optional[bytes] = None
-        self._calPolys: Optional[Dict[int, Any]] = None
-        self._userCalPolys: Optional[Dict] = None
-        self._userCalDict: Optional[Dict] = None
-        self._factoryCalPolys: Optional[Dict] = None
-        self._factoryCalDict: Optional[Dict] = None
-        self._properties: Optional[Dict] = None
+        self._manifest: Dict[str, Any] = None
+        self._calibration: Dict[str, Any] = None
+        self._calData: MasterElement = None
+        self._calPolys: Dict[int, Any] = None
+        self._userCalPolys: Dict = None
+        self._userCalDict: Dict = None
+        self._factoryCalPolys: Dict = None
+        self._factoryCalDict: Dict = None
+        self._properties: Dict = None
         self._volumeName: Optional[str] = None
         self._wifi: Optional[str] = None  # Cached name of the manifest's Wi-Fi element
 
@@ -198,7 +197,7 @@ class Recorder:
     def command(self) -> command_interfaces.CommandInterface:
         """ The device's "command interface," the means through which to
             directly control the device. Only applicable to non-virtual
-            recorders (i.e., actual hardware, not instantiated from a
+            devices (i.e., actual hardware, not instantiated from a
             recording).
         """
         # This property provides the appropriate exceptions common to
@@ -291,13 +290,13 @@ class Recorder:
             corresponding to a 'virtual' device (i.e., instantiated from
             an IDE recording file).
 
-            :param virtual: If `True` and the recorder is a 'virtual' device,
+            :param virtual: If `True` and the device is a 'virtual' device,
                 attempt to connect it to the actual hardware (if present).
             :param paths: A list of specific paths to recording devices.
                 Defaults to all found devices (as returned by
                 :meth:`~.endaq.device.getDeviceList`).
             :param strict: If `False`, only the directory structure is used
-                to identify a recorder. If `True`, non-FAT file systems will
+                to identify a device. If `True`, non-FAT file systems will
                 be automatically rejected.
             :return: `True` if the device had its information updated, or
                 `False` if the device is unchanged or the hardware could
@@ -364,7 +363,7 @@ class Recorder:
                  path: Filename,
                  info: Optional[bytes] = None) -> int:
         """ Calculate the device's hash. Separated from `__hash__()` so it
-            can be used by `getDevices()` to find known recorders.
+            can be used by `getDevices()` to find known devices.
 
             :param path: The device's filesystem path.
             :param info: The contents of the device's `DEVINFO` file, if
@@ -447,7 +446,7 @@ class Recorder:
     @property
     @synchronized
     def path(self) -> Union[str, None]:
-        """ The recorder's filesystem path (e.g., drive letter or mount point).
+        """ The device's filesystem path (e.g., drive letter or mount point).
         """
         return self._path
 
@@ -494,6 +493,7 @@ class Recorder:
 
         if self._path and os.path.exists(self._path) and self._volumeName is None:
             try:
+                # noinspection PyUnresolvedReferences
                 self._volumeName = os_specific.getDriveInfo(self.path).label
             except (AttributeError, IOError, TypeError) as err:
                 logger.debug("Getting volumeName raised a possibly-allowed exception: %r" % err)
@@ -602,7 +602,7 @@ class Recorder:
     def getInfo(self,
                 name: Optional[str] = None,
                 default=None) -> Any:
-        """ Retrieve a recorder's device information. Returns either a single
+        """ Retrieve a device's device information. Returns either a single
             item or a dictionary of all device information.
 
             :keyword name: The name of a specific device info item. `None`
@@ -659,7 +659,7 @@ class Recorder:
 
     @property
     def isVirtual(self) -> bool:
-        """ Is this actual hardware, or a virtual recorder? """
+        """ Is this actual hardware, or a virtual device? """
         return self._virtual
 
 
@@ -779,6 +779,7 @@ class Recorder:
         """
         return self.getInfo('HwRev', -1)
 
+
     @property
     def firmwareVersion(self) -> int:
         """ The recorder's manufacturer-issued firmware version number.
@@ -798,14 +799,45 @@ class Recorder:
 
 
     @property
+    def apiVersion(self) -> int:
+        """ The device's command API version, which roughly indicates
+            the device interface and the set of commands it supports.
+        """
+        # This will eventually be reported in the DEVINFO, but these
+        # checks will remain for devices with legacy FW
+        if self.hasCommandInterface:
+            if self.getInfo('RecorderTypeUID', 0) & 0x20000000:
+                # Gateway
+                return 3
+
+            mcu = str(self.mcuType)
+            if mcu.startswith('STM32'):
+                if self.firmwareVersion <= 30018:
+                    return 1
+                elif self.firmwareVersion < 30106:
+                    return 2
+                return 3
+            elif mcu.startswith('EFM32GG11'):
+                if self.firmwareVersion < 20100:
+                    return 1
+                return 2
+            elif mcu == "EFM32GG330":
+                if self.firmwareVersion < 17:
+                    return 0
+                return 1
+
+        return 0
+
+
+    @property
     def timestamp(self) -> Union[int, None]:
-        """ The recorder's date of manufacture, epoch time. """
+        """ The device's date of manufacture, epoch time. """
         return self.getInfo('DateOfManufacture')
 
 
     @property
     def birthday(self) -> Union[datetime, None]:
-        """ The recorder's date of manufacture. """
+        """ The device's date of manufacture. """
         bd = self.getInfo('DateOfManufacture')
         if bd is not None:
             return datetime.fromtimestamp(bd, timezone.utc)
@@ -867,7 +899,7 @@ class Recorder:
             the sensor.
 
             :param subchannel: An `idelib.dataset.SubChannel` instance,
-                e.g., from the recorder's `channels` dictionary.
+                e.g., from the device's `channels` dictionary.
             :param rounded: If `True`, round the results to two significant
                 digits (to remove floating point rounding errors).
         """
@@ -876,7 +908,7 @@ class Recorder:
         if key in self._channelRanges:
             return self._channelRanges[key]
 
-        xforms = self.getCalPolynomials()
+        xforms: dict = self.getCalPolynomials()
         lo, hi = subchannel.displayRange
 
         for xformId in subchannel.getTransforms():
@@ -1031,7 +1063,7 @@ class Recorder:
                 pause: bool = True,
                 retries: int = 1,
                 timeout: Union[int, float] = 3) -> Epoch:
-        """ Set a recorder's date/time. A variety of standard time types are
+        """ Set a device's date/time. A variety of standard time types are
             accepted. Note that the minimum unit of time is the whole second.
 
             :param t: The time to write, as either seconds since the epoch
@@ -1040,7 +1072,7 @@ class Recorder:
                 if `None` (default).
             :param pause: If `True` (default), the system waits until a
                 whole-numbered second before setting the clock. This may
-                improve accuracy across multiple recorders, but may take up
+                improve accuracy across multiple devices, but may take up
                 to a second to run. Not applicable if a specific time is
                 provided (i.e. `t` is not `None`).
             :param retries: The number of attempts to make, should the first
@@ -1066,7 +1098,7 @@ class Recorder:
                       pause: bool = True,
                       retries: int = 1,
                       timeout: Union[int, float] = 3) -> float:
-        """ Calculate how far the recorder's clock has drifted from the system
+        """ Calculate how far the device's clock has drifted from the system
             time.
 
             :param pause: If `True` (default), the system waits until a
@@ -1150,42 +1182,38 @@ class Recorder:
 
     def getUserCalibration(self,
                            filename: Optional[Filename] = None) -> Optional[Dict[str, Any]]:
-        """ Get the recorder's user-defined calibration data as a dictionary
+        """ Get the device's user-defined calibration data as a dictionary
             of parameters.
         """
-        if self.isVirtual or (self._userCalDict and not filename):
+        if self.isVirtual or (self._userCalDict is not None and not filename):
             return self._userCalDict
 
         data = self._readCalFile(filename)
-
-        if data:
-            self._userCalDict = data.dump().get('CalibrationList', None)
+        self._userCalDict = data.dump().get('CalibrationList', {}) if data else {}
 
         return self._userCalDict
 
 
     def getUserCalPolynomials(self,
-                              filename: Optional[Filename] = None) -> Union[Dict[int, Transform], None]:
-        """ Get the recorder's user-defined calibration data as a dictionary
+                              filename: Optional[Filename] = None) -> Dict[int, Transform]:
+        """ Get the device's user-defined calibration data as a dictionary
             of `idelib.transforms.Transform` subclass instances, keyed by ID.
 
             :param filename: The name of an alternative user calibration
                 `.dat` file to read (as opposed to the device's standard
                 user calibration).
         """
-        if self.isVirtual or (self._userCalPolys and not filename):
+        if self.isVirtual or (self._userCalPolys is not None and not filename):
             return self._userCalPolys
 
         data = self._readCalFile(filename)
-
-        if data:
-            self._userCalPolys = self._parsePolynomials(data)
+        self._userCalPolys = self._parsePolynomials(data) if data else {}
 
         return self._userCalPolys
 
 
-    def getCalibration(self, user: bool = True) -> Union[Dict[str, Any], None]:
-        """ Get the recorder's current calibration information. User-supplied
+    def getCalibration(self, user: bool = True) -> Dict[str, Any]:
+        """ Get the device's current calibration information. User-supplied
             calibration, if present, takes priority (as it is what will be
             applied in recordings).
 
@@ -1210,10 +1238,11 @@ class Recorder:
                 self._calibration = self._calData[0].dump()
             except IndexError:
                 logger.warning(f'No system calibration for {self}!')
-                self._calibration = None
+                self._calibration = {}
         else:
             logger.warning(f'No system calibration for {self}!')
-            self._calData = self._calibration = None
+            self._calData = None
+            self._calibration = {}
 
         return self._calibration
 
@@ -1243,7 +1272,7 @@ class Recorder:
     def getCalDate(self,
                    user: bool = False,
                    epoch: bool = False) -> Union[datetime, Epoch, None]:
-        """ Get the date of the recorder's calibration. By default,
+        """ Get the date of the device's calibration. By default,
             the factory calibration date is returned, as user calibration
             typically has no date.
 
@@ -1265,9 +1294,9 @@ class Recorder:
 
 
     def _getCalExpiration(self, data) -> Union[Epoch, None]:
-        """ Get the expiration date of the recorder's factory calibration.
+        """ Get the expiration date of the device's factory calibration.
         """
-        if data is None:
+        if not data:
             return None
         caldate = data.get('CalibrationDate', None)
         calexp = data.get('CalibrationExpiry', None)
@@ -1282,7 +1311,7 @@ class Recorder:
 
 
     def getCalExpiration(self, user=False, epoch=False) -> Union[datetime, Epoch, None]:
-        """ Get the expiration date of the recorder's calibration. Defaults
+        """ Get the expiration date of the device's calibration. Defaults
             to the expiration date of the factory calibration; user-supplied
             calibration typically has no expiration date.
 
@@ -1301,7 +1330,7 @@ class Recorder:
 
 
     def getCalSerial(self, user=False) -> Union[int, None]:
-        """ Get the recorder's factory calibration serial number. Defaults
+        """ Get the device's factory calibration serial number. Defaults
             to the serial number of the factory calibration; the serial
             number of user-supplied calibration is typically zero or
             totally absent.
@@ -1318,7 +1347,7 @@ class Recorder:
 
     @property
     def transforms(self) -> Union[Dict[int, Transform], None]:
-        """ The recorder's calibration polynomials, a dictionary of
+        """ The device's calibration polynomials, a dictionary of
             `idelib.transform.Transform` subclass instances keyed by ID. For
             compatibility with `idelib.dataset.Dataset`; results are the
             same as `Recorder.getCalPolynomials()`.
@@ -1342,7 +1371,7 @@ class Recorder:
 
     @synchronized
     def getSensors(self) -> Dict[int, Sensor]:
-        """ Get the recorder sensor description data.
+        """ Get the device sensor description data.
         """
         self.getProperties()
 
@@ -1398,7 +1427,7 @@ class Recorder:
 
 
     def getChannels(self, mtype: Union[MeasurementType, str, None] = None) -> Dict[int, Channel]:
-        """ Get the recorder channel description data.
+        """ Get the device channel description data.
 
             :param mtype: An optional measurement type, to filter results.
             :return: A dictionary of `Channel` objects, keyed by channel ID.
@@ -1413,7 +1442,7 @@ class Recorder:
 
 
     def getSubchannels(self, mtype: Union[MeasurementType, str, None] = None) -> List[SubChannel]:
-        """ Get the recorder subchannel description data.
+        """ Get the device subchannel description data.
 
             :param mtype: An optional measurement type, to filter results. See
                 `endaq.device.measurement`.
@@ -1455,6 +1484,8 @@ class Recorder:
             if xform.id is None:
                 continue
             n = "%sPolynomial" % xform.__class__.__name__
+
+            # noinspection PyUnresolvedReferences
             data.setdefault(n, []).append(xform.asDict())
 
         if date:
@@ -1479,7 +1510,7 @@ class Recorder:
         """
         if self.isVirtual:
             raise ConfigError('Could not write user calibration data: '
-                              'Not a real recorder!')
+                              'Not a real device!')
 
         cal = self.generateCalEbml(transforms)
         if filename:
@@ -1498,7 +1529,7 @@ class Recorder:
                        callback: Optional[Callable] = None) -> bool:
         """ Start the device recording, if supported.
 
-            :param timeout: Time (in seconds) to wait for the recorder to
+            :param timeout: Time (in seconds) to wait for the device to
                 respond. 0 will return immediately.
             :param callback: A function to call each response-checking
                 cycle. If the callback returns `True`, the wait for a response
@@ -1557,7 +1588,7 @@ class Recorder:
 
     @classmethod
     def fromRecording(cls, dataset: Dataset) -> "Recorder":
-        """ Create a 'virtual' recorder from the recorder description in a
+        """ Create a 'virtual' device from the recorder description in a
             recording.
         """
         rawinfo = None
@@ -1612,16 +1643,40 @@ class Recorder:
 class NonRecorder(Recorder):
     """
     Special-case `Recorder` subclass for objects that use the same interface
-    but are are not actual recorders, or do not correspond to a specific
-    device (e.g., a 'fake' recorder used to get data).
+    but are are not actual devices, or do not correspond to a specific
+    device (e.g., a 'fake' device used to get data). Used internally.
     """
 
-    def __init__(self, path=None, name=None, **kwargs):
+    def __init__(self,
+                 path: Optional[Filename] = None,
+                 name: Optional[str] = None,
+                 **kwargs):
+        """ Special-case `Recorder` subclass for objects that use the same
+            interface but are are not actual devices, or do not correspond
+            to a specific device (e.g., a 'fake' device used to get data).
+
+            :param path: The filesystem path to the device, or `None` if
+                it is a 'virtual' or remote device.
+            :param name: The name of the device. Supplying one avoids
+                reading it from the device, which can cause issues in various
+                `NonRecorder` use cases.
+            :param strict: If `True`, only allow real device paths. If
+                `False`, allow any path that contains a ``SYSTEM`` directory
+                with the standard contents on a device. Primarily for
+                testing.
+            :param devinfo: The necessary data to instantiate a `Recorder`.
+                For creating `Recorder` instances when the hardware isn't
+                physically present on the host computer. If `None`, the
+                data will be read from the device.
+            :param virtual: `True` if the device is not actual hardware
+                (e.g., constructed from data in a recording).
+        """
         super().__init__(path, **kwargs)
         self._name = name
 
 
     def __repr__(self):
+        """ Return repr(self). """
         try:
             if self._name:
                 return f'<{type(self).__name__} "{self._name}">'
