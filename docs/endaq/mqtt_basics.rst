@@ -4,6 +4,10 @@ enDAQ Devices and MQTT
 .. default-domain:: py
 .. currentmodule:: endaq.device
 
+.. Important::
+  MQTT features are not currently released for enDAQ devices, please contact enDAQ support for more information about these features.
+  Some of these instructions will change once the firmware with MQTT functionality is finalized.
+
 Controlling and communicating with Wi-Fi enabled enDAQ devices is done via `MQTT <https://mqtt.org/>`_,
 a lightweight protocol widely used in IoT applications.
 
@@ -59,18 +63,13 @@ On the command line in another shell/terminal window, enter:
 Configure the enDAQ device
 --------------------------
 
-.. Important::
-  Some of these instructions will change once the firmware with MQTT functionality is finalized.
-
 .. image:: ../_static/mqtt_config.png
 
-1. On your enDAQ device, in the `SYSTEM` directory, create an empty text file called `devtest.txt`. Note: if running Windows and 'Hide extensions of known types' is on (the default), the file should appear as `devtest`.
-2. Unplug the device, and plug it in again.
-3. In the enDAQ Lab Configure Device dialog, General tab, check *Wi-Fi Connection*. If already on, skip to step 6.
-4. Click 'OK' to exit the dialog, and when prompted to reset the device, click 'Yes'.
-5. Once the device reappears in the list of devices to configure, configure it again.
-6. In the 'Wi-Fi' tab, select your Wi-Fi access point and enter its password (if not already selected).
-7. In the 'General' tab, set the Wi-Fi options to match the image above:
+1. In the enDAQ Lab Configure Device dialog, General tab, check *Wi-Fi Connection*. If already on, skip to step 6.
+2. Click 'OK' to exit the dialog, and when prompted to reset the device, click 'Yes'.
+3. Once the device reappears in the list of devices to configure, configure it again.
+4. In the 'Wi-Fi' tab, select your Wi-Fi access point and enter its password (if not already selected).
+5. In the 'General' tab, set the Wi-Fi options to match the image above:
 
     * **'While Asleep'/'While Triggering'/'While Recording' lists:** All *On*
     * **'Endaq Cloud Settings' group:** All *unchecked*
