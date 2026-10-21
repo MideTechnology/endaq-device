@@ -164,7 +164,7 @@ class CommandInterface:
     @property
     def canLock(self) -> bool:
         """ Does this device support the `LockID` commands? """
-        return self.device.apiVersion >= 4
+        return self.device.apiVersion >= 3
 
 
     @property
@@ -3094,7 +3094,7 @@ class SerialCommandInterface(CommandInterface):
             :return: A tuple of Booleans: whether the device has a lock set,
                 and whether the lock belongs to this instance.
         """
-        if self.device.apiVersion < 4:
+        if self.device.apiVersion < 3:
             return super().isLocked(timeout=timeout, callback=callback)
 
         lock = self.getLockID(timeout=timeout, callback=callback)
