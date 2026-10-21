@@ -507,7 +507,7 @@ class CommandInterface:
             self.status = now, statusCode, statusMsg
             self._statusChanged.set()
 
-        lockId: bytes = lockId or '\x00' * 16
+        lockId: bytes = lockId or b'\x00' * 16
         if lockId != self.lockId[1]:
             self.lockId = lockTime or now, lockId
 

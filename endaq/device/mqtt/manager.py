@@ -117,7 +117,7 @@ class MQTTDevice:
         self.stateInfo: Dict[str, Any] = None
         self.infoTime: int = 0
 
-        self.lockId: bytes =  '\x00' * 16
+        self.lockId: bytes =  b'\x00' * 16
         self.totalMsgs = 0
 
         # For parsing the `measurement` data to extract IDE header
