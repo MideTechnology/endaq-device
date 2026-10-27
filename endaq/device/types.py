@@ -30,5 +30,3 @@ class Drive(NamedTuple):
 
 Epoch = Union[float, int]
 Filename = Union[AnyStr, Path, Drive]
-
-

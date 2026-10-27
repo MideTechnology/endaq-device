@@ -2,6 +2,7 @@
 Some basic utility functions, for internal use.
 """
 
+import base64
 import calendar
 import datetime
 import errno
@@ -12,7 +13,7 @@ import re
 import shutil
 from threading import get_native_id, RLock
 from time import sleep, time
-from typing import Any, ByteString, Callable, Dict, Optional, Tuple, Union
+from typing import Any, ByteString, Callable, Dict, List, Optional, Tuple, Union
 import socket
 
 import ifaddr
@@ -29,7 +30,7 @@ def makeBackup(filename: Union[str, pathlib.Path]) -> bool:
         `restoreBackup()`.
     """
     try:
-        backupFilename = filename + "~"
+        backupFilename = f"{filename}~"
         if os.path.exists(filename):
             shutil.copy2(filename, backupFilename)
             return True
@@ -45,7 +46,7 @@ def restoreBackup(filename: Union[str, pathlib.Path],
         conjunction with `makeBackup()`.
     """
     try:
-        backupFilename = filename + "~"
+        backupFilename = f"{filename}~"
         if os.path.exists(backupFilename):
             shutil.copy2(backupFilename, filename)
             if remove:
@@ -57,7 +58,7 @@ def restoreBackup(filename: Union[str, pathlib.Path],
     return False
 
 
-def cleanProps(el: Dict[str, Any]) -> Dict[str, Any]:
+def cleanProps(el: Union[Dict[str, Any], List[dict]]) -> Dict[str, Any]:
     """ Recursively remove unknown elements (``"UnknownElement"`` keys) from
         a dictionary of device properties. The original data may contain
         nested dictionaries and lists. For preparing data dumped from EBML
@@ -75,7 +76,7 @@ def cleanProps(el: Dict[str, Any]) -> Dict[str, Any]:
     elif not isinstance(el, dict):
         return el
 
-    return {k: cleanProps(v) for k, v in el.items() if k != "UnknownElement"}
+    return {k: cleanProps(v) for k, v in el.items() if not k.startswith("UnknownElement")}
 
 
 def dump(data: ByteString, length: int = 8) -> str:
@@ -284,7 +285,7 @@ def decodeAttr(data: Dict[str, Any], obj: Any):
         attrs = obj.attributes = {}
 
     for k, v in data.items():
-        if k.name.endswith('Attribute'):
+        if k.endswith('Attribute'):
             try:
                 attrs[name].append(v)
             except KeyError:
@@ -402,3 +403,46 @@ def info_lock_required(func: Callable,
                         f'{what} requires a matching lock ID '
                         'set with Recorder.command.setLockID()')
         raise
+
+
+# ===========================================================================
+# Safer JSON serialization
+# Note: This may get moved into `ebmlite`
+# ===========================================================================
+
+def decodeDict(value: Union[Dict[str, Any], list]) -> None:
+    """ Convert `bytearray`/`bytes` values in a dict/list escaped by
+        `encodeDict()` back to their original form. The original
+        dict/list is modified in place.
+    """
+    if isinstance(value, list):
+        iterator = enumerate(value)
+    elif isinstance(value, dict):
+        iterator = value.items()
+    else:
+        raise ValueError(f'cannot iterate {type(value)}')
+
+    for i, v in iterator:
+        if isinstance(v, str) and v.startswith('base64:'):
+            value[i] = base64.b64decode(v[7:])
+        elif isinstance(v, (dict, list)):
+            decodeDict(v)
+
+
+def encodeDict(value: Union[Dict[str, Any], list]) -> None:
+    """ Convert all strings in a list/dict starting with ``"base64"`` into
+        `bytearray`/`bytes` values. The original dict/list is modified in
+        place.
+    """
+    if isinstance(value, list):
+        iterator = enumerate(value)
+    elif isinstance(value, dict):
+        iterator = value.items()
+    else:
+        raise ValueError(f'cannot iterate {type(value)}')
+
+    for i, v in iterator:
+        if isinstance(v, (bytes, bytearray)):
+            value[i] = 'base64:' + str(base64.b64encode(v), 'utf8')
+        elif isinstance(v, (dict, list)):
+            encodeDict(v)
