@@ -71,6 +71,10 @@ class CommandInterface:
 
     _TIME_PARSER = struct.Struct("<L")
 
+    # This host's ID. Used when calling `setLockID()`.
+    # This does not change after instantiation.
+    hostId: bytes = uuid4().bytes
+
 
     def __init__(self,
                  device: "Recorder"):
@@ -85,10 +89,6 @@ class CommandInterface:
 
         # Some interfaces (i.e. serial) have a maximum packet size.
         self.maxCommandSize = self.DEFAULT_MAX_COMMAND_SIZE
-
-        # This host's ID. Used when calling `setLockID()`.
-        # This does not change after instantiation.
-        self.hostId: bytes = uuid4().bytes
 
         self.device = device
         self.index: int = randint(2**16, 2**31)
@@ -2376,6 +2376,8 @@ class SerialCommandInterface(CommandInterface):
                 self.response = now, None, None
                 return None
 
+            lastRespIdx = 0
+
             while True:
                 try:
                     resp = self._readResponse(timeout, callback=callback)
@@ -2414,8 +2416,6 @@ class SerialCommandInterface(CommandInterface):
                         statusCode = responseCode
                     if responseMsg is None:
                         responseMsg = statusMsg
-                    # elif statusMsg is None:
-                    #     statusMsg = responseMsg
 
                     self._setStatus(responseCode, responseMsg,
                                     statusCode, statusMsg,
@@ -2433,9 +2433,15 @@ class SerialCommandInterface(CommandInterface):
                         respIdx = resp.get('ResponseIdx', self.index)
                         if not index or respIdx == self.index:
                             return resp if response else None
+                        elif respIdx == lastRespIdx:
+                            # Some Gateway command failures can cause duplicate responses
+                            # (rare, possibly only with `HTTPSCommandInterface`)
+                            raise CommunicationError(f'Received duplicate ResponseIdx {respIdx} '
+                                                     f'(expected {self.index})')
                         else:
-                            logger.debug('Bad ResponseIdx; expected {}, got {}. '
-                                         'Retrying.'.format(self.index, respIdx))
+                            lastRespIdx = respIdx
+                            logger.debug(f'Bad ResponseIdx; expected {self.index}, got {respIdx}. '
+                                         'Retrying.')
                 else:
                     queueDepth = 1
 
@@ -3480,7 +3486,7 @@ class FileCommandInterface(CommandInterface):
 
     def _runSimpleCommand(self,
                           cmd: dict,
-                          statusCode: int = DeviceStatusCode.RESET_PENDING,
+                          statusCode: Union[None, int, List[int]] = DeviceStatusCode.RESET_PENDING,
                           timeoutMsg: Optional[str] = None,
                           wait: bool = True,
                           timeout: Union[int, float] = 5,
