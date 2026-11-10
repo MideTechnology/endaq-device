@@ -3,11 +3,13 @@ from fnmatch import fnmatchcase
 import logging
 # import os.path
 import requests
+import urllib3
+from requests.adapters import HTTPAdapter
 from requests.exceptions import ConnectTimeout
 import socket
 from threading import Thread
 from time import sleep, time
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, Literal
 from urllib.parse import urljoin
 
 import endaq.device
@@ -17,7 +19,7 @@ from endaq.device.exceptions import CommandError
 from endaq.device.gateway import Gateway
 from endaq.device.mqtt.discovery import MDNSInfo, MDNSFinder, findBrokers
 from endaq.device import CommunicationError
-from endaq.device.util import encodeDict, decodeDict
+from endaq.device.util import encodeDict, decodeDict, formatHost, orderAddresses
 
 from endaq.device.base import Recorder, NonRecorder
 
@@ -27,7 +29,69 @@ logger = logging.getLogger(__name__)
 # CERTFILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cert.pem')
 CERTFILE = False
 
+#: Address family to prefer when connecting to a device by IP: ``"ipv6"``,
+#: ``"ipv4"``, or `None` (use the order advertised).
+IpType = Literal["ipv4", "ipv6"]
+PREFER_ADDRESS: Optional[IpType] = None
+
 __all__ = ('HTTPSCommandInterface', 'getDevices')
+
+
+# ===========================================================================
+#
+# ===========================================================================
+
+class _ZoneIDConnectionMixin:
+    """
+    Un-escapes an IPv6 zone ID just before the socket is created.
+
+    A link-local IPv6 URL must encode its zone ID as ``%25`` (RFC 6874),
+    e.g. ``http://[fe80::1%25eth0]:8088/``. `urllib3` keeps the host in
+    that escaped form (``fe80::1%25eth0``) all the way to the socket layer,
+    where `getaddrinfo()` cannot resolve it; it needs ``fe80::1%eth0``.
+    """
+    def _new_conn(self):
+        dnsHost = getattr(self, '_dns_host', None)
+        if dnsHost and ':' in dnsHost and '%25' in dnsHost:
+            self._dns_host = dnsHost.replace('%25', '%', 1)
+        return super()._new_conn()
+
+
+class _HTTPConnection(_ZoneIDConnectionMixin, urllib3.connection.HTTPConnection):
+    pass
+
+
+class _HTTPSConnection(_ZoneIDConnectionMixin, urllib3.connection.HTTPSConnection):
+    pass
+
+
+class _HTTPConnectionPool(urllib3.HTTPConnectionPool):
+    ConnectionCls = _HTTPConnection
+
+
+class _HTTPSConnectionPool(urllib3.HTTPSConnectionPool):
+    ConnectionCls = _HTTPSConnection
+
+
+class _ZoneIDAdapter(HTTPAdapter):
+    """
+    Transport adapter whose connections can reach link-local IPv6
+    addresses with a zone ID (see `_ZoneIDConnectionMixin`).
+    """
+    def init_poolmanager(self, *args, **kwargs):
+        super().init_poolmanager(*args, **kwargs)
+        self.poolmanager.pool_classes_by_scheme = {'http': _HTTPConnectionPool,
+                                                   'https': _HTTPSConnectionPool}
+
+
+def _makeSession() -> requests.Session:
+    """ Create a `requests.Session` that can connect to link-local IPv6.
+    """
+    session = requests.Session()
+    adapter = _ZoneIDAdapter()
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
 
 
 # ===========================================================================
@@ -56,6 +120,9 @@ class HTTPSCommandInterface(SerialCommandInterface):
         self.password = password
         self.certfile = certfile
         self._http_response: requests.Response = None
+        # Create a session which can act as a persistent connection, save
+        # some time for https communication
+        self._session = _makeSession()
         super().__init__(device)
 
 
@@ -156,7 +223,7 @@ class HTTPSCommandInterface(SerialCommandInterface):
                 headers = {'X-Password': self.password}
             else:
                 headers = None
-            self._http_response = requests.post(
+            self._http_response = self._session.post(
                     self.url,
                     json=packet,
                     headers=headers,
@@ -228,30 +295,53 @@ class HTTPSCommandInterface(SerialCommandInterface):
 #
 # ============================================================================
 
-def info2url(info: MDNSInfo) -> str:
+def info2url(info: MDNSInfo,
+             prefer: Optional[IpType] = None,
+             useServerName: bool = True) -> str:
     """
     Generate a device's base URL from its mDNS advertised info.
 
     :param info: The HTTPS device's advertised  info. If `info` is a string,
         the string gets returned verbatim.
+    :param prefer: The address family to prefer if connecting by IP:
+        ``"ipv6"``, ``"ipv4"``, or `None` (the advertised order). Defaults
+        to `PREFER_ADDRESS`.
+    :param useServerName: If `True`, use the advertised server name if it
+        can be resolved (in the family given by `prefer`, if any). If
+        `False`, always use an IP literal.
     :return: A base URL.
     """
     if isinstance(info, str):
         return info
 
-    # Zeroconf default server names are just the service name and aren't
-    # necessarily valid domain names. Use the IP if it can't be resolved.
-    host = info.server.rstrip('.')
-    try:
-        socket.getaddrinfo(host, None)
-    except socket.gaierror:
-        logger.warning('Advertised server name invalid, using IP')
-        host = info.host[0]
-
     scheme = str(info.properties.get(b'protocol', b'mqtt'), 'utf8').lower()
     if not scheme.startswith('http'):
         raise CommunicationError(f'Unsupported protocol: {scheme!r}')
-    return f'{scheme}://{host}:{info.port}'
+
+    prefer = PREFER_ADDRESS if prefer is None else prefer
+    family = {'ipv4': socket.AF_INET, 'ipv6': socket.AF_INET6}.get(
+            (prefer or '').lower(), socket.AF_UNSPEC)
+
+    # Zeroconf default server names are just the service name and aren't
+    # necessarily valid domain names. Use the IP if it can't be resolved.
+    host = None
+    if useServerName and info.server:
+        name = info.server.rstrip('.')
+        try:
+            socket.getaddrinfo(name, info.port, family, socket.SOCK_STREAM)
+            host = name
+        except socket.gaierror:
+            logger.debug(f'Advertised server name {name!r} could not be '
+                         f'resolved, using IP')
+
+    if host is None:
+        addresses = orderAddresses(info.host, prefer)
+        if not addresses:
+            raise CommunicationError(f'No address advertised for {info.name!r}')
+        host = addresses[0]
+
+    # IPv6 literals must be bracketed (and their zone ID escaped) in URLs
+    return f'{scheme}://{formatHost(host)}:{info.port}'
 
 
 # ============================================================================

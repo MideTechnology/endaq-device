@@ -28,6 +28,7 @@ INSTALL_REQUIRES = [
     'psutil >=5.5.0; sys_platform == "linux" or sys_platform=="darwin"',
     'pyserial>=3.5',
     'pywin32>=228; sys_platform == "win32"',
+    'requests>=2.32',
     'zeroconf'
 ]
 

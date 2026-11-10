@@ -7,18 +7,18 @@ import itertools
 import json
 import logging
 import signal
-import socket
+import ipaddress
 import sys
 from threading import Timer
 from time import sleep
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from zeroconf import IPVersion, ServiceInfo, Zeroconf
 from zeroconf import NonUniqueNameException
 
 from .mqtt_interface import MQTT_BROKER, MQTT_PORT
 from .discovery import DEFAULT_NAME, splitServiceName, findBrokers
-from ..util import getMyIP, synchronized
+from ..util import getMyIPs, isLocalhost, synchronized
 
 from endaq.device import __version__
 
@@ -37,19 +37,26 @@ class Advertiser:
                  port: int = MQTT_PORT,
                  notes: Optional[str] = None,
                  properties: Optional[Dict[str, Any]] = None,
+                 ipVersion: IPVersion = IPVersion.All,
+                 iface: Optional[str] = None,
                  **kwargs):
         """
         An object to manage mDNS service advertising of the MQTT broker.
 
         :param name: The name of the service. Must be unique if rename is set to False.
         :param rename: If True, try to use the name '{name} {count}' if the name is already taken
-        :param address: The broker's address. Defaults to the machine running
-            the Advertiser.
+        :param address: The broker's address, or a list of addresses (IPv4
+            and/or IPv6). Defaults to all addresses of the machine running
+            the Advertiser (filtered by `ipVersion` and `iface`).
         :param port: The broker's port number.
         :param notes: An optional description of the broker/manager; if
             provided, the notes will be included in the service advertising.
         :param properties: An optional dictionary of additional data to be
             included in the service advertising.
+        :param ipVersion: The IP version(s) to advertise on and to
+            include in the advertised address records.
+        :param iface: A network interface name (or regex) to limit the
+            automatically-found addresses. Not used if `address` is given.
         """
         if kwargs:
             logger.debug(f'Starting Advertiser, ignoring extra kwargs {kwargs}')
@@ -64,9 +71,9 @@ class Advertiser:
         if notes:
             self.properties['notes'] = notes
 
-        # TODO: IPv6 support?
-        self.address = address or getMyIP()
-        self.ipVersion = IPVersion.V4Only
+        self.ipVersion = ipVersion
+        self.addresses = self._getAddresses(address, iface)
+        self.address = self.addresses[0]  # For backwards compatibility
 
         self.info = None
         self.zeroconf = None
@@ -112,13 +119,40 @@ class Advertiser:
         return True
 
 
+    def _getAddresses(self,
+                      address: Union[None, str, List[str]],
+                      iface: Optional[str]) -> List[str]:
+        """ Build the list of addresses to advertise.
+        """
+        v4 = self.ipVersion in (IPVersion.All, IPVersion.V4Only)
+        v6 = self.ipVersion in (IPVersion.All, IPVersion.V6Only)
+
+        if isinstance(address, str):
+            address = [address]
+        if not address or all(isLocalhost(a) for a in address):
+            address = getMyIPs(iface, ipv4=v4, ipv6=v6)
+
+        addresses = []
+        for a in address:
+            # mDNS address records can't carry an IPv6 zone ID
+            bare = a.strip('[]').split('%')[0]
+            version = ipaddress.ip_address(bare).version
+            if (version == 4 and v4) or (version == 6 and v6):
+                addresses.append(bare)
+
+        if not addresses:
+            raise ValueError(f'No addresses to advertise for {self.ipVersion!r} '
+                             f'(given {address!r})')
+        return addresses
+
+
     def _createSI(self) -> ServiceInfo:
         """ Instantiate a `zeroconf.ServiceInfo` using this object's info.
         """
         return ServiceInfo(
                 self.serviceType,
                 self.fullName,
-                addresses=[socket.inet_aton(self.address)],
+                parsed_addresses=self.addresses,
                 port=self.port,
                 properties=self.properties,
                 host_ttl=1125,  # NOTE: Zeroconf has a min refresh time of 1125
@@ -137,7 +171,7 @@ class Advertiser:
         self._watchdogTimer.cancel()
 
         logger.debug(f'Starting zeroconf advertising of {self.fullName} '
-                     f'on {self.address}:{self.port}.')
+                     f'on {self.addresses} port {self.port}.')
         if self.zeroconf is not None:
             raise RuntimeError('Advertising already started.')
 
