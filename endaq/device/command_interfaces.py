@@ -1781,6 +1781,14 @@ class CommandInterface:
         """
         return False
 
+    @property
+    def streamFile(self) -> str:
+        """ The name of the current stream save file if streaming, or the
+            previous save file if stopped. Only applicable to wireless devices
+            connected through an MQTT broker.
+        """
+        return ''
+
 
     # =======================================================================
     # General device info getting/setting

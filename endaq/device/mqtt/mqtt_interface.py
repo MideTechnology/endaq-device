@@ -1353,3 +1353,13 @@ class MQTTCommandInterface(SerialCommandInterface):
             self.streamCallback(self.device, numbytes)
 
         return numbytes
+
+
+    @property
+    def streamFile(self) -> str:
+        """ The name of the current stream save file if streaming, or the
+            previous save file if stopped.
+        """
+        if not self._stream:
+            return ''
+        return self._stream.name
