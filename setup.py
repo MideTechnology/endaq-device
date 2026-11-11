@@ -29,6 +29,7 @@ INSTALL_REQUIRES = [
     'pyserial>=3.5',
     'pywin32>=228; sys_platform == "win32"',
     'requests>=2.32',
+    "urllib3"
     'zeroconf'
 ]
 
@@ -62,7 +63,6 @@ setuptools.setup(
         classifiers=['Development Status :: 5 - Production/Stable',
                      'License :: OSI Approved :: MIT License',
                      'Natural Language :: English',
-                     'Programming Language :: Python :: 3.9',
                      'Programming Language :: Python :: 3.10',
                      'Programming Language :: Python :: 3.11',
                      'Programming Language :: Python :: 3.12',
