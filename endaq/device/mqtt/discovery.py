@@ -543,7 +543,7 @@ def findBrokers(*patterns: str,
 
         if protocol is not None:
             broker_list = [broker for broker in broker_list
-                           if broker.properties.get(b'protocol', b'mqtt') == protocol]
+                           if fnmatchcase(broker.properties.get(b'protocol', b'mqtt'), protocol)]
 
         if patterns and patterns[0]:
             broker_list = [broker for broker in broker_list

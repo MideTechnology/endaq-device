@@ -42,7 +42,7 @@ def _getDeviceLabels() -> dict:
 
 
 def getDriveInfo(dev: Filename) -> Union[Drive, None]:
-    """ Get general device information. Not currently used.
+    """ Get general device information.
     """
     dev = os.path.realpath(dev)
 
