@@ -268,6 +268,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     kwargs = vars(args).copy()
     kwargs.pop('config')
+    kwargs['iface'] = 'eth1'
 
     if args.config:
         with open(args.config, 'r') as f:

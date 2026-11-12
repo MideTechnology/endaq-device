@@ -29,7 +29,7 @@ INSTALL_REQUIRES = [
     'pyserial>=3.5',
     'pywin32>=228; sys_platform == "win32"',
     'requests>=2.32',
-    "urllib3"
+    'urllib3',
     'zeroconf'
 ]
 
