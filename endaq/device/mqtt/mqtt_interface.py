@@ -46,7 +46,7 @@ from ..exceptions import (CommandError, CommunicationError, DeviceError,
 from ..response_codes import DeviceStatusCode
 from ..simserial import SimSerialPort
 from ..types import Filename
-from ..util import getMyIP, makeClientID, synchronized
+from ..util import getMyIP, isLocalhost, makeClientID, orderAddresses, synchronized
 
 logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
@@ -101,9 +101,13 @@ class MQTTConnector:
         Class that manages the connection to the MQTT Broker and
         communication with the MQTT Device Manager.
 
-        :param host: The hostname/IP of the MQTT broker. Defaults to
-            the local machine. Note that ``localhost`` and ``127.0.0.1``
-            are explicitly converted to the local machine's IP.
+        :param host: The hostname/IP (v4 or v6) of the MQTT broker, or
+            a list of addresses (e.g., `MDNSInfo.host`). Defaults to the
+            local machine. Note that ``localhost`` and loopback addresses
+            (``127.0.0.1``, ``::1``) are explicitly converted to the local
+            machine's IP. If a list is given, the keyword argument
+            ``prefer`` (``"ipv6"`` or ``"ipv4"``) selects which address
+            family to use first; otherwise the first address is used.
         :param port: The port to which to connect.
         :param username: The username to use to connect to the broker,
             if required.
@@ -132,10 +136,15 @@ class MQTTConnector:
             of a `paho.mqtt.client.Client`. This can be set later via the
             `MQTTConnector.disconnectCallback` attribute.
         """
-        if not host or host in ('localhost', '127.0.0.1'):
+        if isinstance(host, (list, tuple)):
+            # e.g., `MDNSInfo.host`; may contain IPv4 and IPv6 addresses.
+            host = orderAddresses(host, kwargs.get('prefer'))[0]
+        if isLocalhost(host):
             host = getMyIP()
-        elif isinstance(host, (list, tuple)):
-            host = host[0]
+        else:
+            # paho expects a bare IPv6 literal (with any zone ID, e.g.
+            # 'fe80::1%eth0'), not the bracketed URL form.
+            host = host.strip('[]').replace('%25', '%')
 
         self.host = host
         self.port = port
