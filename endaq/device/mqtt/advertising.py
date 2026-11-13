@@ -259,6 +259,8 @@ if __name__ == '__main__':
     parser.add_argument('-r', '--rename', action='store_true',
                         help="Add an incrementing number to the advertised name "
                              "if that name is already in use.")
+    parser.add_argument('-i', '--iface', type=str, default=None,
+                        help="Name of the network interface to advertise.")
     parser.add_argument('-c', '--config', type=str, default=None, metavar="FILENAME",
                         help="The name of a configuration JSON file with additional "
                              "arguments for the advertising. Values in the config file "
@@ -268,7 +270,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     kwargs = vars(args).copy()
     kwargs.pop('config')
-    kwargs['iface'] = 'eth1'
 
     if args.config:
         with open(args.config, 'r') as f:
