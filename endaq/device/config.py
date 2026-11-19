@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 import errno
 from functools import partial
 import logging
+import os
 import os.path
 from pathlib import Path
 from time import struct_time
@@ -1371,7 +1372,7 @@ class FileConfigInterface(ConfigInterface):
     def _writeConfig(self, data: bytes) -> int:
         """ Open and write to the device's config file. """
         with open(self.device.configFile, 'wb') as f:
-            return f.write(data)
+            return  f.write(data)
 
 
     @device_synchronized
