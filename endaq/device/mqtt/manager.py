@@ -861,7 +861,7 @@ def start(host: Optional[str] = MQTT_BROKER,
             kwargs.update(advertArgs)
         manager.advertiser = Advertiser(**kwargs)
         manager.advertiser.start()
-        logger.info(f'Advertising broker on {host}:{port} '
+        logger.info(f'Advertising broker on {manager.advertiser.addresses} port {port} '
                      f'as "{manager.advertiser.fullName}"')
 
     logger.info("Starting manager's MQTT client loop thread")

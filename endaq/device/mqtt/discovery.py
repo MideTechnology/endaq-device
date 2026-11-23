@@ -29,7 +29,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import warnings
 import weakref
 
-from zeroconf import Zeroconf, ServiceBrowser, ServiceInfo, ServiceStateChange
+from zeroconf import IPVersion, Zeroconf, ServiceBrowser, ServiceInfo, ServiceStateChange
 
 from endaq.device.util import synchronized, levenshtein
 
@@ -53,6 +53,10 @@ SERVICE_TYPE = "_endaq._tcp.local."
 MDNS_FINDERS: Dict[str, "MDNSFinder"] = weakref.WeakValueDictionary()
 
 KEEPALIVE = 1800
+
+#: IP version(s) used for mDNS discovery. `IPVersion.All` listens on both
+#: the IPv4 (224.0.0.251) and IPv6 (ff02::fb) mDNS multicast groups.
+MDNS_IP_VERSION = IPVersion.All
 TIMEOUT = 5
 
 # ===========================================================================
@@ -117,7 +121,8 @@ class MDNSFinder:
     def __init__(self,
                  serviceType: str = SERVICE_TYPE,
                  timeout: Union[float, int] = TIMEOUT,
-                 keepalive: Union[float, int] = KEEPALIVE):
+                 keepalive: Union[float, int] = KEEPALIVE,
+                 ipVersion: IPVersion = MDNS_IP_VERSION):
         """
         Object to handle searching for mDNS hosts. Most of the work is handled
         by Zeroconf in the background.
@@ -128,8 +133,12 @@ class MDNSFinder:
             info before giving up.
         :param keepalive: The time to keep the `MDNSFinder` object running
             between uses.
+        :param ipVersion: The IP version(s) on which to listen for mDNS
+            traffic. If IPv6 multicast is unavailable on this host, the
+            finder falls back to IPv4 only.
         """
         self.serviceType = serviceType
+        self.ipVersion = ipVersion
         self.timeout = timeout
         self._timeout_ms = int(timeout * 1000)
         self._keepalive = keepalive
@@ -358,7 +367,15 @@ class MDNSFinder:
 
         self._restartWatchdog()
 
-        self._zc = Zeroconf()
+        try:
+            self._zc = Zeroconf(ip_version=self.ipVersion)
+        except OSError as err:
+            if self.ipVersion == IPVersion.V4Only:
+                raise
+            logger.warning(f'Could not start mDNS on IPv6 ({err!r}); '
+                           'falling back to IPv4 only')
+            self.ipVersion = IPVersion.V4Only
+            self._zc = Zeroconf(ip_version=self.ipVersion)
         self._browser = ServiceBrowser(
             zc=self._zc,
             type_=[self.serviceType],
@@ -447,7 +464,9 @@ def parseServiceInfo(info: ServiceInfo) -> MDNSInfo:
     Parse `zeroconf.ServiceInfo` into an `MDNSInfo` object.
     """
     name, serviceType = splitServiceName(info.name)
-    addr = info.parsed_addresses()
+    # Scoped addresses keep the interface ID on IPv6 link-local addresses
+    # (e.g., 'fe80::1%2'), without which they cannot be connected to.
+    addr = info.parsed_scoped_addresses()
     # Some services' properties contain null keys
     props = {k: v for k, v in info.properties.items() if k}
     return MDNSInfo(name=name, serviceType=serviceType,
