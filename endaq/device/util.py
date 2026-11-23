@@ -2,9 +2,11 @@
 Some basic utility functions, for internal use.
 """
 
+import base64
 import calendar
 import datetime
 import errno
+import ipaddress
 from functools import wraps
 import os.path
 import pathlib
@@ -12,7 +14,7 @@ import re
 import shutil
 from threading import get_native_id, RLock
 from time import sleep, time
-from typing import Any, ByteString, Callable, Dict, Optional, Tuple, Union
+from typing import Any, ByteString, Callable, Dict, List, Optional, Tuple, Union
 import socket
 
 import ifaddr
@@ -29,7 +31,7 @@ def makeBackup(filename: Union[str, pathlib.Path]) -> bool:
         `restoreBackup()`.
     """
     try:
-        backupFilename = filename + "~"
+        backupFilename = f"{filename}~"
         if os.path.exists(filename):
             shutil.copy2(filename, backupFilename)
             return True
@@ -45,7 +47,7 @@ def restoreBackup(filename: Union[str, pathlib.Path],
         conjunction with `makeBackup()`.
     """
     try:
-        backupFilename = filename + "~"
+        backupFilename = f"{filename}~"
         if os.path.exists(backupFilename):
             shutil.copy2(backupFilename, filename)
             if remove:
@@ -57,7 +59,7 @@ def restoreBackup(filename: Union[str, pathlib.Path],
     return False
 
 
-def cleanProps(el: Dict[str, Any]) -> Dict[str, Any]:
+def cleanProps(el: Union[Dict[str, Any], List[dict]]) -> Dict[str, Any]:
     """ Recursively remove unknown elements (``"UnknownElement"`` keys) from
         a dictionary of device properties. The original data may contain
         nested dictionaries and lists. For preparing data dumped from EBML
@@ -75,7 +77,7 @@ def cleanProps(el: Dict[str, Any]) -> Dict[str, Any]:
     elif not isinstance(el, dict):
         return el
 
-    return {k: cleanProps(v) for k, v in el.items() if k != "UnknownElement"}
+    return {k: cleanProps(v) for k, v in el.items() if not k.startswith("UnknownElement")}
 
 
 def dump(data: ByteString, length: int = 8) -> str:
@@ -229,6 +231,117 @@ def getMyIP(iface: Optional[str] = None,
             return default
 
 
+def getMyIPs(iface: Optional[str] = None,
+             ipv4: bool = True,
+             ipv6: bool = True,
+             linkLocal: bool = True) -> List[str]:
+    """ Retrieve all of the computer's non-loopback IP addresses, for
+        advertising a service (e.g., via mDNS) on both IPv4 and IPv6.
+        Scope IDs are not included in IPv6 link-local addresses, since
+        mDNS address records do not carry them; receivers attach their
+        own scope.
+
+        :param iface: The name of a specific network interface/adapter to
+            use, or a regular expression matching one or more names. All
+            interfaces are used if `None`.
+        :param ipv4: If `True`, include IPv4 addresses.
+        :param ipv6: If `True`, include IPv6 addresses.
+        :param linkLocal: If `True`, include IPv6 link-local (``fe80::/10``)
+            addresses.
+        :return: A list of addresses, IPv4 first (if any).
+    """
+    regex = re.compile(iface) if iface else None
+    v4, v6 = [], []
+
+    for adapter in ifaddr.get_adapters():
+        if regex and not regex.match(adapter.nice_name):
+            continue
+        for ip in adapter.ips:
+            if isinstance(ip.ip, str):
+                addr = ipaddress.ip_address(ip.ip)
+                if ipv4 and not addr.is_loopback and str(addr) not in v4:
+                    v4.append(str(addr))
+            else:
+                # ifaddr reports IPv6 as (address, flowinfo, scope_id)
+                addr = ipaddress.ip_address(ip.ip[0].split('%')[0])
+                if (not ipv6 or addr.is_loopback
+                        or (addr.is_link_local and not linkLocal)
+                        or str(addr) in v6):
+                    continue
+                v6.append(str(addr))
+
+    # Globally routable IPv6 before link-local
+    v6.sort(key=lambda a: ipaddress.ip_address(a).is_link_local)
+    return v4 + v6
+
+
+def isLocalhost(host: Optional[str]) -> bool:
+    """ Is `host` empty, ``localhost``, or a loopback IP literal (v4 or v6)?
+    """
+    if not host or host.lower() == 'localhost':
+        return True
+    try:
+        return ipaddress.ip_address(host.strip('[]').split('%')[0]).is_loopback
+    except ValueError:
+        return False
+
+
+def formatHost(host: str) -> str:
+    """ Format a hostname or IP literal for use in the authority part of a
+        URL (RFC 3986/6874). IPv6 literals are enclosed in brackets, and
+        a zone ID (e.g., the ``eth0`` or ``2`` in ``fe80::1%eth0``) is
+        percent-encoded as ``%25``. Hostnames and IPv4 addresses are
+        returned unchanged.
+
+        :param host: A hostname, IPv4 address, or IPv6 address (with or
+            without brackets and/or a zone ID).
+        :return: The host, formatted for use in a URL.
+    """
+    bare = host.strip('[]')
+    addr, _, zone = bare.partition('%')
+    if zone.startswith('25') and host.startswith('['):
+        # Already URL-encoded zone ID
+        zone = zone[2:]
+    try:
+        if ipaddress.ip_address(addr).version != 6:
+            return addr
+    except ValueError:
+        return host
+    if zone.isdigit():
+        # Numeric zone IDs (interface indexes, as reported by zeroconf) are
+        # mangled by `urllib3`'s percent-decoding ('%252' -> '%2'); use the
+        # interface name instead.
+        try:
+            zone = socket.if_indextoname(int(zone))
+        except (OSError, AttributeError) as err:
+            logger.debug(f'Could not get name of interface {zone}: {err!r}')
+    return f'[{addr}%25{zone}]' if zone else f'[{addr}]'
+
+
+def orderAddresses(addresses: List[str],
+                   prefer: Optional[str] = None) -> List[str]:
+    """ Sort a list of IP address strings by address family.
+
+        :param addresses: The addresses (e.g., `MDNSInfo.host`).
+        :param prefer: ``"ipv6"`` to put IPv6 first (globally routable
+            before link-local), ``"ipv4"`` to put IPv4 first, or `None`
+            to keep the original order.
+        :return: A new, sorted list.
+    """
+    if not prefer:
+        return list(addresses)
+    want6 = prefer.lower() in ('ipv6', 'v6', '6')
+
+    def key(a: str):
+        try:
+            ip = ipaddress.ip_address(a.split('%')[0])
+        except ValueError:
+            return 2, False  # Hostnames last
+        return (0 if (ip.version == 6) == want6 else 1), ip.is_link_local
+
+    return sorted(addresses, key=key)
+
+
 def makeClientID(base: str) -> str:
     """ Generate a unique but readable ID for the MQTT Client. The ID
         combines the name of a parent object, the machine's IP, and the
@@ -284,7 +397,7 @@ def decodeAttr(data: Dict[str, Any], obj: Any):
         attrs = obj.attributes = {}
 
     for k, v in data.items():
-        if k.name.endswith('Attribute'):
+        if k.endswith('Attribute'):
             try:
                 attrs[name].append(v)
             except KeyError:
@@ -402,3 +515,46 @@ def info_lock_required(func: Callable,
                         f'{what} requires a matching lock ID '
                         'set with Recorder.command.setLockID()')
         raise
+
+
+# ===========================================================================
+# Safer JSON serialization
+# Note: This may get moved into `ebmlite`
+# ===========================================================================
+
+def decodeDict(value: Union[Dict[str, Any], list]) -> None:
+    """ Convert `bytearray`/`bytes` values in a dict/list escaped by
+        `encodeDict()` back to their original form. The original
+        dict/list is modified in place.
+    """
+    if isinstance(value, list):
+        iterator = enumerate(value)
+    elif isinstance(value, dict):
+        iterator = value.items()
+    else:
+        raise ValueError(f'cannot iterate {type(value)}')
+
+    for i, v in iterator:
+        if isinstance(v, str) and v.startswith('base64:'):
+            value[i] = base64.b64decode(v[7:])
+        elif isinstance(v, (dict, list)):
+            decodeDict(v)
+
+
+def encodeDict(value: Union[Dict[str, Any], list]) -> None:
+    """ Convert all strings in a list/dict starting with ``"base64"`` into
+        `bytearray`/`bytes` values. The original dict/list is modified in
+        place.
+    """
+    if isinstance(value, list):
+        iterator = enumerate(value)
+    elif isinstance(value, dict):
+        iterator = value.items()
+    else:
+        raise ValueError(f'cannot iterate {type(value)}')
+
+    for i, v in iterator:
+        if isinstance(v, (bytes, bytearray)):
+            value[i] = 'base64:' + str(base64.b64encode(v), 'utf8')
+        elif isinstance(v, (dict, list)):
+            encodeDict(v)
